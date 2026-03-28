@@ -1,0 +1,720 @@
+{
+  "name": "Clinica WhatsApp Completo (Evolution API)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "evolution-clinica",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "e2v00001-0001-4001-8001-000000000001",
+      "name": "Webhook Evolution",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1600, 400],
+      "webhookId": "evolution-clinica-completo"
+    },
+    {
+      "parameters": {
+        "jsCode": "const root = $json.body ?? $json;\n\nfunction jidToDigits(jid) {\n  if (!jid || typeof jid !== 'string') return '';\n  const user = jid.split('@')[0];\n  return user.split(':')[0].replace(/\\D/g, '');\n}\n\nfunction extractText(m) {\n  if (!m || typeof m !== 'object') return '';\n  if (m.conversation) return String(m.conversation);\n  if (m.extendedTextMessage?.text) return String(m.extendedTextMessage.text);\n  if (m.imageMessage?.caption) return String(m.imageMessage.caption);\n  return '';\n}\n\nlet payload = root.data ?? root;\nif (Array.isArray(payload)) payload = payload[0];\nif (payload?.messages?.[0]) payload = payload.messages[0];\n\nconst key = payload.key ?? payload?.message?.key;\nconst fromMe = key?.fromMe === true;\nif (fromMe) return [];\n\nconst remoteJid = key?.remoteJid || payload.remoteJid || '';\nconst waDigits = jidToDigits(remoteJid);\nif (!waDigits) return [];\n\nconst e164 = '+' + waDigits;\nconst msgObj = payload.message ?? payload;\nconst body = extractText(msgObj).trim();\nconst pushName = payload.pushName || payload.notifyName || '';\nconst clinicId = $env.CLINIC_ID || '';\n\nlet intencao = 'duvida';\nconst lower = body.toLowerCase();\nif (/falar com|humano|atendente|operador|pessoa real|falar com algu[eé]m|quero um humano/.test(lower)) intencao = 'humano';\nelse if (/cancelar|desmarcar|anular/.test(lower)) intencao = 'cancelamento';\nelse if (/reagendar|remarcar|mudar/.test(lower)) intencao = 'reagendamento';\nelse if (/agendar|marcar|consulta|vaga|hor[aá]rio|dispon[ií]vel|especialidade/.test(lower)) intencao = 'agendamento';\n\nreturn [{\n  json: {\n    wa_id: waDigits,\n    e164,\n    message_text: body,\n    clinic_id: clinicId,\n    intencao,\n    patient_hint: pushName,\n    evolution_remote_jid: remoteJid,\n  },\n}];"
+      },
+      "id": "e2v00001-0002-4002-8002-000000000002",
+      "name": "Parse Evolution",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1360, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "h1",
+              "leftValue": "={{ $json.intencao }}",
+              "rightValue": "humano",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e2v00001-0003-4003-8003-000000000003",
+      "name": "E pedido humano?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-1120, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.EVOLUTION_API_BASE || '').replace(/\\/$/, '') + '/message/sendText/' + ($env.EVOLUTION_INSTANCE || 'default') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $('Parse Evolution').first().json.wa_id, text: '⏳ Transferindo pro atendimento humano. Um momento, por favor.' }) }}",
+        "options": {}
+      },
+      "id": "e2v00001-0004-4004-8004-000000000004",
+      "name": "HTTP WA Cliente transferindo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-880, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.EVOLUTION_API_BASE || '').replace(/\\/$/, '') + '/message/sendText/' + ($env.EVOLUTION_INSTANCE || 'default') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $env.CLINIC_OWNER_WHATSAPP, text: 'Cliente ' + $('Parse Evolution').first().json.e164 + ($('Parse Evolution').first().json.patient_hint ? ' (' + $('Parse Evolution').first().json.patient_hint + ')' : '') + ' quer falar com humano. Assuma no painel: WhatsApp humano. Msg: ' + $('Parse Evolution').first().json.message_text }) }}",
+        "options": {}
+      },
+      "id": "e2v00001-0005-4005-8005-000000000005",
+      "name": "HTTP WA Dono alerta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-640, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO public.whatsapp_sessions (clinic_id, phone, needs_human, staff_handling, manual, numero_cliente, last_message_preview, updated_at)\nVALUES (\n  '{{ $('Parse Evolution').first().json.clinic_id }}'::uuid,\n  '{{ $('Parse Evolution').first().json.e164.replace(/'/g, \"''\") }}',\n  true,\n  false,\n  true,\n  '{{ $('Parse Evolution').first().json.e164.replace(/'/g, \"''\") }}',\n  left('{{ $('Parse Evolution').first().json.message_text.replace(/'/g, \"''\") }}', 500),\n  now()\n)\nON CONFLICT (clinic_id, phone) DO UPDATE SET\n  needs_human = true,\n  manual = true,\n  numero_cliente = EXCLUDED.numero_cliente,\n  last_message_preview = EXCLUDED.last_message_preview,\n  updated_at = now();",
+        "options": {}
+      },
+      "id": "e2v00001-0006-4006-8006-000000000006",
+      "name": "PG Upsert fila humano",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [-400, 200],
+      "credentials": {
+        "postgres": {
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.NEXT_APP_URL || $env.NEXT_PUBLIC_APP_URL || '').replace(/\\/$/, '') + '/api/agendamentos-sync' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.AGENDAMENTOS_SYNC_SECRET }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e2v00001-0007-4007-8007-000000000007",
+      "name": "HTTP Sync dashboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-160, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "r1",
+                    "leftValue": "={{ $json.intencao }}",
+                    "rightValue": "agendamento",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Agendamento"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "r2",
+                    "leftValue": "={{ $json.intencao }}",
+                    "rightValue": "cancelamento",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Cancelamento"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "r3",
+                    "leftValue": "={{ $json.intencao }}",
+                    "rightValue": "reagendamento",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Reagendamento"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "r4",
+                    "leftValue": "={{ $json.intencao }}",
+                    "rightValue": "duvida",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Duvida"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e2v00001-0008-4008-8008-000000000008",
+      "name": "Switch intencao",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [-880, 560]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT p.id, p.name, COALESCE(p.specialty, '') AS specialty FROM public.professionals p WHERE p.clinic_id = '{{ $json.clinic_id }}'::uuid AND p.is_active = true ORDER BY p.sort_order, p.name",
+        "options": {}
+      },
+      "id": "e2v00001-0009-4009-8009-000000000009",
+      "name": "PG Listar profissionais",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [-560, 400],
+      "credentials": {
+        "postgres": {
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map((i) => i.json);\nconst base = $('Parse Evolution').first().json;\nif (!rows.length) {\n  return [{ json: { ...base, wa_reply: 'Não há profissionais ativos cadastrados. Ligue para a clínica.' } }];\n}\nconst lines = rows.map((r) => '• ' + r.name + (r.specialty ? ' — ' + r.specialty : '') + ' (id: ' + r.id + ')');\nconst wa_reply = 'Profissionais disponíveis:\\n' + lines.join('\\n') + '\\n\\nEnvie data, horário preferido e o id do profissional para verificarmos vagas.';\nreturn [{ json: { ...base, wa_reply } }];"
+      },
+      "id": "e2v00001-0010-4010-8010-000000000010",
+      "name": "Code formatar agenda",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-320, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.EVOLUTION_API_BASE || '').replace(/\\/$/, '') + '/message/sendText/' + ($env.EVOLUTION_INSTANCE || 'default') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $('Parse Evolution').first().json.wa_id, text: $json.wa_reply }) }}",
+        "options": {}
+      },
+      "id": "e2v00001-0011-4011-8011-000000000011",
+      "name": "HTTP WA Resposta agendamento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-80, 400],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE public.appointments a SET status = 'cancelled', updated_at = now() FROM public.patients p WHERE a.patient_id = p.id AND p.clinic_id = '{{ $('Parse Evolution').first().json.clinic_id }}'::uuid AND a.status = 'scheduled' AND (p.phone = '{{ $('Parse Evolution').first().json.e164.replace(/'/g, \"''\") }}' OR replace(replace(p.phone, '+', ''), ' ', '') = replace('{{ $('Parse Evolution').first().json.wa_id.replace(/'/g, \"''\") }}', '+', ''))",
+        "options": {}
+      },
+      "id": "e2v00001-0012-4012-8012-000000000012",
+      "name": "PG Cancelar marcados",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [-560, 640],
+      "credentials": {
+        "postgres": {
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.EVOLUTION_API_BASE || '').replace(/\\/$/, '') + '/message/sendText/' + ($env.EVOLUTION_INSTANCE || 'default') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $('Parse Evolution').first().json.wa_id, text: 'Cancelamento registado quando havia consultas ativas neste número. O painel da clínica foi atualizado.' }) }}",
+        "options": {}
+      },
+      "id": "e2v00001-0013-4013-8013-000000000013",
+      "name": "HTTP WA Confirmar cancelamento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-320, 640],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.NEXT_APP_URL || $env.NEXT_PUBLIC_APP_URL || '').replace(/\\/$/, '') + '/api/agendamentos-sync' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.AGENDAMENTOS_SYNC_SECRET }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e2v00001-0014-4014-8014-000000000014",
+      "name": "HTTP Sync pos cancel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-80, 640],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT a.id, a.starts_at, a.ends_at, pr.name AS profissional FROM public.appointments a JOIN public.patients pt ON pt.id = a.patient_id JOIN public.professionals pr ON pr.id = a.professional_id WHERE a.clinic_id = '{{ $json.clinic_id }}'::uuid AND a.status = 'scheduled' AND (pt.phone = '{{ $json.e164.replace(/'/g, \"''\") }}' OR replace(replace(pt.phone, '+', ''), ' ', '') = replace('{{ $json.wa_id.replace(/'/g, \"''\") }}', '+', '')) ORDER BY a.starts_at",
+        "options": {}
+      },
+      "id": "e2v00001-0015-4015-8015-000000000015",
+      "name": "PG Listar para reagendar",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [-560, 800],
+      "credentials": {
+        "postgres": {
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const appts = $input.all().map((i) => i.json);\nconst base = $('Parse Evolution').first().json;\nif (!appts.length) {\n  return [{ json: { ...base, wa_reply: 'Não encontrámos consultas ativas para este número. Digite agendar para marcar.' } }];\n}\nconst fmt = (iso) => { try { return new Date(iso).toLocaleString('pt-BR'); } catch { return iso; } };\nconst lines = appts.map((a) => '• id ' + a.id + ' | ' + fmt(a.starts_at) + ' | ' + (a.profissional || ''));\nconst wa_reply = 'As suas consultas:\\n' + lines.join('\\n') + '\\n\\nPara remarcar, envie: reagendar + nova data/hora (vamos confirmar manualmente ou no próximo passo do robô).';\nreturn [{ json: { ...base, wa_reply } }];"
+      },
+      "id": "e2v00001-0016-4016-8016-000000000016",
+      "name": "Code formatar reag",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-320, 800]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.EVOLUTION_API_BASE || '').replace(/\\/$/, '') + '/message/sendText/' + ($env.EVOLUTION_INSTANCE || 'default') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $('Parse Evolution').first().json.wa_id, text: $json.wa_reply }) }}",
+        "options": {}
+      },
+      "id": "e2v00001-0017-4017-8017-000000000017",
+      "name": "HTTP WA Resposta reagendar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-80, 800],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.OPENAI_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_CHAT_MODEL || 'gpt-4o-mini', messages: [{ role: 'system', content: 'És o assistente da clínica. Respostas curtas e úteis em português (Brasil). Não inventes preços ou convénios sem dados.' }, { role: 'user', content: $('Parse Evolution').first().json.message_text }], max_tokens: 500 }) }}",
+        "options": {}
+      },
+      "id": "e2v00001-0018-4018-8018-000000000018",
+      "name": "HTTP OpenAI duvida",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-560, 960]
+    },
+    {
+      "parameters": {
+        "jsCode": "const c = $input.first().json.choices?.[0]?.message?.content || 'Desculpe, não consegui responder agora.';\nconst wa_id = $('Parse Evolution').first().json.wa_id;\nreturn [{ json: { wa_reply: c, wa_id } }];"
+      },
+      "id": "e2v00001-0019-4019-8019-000000000019",
+      "name": "Code extrair texto OpenAI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-320, 960]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.EVOLUTION_API_BASE || '').replace(/\\/$/, '') + '/message/sendText/' + ($env.EVOLUTION_INSTANCE || 'default') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $json.wa_id, text: $json.wa_reply }) }}",
+        "options": {}
+      },
+      "id": "e2v00001-0020-4020-8020-000000000020",
+      "name": "HTTP WA Resposta duvida",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-80, 960],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "content": "## Evolution API (sem Meta WhatsApp)\n\n**Webhook URL** (com workflow ativo): `https://<n8n>/webhook/evolution-clinica` → cola na Evolution (`MESSAGES_UPSERT`).\n\n**Env n8n:** `EVOLUTION_API_BASE`, `EVOLUTION_INSTANCE`, `EVOLUTION_API_KEY`, `CLINIC_ID`, `CLINIC_OWNER_WHATSAPP`, `NEXT_APP_URL`, `AGENDAMENTOS_SYNC_SECRET`, `OPENAI_API_KEY`.\n\n**Credenciais:** só **Postgres** (Supabase). Não uses WhatsApp Trigger / Cloud.\n\n**Avisos vermelhos:** desaparecem ao configurar Postgres + variáveis Evolution.\n\nMais detalhes: `n8n/evolution-api-whatsapp.md`",
+        "height": 480,
+        "width": 400
+      },
+      "id": "e2v00001-0021-4021-8021-000000000021",
+      "name": "Notas Evolution",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-2000, 120]
+    }
+  ],
+  "connections": {
+    "Webhook Evolution": {
+      "main": [
+        [
+          {
+            "node": "Parse Evolution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Evolution": {
+      "main": [
+        [
+          {
+            "node": "E pedido humano?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E pedido humano?": {
+      "main": [
+        [
+          {
+            "node": "HTTP WA Cliente transferindo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Switch intencao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP WA Cliente transferindo": {
+      "main": [
+        [
+          {
+            "node": "HTTP WA Dono alerta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP WA Dono alerta": {
+      "main": [
+        [
+          {
+            "node": "PG Upsert fila humano",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Upsert fila humano": {
+      "main": [
+        [
+          {
+            "node": "HTTP Sync dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch intencao": {
+      "main": [
+        [
+          {
+            "node": "PG Listar profissionais",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG Cancelar marcados",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG Listar para reagendar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP OpenAI duvida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Listar profissionais": {
+      "main": [
+        [
+          {
+            "node": "Code formatar agenda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code formatar agenda": {
+      "main": [
+        [
+          {
+            "node": "HTTP WA Resposta agendamento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Cancelar marcados": {
+      "main": [
+        [
+          {
+            "node": "HTTP WA Confirmar cancelamento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP WA Confirmar cancelamento": {
+      "main": [
+        [
+          {
+            "node": "HTTP Sync pos cancel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Listar para reagendar": {
+      "main": [
+        [
+          {
+            "node": "Code formatar reag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code formatar reag": {
+      "main": [
+        [
+          {
+            "node": "HTTP WA Resposta reagendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP OpenAI duvida": {
+      "main": [
+        [
+          {
+            "node": "Code extrair texto OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code extrair texto OpenAI": {
+      "main": [
+        [
+          {
+            "node": "HTTP WA Resposta duvida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

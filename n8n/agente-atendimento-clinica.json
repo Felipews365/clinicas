@@ -1,0 +1,540 @@
+{
+  "name": "Agente Atendimento Clínica (chat_sessions + OpenAI)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agente-clinica-atendimento",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "agc-0001-webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-2200, 400],
+      "webhookId": "agente-clinica-atendimento"
+    },
+    {
+      "parameters": {
+        "jsCode": "const root = $json.body ?? $json;\nlet payload = root.data ?? root;\nif (Array.isArray(payload)) payload = payload[0];\nif (payload?.messages?.[0]) payload = payload.messages[0];\nconst key = payload?.key;\nif (key?.fromMe === true) return [];\nconst remoteJid = key?.remoteJid || '';\nconst waDigits = remoteJid.split('@')[0].split(':')[0].replace(/\\D/g, '');\nif (!waDigits) return [];\nconst session_id = waDigits;\nconst msg = payload.message || payload;\nlet message_type = 'text';\nlet message_content = '';\nlet media_url = '';\nif (msg.conversation) message_content = String(msg.conversation);\nelse if (msg.extendedTextMessage?.text) message_content = String(msg.extendedTextMessage.text);\nelse if (msg.imageMessage) {\n  message_type = 'image';\n  media_url = String(msg.imageMessage.url || msg.imageMessage.directPath || '');\n  message_content = String(msg.imageMessage.caption || '');\n} else if (msg.audioMessage || msg.pttMessage) {\n  message_type = 'audio';\n  const a = msg.audioMessage || msg.pttMessage;\n  media_url = String(a.url || a.directPath || '');\n}\nreturn [{\n  json: {\n    session_id,\n    contact_phone: '+' + waDigits,\n    contact_name: String(payload.pushName || payload.notifyName || ''),\n    message_type,\n    message_content,\n    media_url,\n    timestamp: new Date().toISOString(),\n    clinic_id: $env.CLINIC_ID || null,\n  },\n}];"
+      },
+      "id": "agc-0002-norm",
+      "name": "Normalize entrada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1960, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT COALESCE(s.human_takeover, false) AS human_takeover,\n       s.takeover_at,\n       s.id AS session_db_id\nFROM (SELECT '{{ $('Normalize entrada').first().json.session_id }}'::text AS sid) x\nLEFT JOIN public.chat_sessions s ON s.session_id = x.sid",
+        "options": {}
+      },
+      "id": "agc-0003-pg-sess",
+      "name": "PG estado sessão",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [-1720, 400],
+      "credentials": { "postgres": { "name": "Supabase Postgres" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const n = $('Normalize entrada').first().json;\nconst row = $input.first().json;\nconst human = row.human_takeover === true;\nconst t = row.takeover_at ? new Date(row.takeover_at).getTime() : null;\nconst within60 = t != null && !Number.isNaN(t) && (Date.now() - t < 60000);\nif (human && within60) return [];\nlet needs_reset = false;\nif (human && t != null && !within60) needs_reset = true;\nreturn [{\n  json: {\n    ...n,\n    human_takeover: human,\n    takeover_at: row.takeover_at,\n    session_db_id: row.session_db_id,\n    needs_reset,\n  },\n}];"
+      },
+      "id": "agc-0004-gate",
+      "name": "Gate humano 60s",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1480, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "r1",
+              "leftValue": "={{ $json.needs_reset }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "agc-0005-if-reset",
+      "name": "Reset takeover?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-1240, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE public.chat_sessions\nSET human_takeover = false, takeover_at = NULL, updated_at = now()\nWHERE session_id = '{{ $('Gate humano 60s').first().json.session_id }}'",
+        "options": {}
+      },
+      "id": "agc-0006-pg-reset",
+      "name": "PG reset takeover",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [-1000, 280],
+      "credentials": { "postgres": { "name": "Supabase Postgres" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: $('Gate humano 60s').first().json }];"
+      },
+      "id": "agc-0007-merge-reset",
+      "name": "Pass após reset",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-760, 280]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: $('Gate humano 60s').first().json }];"
+      },
+      "id": "agc-0008-skip-reset",
+      "name": "Pass sem reset",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1000, 520]
+    },
+    {
+      "parameters": {
+        "mode": "chooseBranch",
+        "output": "empty"
+      },
+      "id": "agc-0009-merge-path",
+      "name": "Unir reset",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [-520, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO public.chat_clients (clinic_id, name, phone)\nVALUES (\n  NULLIF('{{ $json.clinic_id }}', '')::uuid,\n  NULLIF('{{ String($json.contact_name || '').replace(/'/g, \"''\") }}', ''),\n  '{{ String($json.contact_phone || '').replace(/'/g, \"''\") }}'\n)\nON CONFLICT (phone) DO UPDATE SET\n  name = COALESCE(NULLIF(EXCLUDED.name, ''), chat_clients.name),\n  clinic_id = COALESCE(EXCLUDED.clinic_id, chat_clients.clinic_id)\nRETURNING id;",
+        "options": {}
+      },
+      "id": "agc-0010-pg-client",
+      "name": "PG upsert chat_client",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [-280, 400],
+      "credentials": { "postgres": { "name": "Supabase Postgres" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Unir reset').first().json;\nconst cid = $input.first().json.id;\nreturn [{ json: { ...base, client_id: cid } }];"
+      },
+      "id": "agc-0011-set-client",
+      "name": "Anexar client_id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-40, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO public.chat_sessions (session_id, client_id, human_takeover)\nVALUES (\n  '{{ $('Anexar client_id').first().json.session_id }}',\n  '{{ $('Anexar client_id').first().json.client_id }}'::uuid,\n  false\n)\nON CONFLICT (session_id) DO UPDATE SET\n  client_id = COALESCE(EXCLUDED.client_id, chat_sessions.client_id),\n  updated_at = now()\nRETURNING id;",
+        "options": {}
+      },
+      "id": "agc-0012-pg-upsert-sess",
+      "name": "PG upsert chat_session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [200, 400],
+      "credentials": { "postgres": { "name": "Supabase Postgres" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT string_agg(\n  '[' || role || '] ' || left(content, 500),\n  E'\\n' ORDER BY created_at ASC\n) AS conversation_history\nFROM (\n  SELECT role, content, created_at\n  FROM public.chat_messages\n  WHERE session_id = '{{ $('Anexar client_id').first().json.session_id }}'\n  ORDER BY created_at DESC\n  LIMIT 20\n) sub",
+        "options": {}
+      },
+      "id": "agc-0014-pg-history",
+      "name": "PG histórico texto",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [440, 400],
+      "credentials": { "postgres": { "name": "Supabase Postgres" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Anexar client_id').first().json;\nconst hist = $input.first().json.conversation_history || '';\nreturn [{ json: { ...base, conversation_history: hist } }];"
+      },
+      "id": "agc-0013b-enrich",
+      "name": "Enriquecer com histórico",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "aud",
+                    "leftValue": "={{ $json.message_type }}",
+                    "rightValue": "audio",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Audio"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "img",
+                    "leftValue": "={{ $json.message_type }}",
+                    "rightValue": "image",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Imagem"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "agc-0013c-switch",
+      "name": "Roteador mídia",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [920, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.media_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.EVOLUTION_API_KEY }}" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "agc-a1-download",
+      "name": "HTTP download áudio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1160, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENAI_API_KEY }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            { "name": "model", "value": "whisper-1" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "agc-a2-whisper",
+      "name": "OpenAI Whisper",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const whisper = $input.first().json;\nconst text = typeof whisper.text === 'string' ? whisper.text : '';\nconst dl = $('HTTP download áudio').first();\nconst base = dl.json;\nlet transcription = text.trim();\nif (!transcription) {\n  if (!base.media_url) transcription = '(Áudio sem URL de mídia.)';\n  else if (!dl.binary?.data) transcription = '(Não foi possível baixar o áudio; confirme URL e cabeçalho apikey da Evolution.)';\n  else transcription = '(Não foi possível transcrever o áudio.)';\n}\nreturn [{ json: { ...base, transcription } }];"
+      },
+      "id": "agc-a3-merge-audio",
+      "name": "Fundir transcrição áudio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1640, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.media_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.EVOLUTION_API_KEY }}" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "agc-i1-download",
+      "name": "HTTP download imagem",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1160, 600],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "return await (async () => {\n  const item = $input.first();\n  const base = item.json;\n  const caption = String(base.message_content || '').trim();\n  const bin = item.binary?.data;\n  let image_description = '';\n  if (!bin?.data) {\n    image_description = caption\n      ? 'Legenda do cliente: ' + caption + '\\n(Imagem não descarregada — URL ou apikey.)'\n      : 'Imagem não disponível para análise.';\n    return [{ json: { ...base, image_description } }];\n  }\n  const mime = bin.mimeType || 'image/jpeg';\n  const dataUrl = 'data:' + mime + ';base64,' + bin.data;\n  const apiKey = $env.OPENAI_API_KEY;\n  const model = $env.OPENAI_VISION_MODEL || 'gpt-4o-mini';\n  try {\n    const res = await this.helpers.httpRequest({\n      method: 'POST',\n      url: 'https://api.openai.com/v1/chat/completions',\n      headers: {\n        Authorization: 'Bearer ' + apiKey,\n        'Content-Type': 'application/json',\n      },\n      body: JSON.stringify({\n        model,\n        max_tokens: 400,\n        messages: [\n          {\n            role: 'user',\n            content: [\n              {\n                type: 'text',\n                text:\n                  'Descreva de forma breve o conteúdo desta imagem para uma atendente de clínica (PT-BR). Se houver texto legível (exame, receita), resuma.',\n              },\n              { type: 'image_url', image_url: { url: dataUrl } },\n            ],\n          },\n        ],\n      }),\n      json: true,\n    });\n    const desc = res.choices?.[0]?.message?.content || '';\n    image_description = caption ? 'Legenda: ' + caption + '\\n\\nDescrição: ' + desc : desc;\n  } catch (e) {\n    image_description = caption\n      ? 'Legenda: ' + caption + '\\n(Não foi possível analisar a imagem automaticamente.)'\n      : 'Não foi possível analisar a imagem.';\n  }\n  return [{ json: { ...base, image_description } }];\n})();"
+      },
+      "id": "agc-i2-vision-code",
+      "name": "Vision + fundir imagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1400, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $input.first().json;\nconst hist = base.conversation_history || '';\nlet current = base.message_content || '';\nif (base.message_type === 'image') {\n  current = base.image_description || current || '[imagem]';\n} else if (base.message_type === 'audio') {\n  current = base.transcription || current || '[áudio]';\n}\nreturn [{ json: { ...base, conversation_history: hist, current_message: current } }];"
+      },
+      "id": "agc-0015-prep-ia",
+      "name": "Preparar input IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1880, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO public.chat_messages (session_id, client_id, role, content, message_type)\nVALUES (\n  '{{ $('Preparar input IA').first().json.session_id }}',\n  '{{ $('Preparar input IA').first().json.client_id }}'::uuid,\n  'user',\n  left('{{ String($('Preparar input IA').first().json.current_message || '').replace(/'/g, \"''\") }}', 8000),\n  '{{ $('Preparar input IA').first().json.message_type }}'\n);",
+        "options": {}
+      },
+      "id": "agc-0013-pg-save-user",
+      "name": "PG save mensagem user",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2120, 400],
+      "credentials": { "postgres": { "name": "Supabase Postgres" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.OPENAI_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { const j = $('Preparar input IA').first().json; return JSON.stringify({\n  model: $env.OPENAI_MODEL || 'gpt-4o',\n  messages: [\n    {\n      role: 'system',\n      content: 'Você é a assistente virtual da ' + ($env.CLINIC_NAME || 'Clínica') + ', chamada ' + ($env.IA_NAME || 'Assistente') + '. Gentil, empática, profissional, natural. Respostas CURTAS (2-3 frases). Use [QUEBRA] para separar mensagens. Se precisar de humano ou cliente pedir atendente, termine com [HUMANO_NECESSÁRIO].\\n\\nClínica: ' + ($env.CLINIC_ADDRESS || '') + ' | Horário: ' + ($env.CLINIC_HOURS || '') + ' | Especialidades: ' + ($env.CLINIC_SPECIALTIES || '') + ' | Convênios: ' + ($env.CLINIC_INSURANCE || '') + ' | Tel: ' + ($env.CLINIC_PHONE || '') + '\\n\\nCliente: ' + (j.contact_name || '') + ' | ID: ' + (j.client_id || '') + '\\nHistórico:\\n' + (j.conversation_history || '') + '\\n\\nMensagem atual:\\n' + (j.current_message || '')\n    },\n    { role: 'user', content: j.current_message || '' }\n  ],\n  max_tokens: 800\n}); })() }}",
+        "options": {}
+      },
+      "id": "agc-0016-openai",
+      "name": "OpenAI agente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2360, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Preparar input IA').first().json;\nconst raw = $input.first().json.choices?.[0]?.message?.content || '';\nconst needHuman = /\\[HUMANO_NECESSÁRIO\\]/i.test(raw);\nconst clean = raw.replace(/\\[HUMANO_NECESSÁRIO\\]/gi, '').trim();\nconst partes = clean.split(/\\[QUEBRA\\]/i).map((s) => s.trim()).filter(Boolean);\nif (!partes.length) partes.push(clean || 'Um momento, por favor.');\nreturn [{ json: { ...base, ai_raw: raw, need_human: needHuman, partes, texto_primeiro: partes[0] } }];"
+      },
+      "id": "agc-0017-parse",
+      "name": "Parse QUEBRA e humano",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2600, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "nh",
+              "leftValue": "={{ $json.need_human }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "agc-0018-if-human",
+      "name": "Precisa humano?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2840, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE public.chat_sessions\nSET human_takeover = true, takeover_at = now(), updated_at = now()\nWHERE session_id = '{{ $('Parse QUEBRA e humano').first().json.session_id }}'",
+        "options": {}
+      },
+      "id": "agc-0019-pg-takeover",
+      "name": "PG set takeover",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3080, 240],
+      "credentials": { "postgres": { "name": "Supabase Postgres" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.EVOLUTION_API_BASE || '').replace(/\\/$/, '') + '/message/sendText/' + ($env.EVOLUTION_INSTANCE || '') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.EVOLUTION_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $env.CLINIC_OWNER_WHATSAPP, text: '🚨 Takeover: ' + $('Parse QUEBRA e humano').first().json.contact_phone + ' — ' + $('Parse QUEBRA e humano').first().json.texto_primeiro }) }}",
+        "options": {}
+      },
+      "id": "agc-0020-http-owner",
+      "name": "HTTP alerta dono",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3320, 240],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO public.chat_messages (session_id, client_id, role, content, message_type)\nVALUES (\n  '{{ $('Parse QUEBRA e humano').first().json.session_id }}',\n  '{{ $('Parse QUEBRA e humano').first().json.client_id }}'::uuid,\n  'assistant',\n  left('{{ String($('Parse QUEBRA e humano').first().json.ai_raw || '').replace(/'/g, \"''\") }}', 8000),\n  'text'\n);",
+        "options": {}
+      },
+      "id": "agc-0021-pg-save-asst",
+      "name": "PG save resposta IA",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3080, 560],
+      "credentials": { "postgres": { "name": "Supabase Postgres" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "return await (async () => {\n  const p = $('Parse QUEBRA e humano').first().json;\n  const partes = Array.isArray(p.partes) && p.partes.length ? p.partes : ['Um momento, por favor.'];\n  const baseUrl = String($env.EVOLUTION_API_BASE || '').replace(/\\/$/, '');\n  const inst = String($env.EVOLUTION_INSTANCE || '');\n  const key = String($env.EVOLUTION_API_KEY || '');\n  const num = String(p.session_id || '');\n  if (!baseUrl || !inst || !key || !num) {\n    return [{ json: { error: 'missing_evolution_env', partes, session_id: num } }];\n  }\n  const url = `${baseUrl}/message/sendText/${inst}`;\n  for (let i = 0; i < partes.length; i++) {\n    if (i > 0) {\n      await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1000));\n    }\n    try {\n      await this.helpers.httpRequest({\n        method: 'POST',\n        url,\n        headers: { apikey: key, 'Content-Type': 'application/json' },\n        body: JSON.stringify({ number: num, text: partes[i] }),\n        json: true,\n      });\n    } catch (e) {\n      // tenta enviar as partes seguintes\n    }\n  }\n  return [{ json: { sent: partes.length, session_id: num } }];\n})();"
+      },
+      "id": "agc-0022-wa-all",
+      "name": "Enviar partes WhatsApp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3320, 560]
+    },
+    {
+      "parameters": {
+        "content": "## Agente clínica (prompt v2)\n\n1. SQL: `n8n_agent_chat_schema.sql`\n2. Postgres + envs: `CLINIC_*`, `OPENAI_*`, `OPENAI_VISION_MODEL` (opcional), `EVOLUTION_*`\n3. `[QUEBRA]` → nó **Enviar partes WhatsApp** (delay 1,5–2,5 s entre blocos)\n4. Áudio: download Evolution + **Whisper**; imagem: download + **Vision** (gpt-4o-mini) no Code\n5. Mensagem **user** gravada **após** multimodal (`current_message` com transcrição/descrição)\n6. `ON CONFLICT (phone)` em `chat_clients` — telefone único",
+        "height": 400,
+        "width": 380
+      },
+      "id": "agc-0023-note",
+      "name": "Notas",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-2400, 120]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Normalize entrada", "type": "main", "index": 0 }]] },
+    "Normalize entrada": { "main": [[{ "node": "PG estado sessão", "type": "main", "index": 0 }]] },
+    "PG estado sessão": { "main": [[{ "node": "Gate humano 60s", "type": "main", "index": 0 }]] },
+    "Gate humano 60s": { "main": [[{ "node": "Reset takeover?", "type": "main", "index": 0 }]] },
+    "Reset takeover?": {
+      "main": [
+        [{ "node": "PG reset takeover", "type": "main", "index": 0 }],
+        [{ "node": "Pass sem reset", "type": "main", "index": 0 }]
+      ]
+    },
+    "PG reset takeover": { "main": [[{ "node": "Pass após reset", "type": "main", "index": 0 }]] },
+    "Pass após reset": { "main": [[{ "node": "Unir reset", "type": "main", "index": 0 }]] },
+    "Pass sem reset": { "main": [[{ "node": "Unir reset", "type": "main", "index": 1 }]] },
+    "Unir reset": { "main": [[{ "node": "PG upsert chat_client", "type": "main", "index": 0 }]] },
+    "PG upsert chat_client": { "main": [[{ "node": "Anexar client_id", "type": "main", "index": 0 }]] },
+    "Anexar client_id": { "main": [[{ "node": "PG upsert chat_session", "type": "main", "index": 0 }]] },
+    "PG upsert chat_session": { "main": [[{ "node": "PG histórico texto", "type": "main", "index": 0 }]] },
+    "PG histórico texto": { "main": [[{ "node": "Enriquecer com histórico", "type": "main", "index": 0 }]] },
+    "Enriquecer com histórico": { "main": [[{ "node": "Roteador mídia", "type": "main", "index": 0 }]] },
+    "Roteador mídia": {
+      "main": [
+        [{ "node": "HTTP download áudio", "type": "main", "index": 0 }],
+        [{ "node": "HTTP download imagem", "type": "main", "index": 0 }],
+        [{ "node": "Preparar input IA", "type": "main", "index": 0 }]
+      ]
+    },
+    "HTTP download áudio": { "main": [[{ "node": "OpenAI Whisper", "type": "main", "index": 0 }]] },
+    "OpenAI Whisper": { "main": [[{ "node": "Fundir transcrição áudio", "type": "main", "index": 0 }]] },
+    "Fundir transcrição áudio": { "main": [[{ "node": "Preparar input IA", "type": "main", "index": 0 }]] },
+    "HTTP download imagem": { "main": [[{ "node": "Vision + fundir imagem", "type": "main", "index": 0 }]] },
+    "Vision + fundir imagem": { "main": [[{ "node": "Preparar input IA", "type": "main", "index": 0 }]] },
+    "Preparar input IA": { "main": [[{ "node": "PG save mensagem user", "type": "main", "index": 0 }]] },
+    "PG save mensagem user": { "main": [[{ "node": "OpenAI agente", "type": "main", "index": 0 }]] },
+    "OpenAI agente": { "main": [[{ "node": "Parse QUEBRA e humano", "type": "main", "index": 0 }]] },
+    "Parse QUEBRA e humano": { "main": [[{ "node": "Precisa humano?", "type": "main", "index": 0 }]] },
+    "Precisa humano?": {
+      "main": [
+        [{ "node": "PG set takeover", "type": "main", "index": 0 }],
+        [{ "node": "PG save resposta IA", "type": "main", "index": 0 }]
+      ]
+    },
+    "PG set takeover": { "main": [[{ "node": "HTTP alerta dono", "type": "main", "index": 0 }]] },
+    "HTTP alerta dono": { "main": [[{ "node": "PG save resposta IA", "type": "main", "index": 0 }]] },
+    "PG save resposta IA": { "main": [[{ "node": "Enviar partes WhatsApp", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "meta": { "templateCredsSetupCompleted": false }
+}

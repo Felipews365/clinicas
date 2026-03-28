@@ -1,0 +1,319 @@
+{
+  "name": "Assistente Clinica Completo",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "assistente-clinica-completo",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1c1e1f1-1111-4111-8111-111111111111",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "assistente-clinica-completo"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "x1",
+              "name": "clinic_id",
+              "value": "={{ $json.body.clinic_id }}",
+              "type": "string"
+            },
+            {
+              "id": "x2",
+              "name": "phone",
+              "value": "={{ $json.body.phone }}",
+              "type": "string"
+            },
+            {
+              "id": "x3",
+              "name": "patient_name",
+              "value": "={{ $json.body.patient_name }}",
+              "type": "string"
+            },
+            {
+              "id": "x4",
+              "name": "message",
+              "value": "={{ $json.body.message }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1c1e1f1-2222-4222-8222-222222222222",
+      "name": "Normalizar entrada",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst text = String(j.message || '').toLowerCase();\nlet intent = 'info';\nif (/agendar|marcar|marca[cç][aã]o|hor[aá]rio|consulta|quero ver|dispon[ií]vel/.test(text)) intent = 'schedule';\nif (/cancelar|desmarcar|anular/.test(text)) intent = 'cancel';\nif (/reagendar|remarcar|mudar.{0,8}(data|hor[aá]rio)/.test(text)) intent = 'reschedule';\nreturn [{ json: { ...j, intent } }];"
+      },
+      "id": "a1c1e1f1-3333-4333-8333-333333333333",
+      "name": "Classificar intenção (Code)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "ic1",
+              "leftValue": "={{ $json.intent }}",
+              "rightValue": "schedule",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1c1e1f1-4444-4444-8444-444444444444",
+      "name": "É agendamento?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT id, name, specialty, sort_order FROM public.professionals WHERE clinic_id = '{{ $json.clinic_id }}'::uuid AND is_active = true ORDER BY sort_order, name",
+        "options": {}
+      },
+      "id": "a1c1e1f1-5555-4555-8555-555555555555",
+      "name": "Listar profissionais",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 180],
+      "credentials": {
+        "postgres": {
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const pros = $input.all().map((i) => i.json);\nconst base = $('Classificar intenção (Code)').first().json;\nreturn [\n  {\n    json: {\n      ...base,\n      professionals: pros,\n    },\n  },\n];"
+      },
+      "id": "a1c1e1f1-5a5a-4555-8555-55555555555a",
+      "name": "Agregar profissionais (1 item)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1010, 180]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "r1",
+              "name": "reply",
+              "value": "={{ JSON.stringify({ ok: true, intent: 'schedule', clinic_id: $json.clinic_id, phone: $json.phone, professionals: $json.professionals, hint: 'Próximo: slots + INSERT (ver consultorio-agendar-webhook.json)' }) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1c1e1f1-6666-4666-8666-666666666666",
+      "name": "Montar resposta agendar",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.parse($json.reply) }}",
+        "options": {}
+      },
+      "id": "a1c1e1f1-7777-4777-8777-777777777777",
+      "name": "Responder agendar",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1340, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "ic2",
+              "leftValue": "={{ $json.intent }}",
+              "rightValue": "cancel",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "ic3",
+              "leftValue": "={{ $json.intent }}",
+              "rightValue": "reschedule",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1c1e1f1-8888-4888-8888-888888888888",
+      "name": "É cancelar ou remarcar?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [900, 420]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT a.id, a.starts_at, a.ends_at, a.service_name, p.name AS professional_name FROM public.appointments a JOIN public.patients pt ON pt.id = a.patient_id JOIN public.professionals p ON p.id = a.professional_id WHERE a.clinic_id = '{{ $('Classificar intenção (Code)').first().json.clinic_id }}'::uuid AND pt.phone = '{{ String($('Classificar intenção (Code)').first().json.phone || '').replace(/'/g, \"''\") }}' AND a.status = 'scheduled' ORDER BY a.starts_at",
+        "options": {}
+      },
+      "id": "a1c1e1f1-9999-4999-8999-999999999999",
+      "name": "Listar marcações do telefone",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1120, 360],
+      "credentials": {
+        "postgres": {
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const appts = $input.all().map((i) => i.json);\nconst base = $('Classificar intenção (Code)').first().json;\nreturn [\n  {\n    json: {\n      ...base,\n      appointments: appts,\n    },\n  },\n];"
+      },
+      "id": "a1c1e1f1-9a9a-4999-8999-99999999999a",
+      "name": "Agregar marcações (1 item)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 360]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "r2",
+              "name": "reply",
+              "value": "={{ JSON.stringify({ ok: true, intent: $json.intent, clinic_id: $json.clinic_id, phone: $json.phone, appointments: $json.appointments, hint: 'Próximo: UPDATE appointments SET status' }) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1c1e1f1-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "name": "Montar resposta cancelar",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1340, 360]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.parse($json.reply) }}",
+        "options": {}
+      },
+      "id": "a1c1e1f1-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "name": "Responder cancelar",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, 360]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, intent: 'info', message: 'Olá! Somos a sua clínica. Para marcar consulta diga o dia e preferência; para cancelar diga cancelar. Horário: seg–sex 8h–18h (exemplo).' } }}",
+        "options": {}
+      },
+      "id": "a1c1e1f1-cccc-4ccc-8ccc-cccccccccccc",
+      "name": "Responder dúvida (FAQ)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1120, 520]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Normalizar entrada", "type": "main", "index": 0 }]]
+    },
+    "Normalizar entrada": {
+      "main": [[{ "node": "Classificar intenção (Code)", "type": "main", "index": 0 }]]
+    },
+    "Classificar intenção (Code)": {
+      "main": [[{ "node": "É agendamento?", "type": "main", "index": 0 }]]
+    },
+    "É agendamento?": {
+      "main": [
+        [
+          { "node": "Listar profissionais", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "É cancelar ou remarcar?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Listar profissionais": {
+      "main": [[{ "node": "Agregar profissionais (1 item)", "type": "main", "index": 0 }]]
+    },
+    "Agregar profissionais (1 item)": {
+      "main": [[{ "node": "Montar resposta agendar", "type": "main", "index": 0 }]]
+    },
+    "Montar resposta agendar": {
+      "main": [[{ "node": "Responder agendar", "type": "main", "index": 0 }]]
+    },
+    "É cancelar ou remarcar?": {
+      "main": [
+        [
+          { "node": "Listar marcações do telefone", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Responder dúvida (FAQ)", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Listar marcações do telefone": {
+      "main": [[{ "node": "Agregar marcações (1 item)", "type": "main", "index": 0 }]]
+    },
+    "Agregar marcações (1 item)": {
+      "main": [[{ "node": "Montar resposta cancelar", "type": "main", "index": 0 }]]
+    },
+    "Montar resposta cancelar": {
+      "main": [[{ "node": "Responder cancelar", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

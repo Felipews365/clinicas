@@ -1,0 +1,232 @@
+{
+  "name": "Consultório — Agendar (Webhook + Postgres)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "consultorio-agendar",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "consultorio-agendar"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f1",
+              "name": "clinic_id",
+              "value": "={{ $json.body.clinic_id }}",
+              "type": "string"
+            },
+            {
+              "id": "f2",
+              "name": "phone",
+              "value": "={{ $json.body.phone }}",
+              "type": "string"
+            },
+            {
+              "id": "f3",
+              "name": "patient_name",
+              "value": "={{ $json.body.patient_name }}",
+              "type": "string"
+            },
+            {
+              "id": "f4",
+              "name": "professional_id",
+              "value": "={{ $json.body.professional_id }}",
+              "type": "string"
+            },
+            {
+              "id": "f5",
+              "name": "starts_at",
+              "value": "={{ $json.body.starts_at }}",
+              "type": "string"
+            },
+            {
+              "id": "f6",
+              "name": "ends_at",
+              "value": "={{ $json.body.ends_at }}",
+              "type": "string"
+            },
+            {
+              "id": "f7",
+              "name": "service_name",
+              "value": "={{ $json.body.service_name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "= `INSERT INTO public.patients (clinic_id, phone, name) VALUES ('${$json.clinic_id}'::uuid, '${String($json.phone ?? '').replace(/'/g, \"''\")}', '${String($json.patient_name ?? '').replace(/'/g, \"''\")}') ON CONFLICT (clinic_id, phone) DO UPDATE SET name = COALESCE(NULLIF(EXCLUDED.name, ''), patients.name) RETURNING id;`",
+        "options": {}
+      },
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "name": "Upsert Patient",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [460, 0],
+      "credentials": {
+        "postgres": {
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "clinic_id",
+              "value": "={{ $('Normalize Input').first().json.clinic_id }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "professional_id",
+              "value": "={{ $('Normalize Input').first().json.professional_id }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "patient_id",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "starts_at",
+              "value": "={{ $('Normalize Input').first().json.starts_at }}",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "ends_at",
+              "value": "={{ $('Normalize Input').first().json.ends_at }}",
+              "type": "string"
+            },
+            {
+              "id": "a6",
+              "name": "service_name",
+              "value": "={{ $('Normalize Input').first().json.service_name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d4e5f6a7-b8c9-0123-def0-234567890123",
+      "name": "Compose Appointment",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [700, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "= `INSERT INTO public.appointments (clinic_id, professional_id, patient_id, starts_at, ends_at, service_name, source, status) VALUES ('${$json.clinic_id}'::uuid, '${$json.professional_id}'::uuid, '${$json.patient_id}'::uuid, '${$json.starts_at}'::timestamptz, '${$json.ends_at}'::timestamptz, '${String($json.service_name ?? '').replace(/'/g, \"''\")}', 'webhook', 'scheduled') RETURNING id;`",
+        "options": {}
+      },
+      "id": "e5f6a7b8-c9d0-1234-ef01-345678901234",
+      "name": "Insert Appointment",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [940, 0],
+      "credentials": {
+        "postgres": {
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, appointment_id: $json.id, message: 'Agendamento criado' } }}",
+        "options": {}
+      },
+      "id": "f6a7b8c9-d0e1-2345-f012-456789012345",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1180, 0]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Upsert Patient",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Patient": {
+      "main": [
+        [
+          {
+            "node": "Compose Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose Appointment": {
+      "main": [
+        [
+          {
+            "node": "Insert Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Appointment": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

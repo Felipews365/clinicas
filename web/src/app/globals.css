@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-playfair);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+.font-display {
+  font-family: var(--font-playfair), ui-serif, Georgia, "Times New Roman", serif;
+}
+
+/* Painel de agendamentos: entrada suave e estados de carga */
+@keyframes agenda-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes agenda-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.agenda-animate-in {
+  animation: agenda-fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.agenda-skeleton {
+  background: linear-gradient(
+    100deg,
+    #f0ebe3 0%,
+    #f7f3ec 45%,
+    #f0ebe3 90%
+  );
+  background-size: 200% 100%;
+  animation: agenda-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agenda-animate-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .agenda-skeleton {
+    animation: none;
+    background: #f0ebe3;
+  }
+}

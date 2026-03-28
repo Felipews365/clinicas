@@ -1,0 +1,67 @@
+# Supabase PostgREST — RPC via nó "HTTP Request" (n8n)
+
+Use em TODOS os POST para /rest/v1/rpc/n8n_cs_*:
+
+Headers (nome exato):
+  Content-Type     application/json
+  apikey           <SERVICE_ROLE_JWT>   (obrigatório no Supabase)
+  Authorization      Bearer <SERVICE_ROLE_JWT>
+
+Preferência: guarde o JWT em variável de ambiente n8n, ex.: SUPABASE_SERVICE_ROLE_KEY
+Nos headers use expressões n8n, ex.:
+  apikey:        ={{ $env.SUPABASE_SERVICE_ROLE_KEY }}
+  Authorization: ={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}
+
+---
+
+## n8n_cs_agendar  (POST body JSON)
+
+{
+  "p_nome_cliente": "string",
+  "p_telefone": "5581999999999@s.whatsapp.net",
+  "p_profissional_id": "uuid",
+  "p_servico_id": "uuid",
+  "p_data": "2026-03-27",
+  "p_horario": "09:00",
+  "p_observacoes": ""
+}
+
+URL: https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/rpc/n8n_cs_agendar
+
+---
+
+## n8n_cs_buscar_agendamentos
+
+Body: { "p_telefone": "5581...@s.whatsapp.net" }
+
+---
+
+## n8n_cs_consultar_vagas | n8n_cs_consultar_servicos
+
+Body: {}
+
+---
+
+## n8n_cs_reagendar
+
+{
+  "p_agendamento_id": "uuid",
+  "p_nova_data": "2026-03-28",
+  "p_novo_horario": "10:00",
+  "p_novo_profissional_id": "uuid",
+  "p_profissional_antigo_id": "uuid",
+  "p_data_antiga": "2026-03-27",
+  "p_horario_antigo": "09:00"
+}
+
+---
+
+## n8n_cs_cancelar
+
+{
+  "p_agendamento_id": "uuid",
+  "p_profissional_id": "uuid",
+  "p_data": "2026-03-27",
+  "p_horario": "09:00",
+  "p_motivo": "Cancelado pelo cliente"
+}
