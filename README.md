@@ -21,14 +21,13 @@ git push -u origin main
 
 1. Em [vercel.com](https://vercel.com), **Add New → Project** e importe o repositório.
 2. **Root Directory** (**obrigatório**): clique em **Edit** e escreva **`web`** — não deixe `./` nem vazio. A app Next.js e o `package.json` real estão dentro de `web/`.
-3. O **Framework Preset** deve passar a **Next.js** (aparece depois de definires a raiz, ou ajusta manualmente).
-4. Na raiz do repo existe um `vercel.json` que também instala/compila em `web/`; mesmo assim, **Root Directory = `web`** é a configuração mais fiável.
-5. **Environment Variables** (produção — copie de `web/.env.local` ou use `web/.env.example` como guia):
+3. O **Framework Preset** pode ficar em **Next.js** ou vazio (o `web/vercel.json` indica Next.js). **Não** definas **Install Command** tipo `npm install --prefix web` quando a raiz já é `web` — isso aponta para `web/web` e falha.
+4. **Environment Variables** (produção — copie de `web/.env.local` ou use `web/.env.example` como guia):
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `NEXT_PUBLIC_CLINIC_NAME` (opcional)
    - `AGENDAMENTOS_SYNC_SECRET` (opcional, se usar o webhook de sync)
-6. Faça **Redeploy**. No **Supabase → Authentication → URL Configuration**, acrescente o URL de produção (ex. `https://seu-projeto.vercel.app/auth/callback`, `/login`, `/cadastro`, `/redefinir-senha`).
+5. Faça **Redeploy**. No **Supabase → Authentication → URL Configuration**, acrescente o URL de produção (ex. `https://seu-projeto.vercel.app/auth/callback`, `/login`, `/cadastro`, `/redefinir-senha`).
 
 ## Desenvolvimento local
 
