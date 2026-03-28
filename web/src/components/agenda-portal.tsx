@@ -43,24 +43,6 @@ type AccessState =
   | { kind: "onboarding" }
   | { kind: "clinic"; clinicId: string; clinicName: string | null };
 
-function IconPlus({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      aria-hidden
-    >
-      <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
-}
-
 function IconMenu({ className }: { className?: string }) {
   return (
     <svg
@@ -94,6 +76,27 @@ function IconClose({ className }: { className?: string }) {
     >
       <path d="M18 6L6 18M6 6l12 12" />
     </svg>
+  );
+}
+
+/** Emoji + texto alinhados (acessível: emoji com aria-hidden). */
+function LabelEmoji({
+  emoji,
+  children,
+}: {
+  emoji: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span
+        className="text-[1.15em] leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.06)]"
+        aria-hidden
+      >
+        {emoji}
+      </span>
+      <span>{children}</span>
+    </span>
   );
 }
 
@@ -581,7 +584,9 @@ export function AgendaPortal() {
         </>
       ) : null}
 
-      <header className="relative z-30 border-b border-[#e8e2d9]/90 bg-[#fffdf9] shadow-[0_1px_0_rgba(44,40,37,0.04)] sm:sticky sm:top-0 sm:bg-[#fffdf9]/88 sm:backdrop-blur-md">
+      <header
+        className={`sticky top-0 border-b border-[#e8e2d9]/90 bg-[#fffdf9]/92 shadow-[0_1px_0_rgba(44,40,37,0.04)] backdrop-blur-md ${mobileMenuOpen ? "z-[60]" : "z-30"}`}
+      >
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:flex-wrap sm:justify-between sm:gap-4 sm:py-4 sm:px-6">
           <button
             type="button"
@@ -637,25 +642,25 @@ export function AgendaPortal() {
               type="button"
               title="Gerir profissionais"
               onClick={() => setProfessionalsOpen(true)}
-              className="rounded-xl border border-[#c5d4d0] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#3d6b62] shadow-sm transition-colors hover:bg-[#f4faf8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3d6b62]"
+              className="inline-flex items-center rounded-xl border border-[#c5d4d0] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#3d6b62] shadow-sm transition-[transform,colors,box-shadow] hover:-translate-y-px hover:bg-[#f4faf8] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3d6b62] active:translate-y-0"
             >
-              Profissionais
+              <LabelEmoji emoji="👥">Profissionais</LabelEmoji>
             </button>
             <button
               type="button"
               title="Marcar horários livres ou ocupados na agenda do WhatsApp"
               onClick={() => setSlotsManagerOpen(true)}
-              className="rounded-xl border border-[#c9d4e8] bg-[#f5f8fc] px-3.5 py-2.5 text-sm font-semibold text-[#3d5a7a] shadow-sm transition-colors hover:bg-[#e8f0f8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3d5a7a]"
+              className="inline-flex items-center rounded-xl border border-[#c9d4e8] bg-[#f5f8fc] px-3.5 py-2.5 text-sm font-semibold text-[#3d5a7a] shadow-sm transition-[transform,colors,box-shadow] hover:-translate-y-px hover:bg-[#e8f0f8] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3d5a7a] active:translate-y-0"
             >
-              Horários (vagas)
+              <LabelEmoji emoji="🗓️">Horários (vagas)</LabelEmoji>
             </button>
             <button
               type="button"
               title="Fila de atendimento humano no WhatsApp"
               onClick={() => setWhatsappHumanOpen(true)}
-              className="relative rounded-xl border border-[#e8d4c8] bg-[#fff9f4] px-3.5 py-2.5 text-sm font-semibold text-[#8b4513] transition-colors hover:bg-[#fff0e6] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c2410c]"
+              className="relative inline-flex items-center rounded-xl border border-[#e8d4c8] bg-[#fff9f4] px-3.5 py-2.5 text-sm font-semibold text-[#8b4513] transition-[transform,colors,box-shadow] hover:-translate-y-px hover:bg-[#fff0e6] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c2410c] active:translate-y-0"
             >
-              WhatsApp humano
+              <LabelEmoji emoji="💬">WhatsApp humano</LabelEmoji>
               {humanQueueCount > 0 ? (
                 <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c2410c] px-1 text-[10px] font-bold text-white shadow-sm ring-2 ring-[#fff9f4]">
                   {humanQueueCount > 99 ? "99+" : humanQueueCount}
@@ -666,107 +671,148 @@ export function AgendaPortal() {
               type="button"
               title="Criar novo agendamento"
               onClick={() => setScheduleOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#3d6b62] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_4px_14px_-4px_rgba(61,107,98,0.6)] transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-[0_6px_20px_-4px_rgba(61,107,98,0.45)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3d6b62]"
+              className="inline-flex items-center rounded-xl bg-gradient-to-b from-[#4a7c72] to-[#3d6b62] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_4px_16px_-4px_rgba(61,107,98,0.55)] ring-1 ring-white/15 transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-[0_8px_24px_-6px_rgba(61,107,98,0.5)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3d6b62] active:translate-y-0"
             >
-              <IconPlus className="shrink-0 opacity-95" />
-              Novo agendamento
+              <LabelEmoji emoji="✨">Novo agendamento</LabelEmoji>
             </button>
             <button
               type="button"
               onClick={() => void handleSignOut()}
-              className="rounded-xl border border-[#dcd5ca] bg-white px-3.5 py-2.5 text-sm font-medium text-[#5c5348] transition-colors hover:bg-[#f7f4ef] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8a8278]"
+              className="inline-flex items-center rounded-xl border border-[#dcd5ca] bg-white px-3.5 py-2.5 text-sm font-medium text-[#5c5348] transition-[transform,colors,box-shadow] hover:-translate-y-px hover:bg-[#f7f4ef] hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8a8278] active:translate-y-0"
             >
-              Sair
+              <LabelEmoji emoji="🚪">Sair</LabelEmoji>
             </button>
           </nav>
         </div>
+      </header>
 
-        {mobileMenuOpen ? (
-          <>
-            <button
-              type="button"
-              className="fixed inset-0 z-40 bg-[#1c1917]/35 sm:hidden"
-              aria-label="Fechar menu"
-              onClick={() => setMobileMenuOpen(false)}
-            />
-            <div
-              id="painel-menu-mobile"
-              className="absolute inset-x-0 top-full z-50 max-h-[min(72vh,calc(100dvh-4rem))] overflow-y-auto border-b border-[#e8e2d9] bg-[#fffdf9] px-4 py-4 shadow-[0_12px_40px_-12px_rgba(44,40,37,0.2)] sm:hidden"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="painel-menu-mobile-title"
-            >
-              <p id="painel-menu-mobile-title" className="sr-only">
-                Menu do painel
-              </p>
+      {mobileMenuOpen ? (
+        <>
+          <button
+            type="button"
+            className="agenda-drawer-backdrop fixed inset-0 z-40 bg-[#1c1917]/45 backdrop-blur-[3px] sm:hidden"
+            aria-label="Fechar menu"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <div
+            id="painel-menu-mobile"
+            className="agenda-drawer-panel fixed inset-y-0 left-0 z-50 flex w-[min(86vw,19.5rem)] max-w-[312px] flex-col sm:hidden"
+            style={{
+              paddingTop: "env(safe-area-inset-top)",
+              paddingBottom: "env(safe-area-inset-bottom)",
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="painel-menu-mobile-title"
+          >
+            <div className="flex h-full flex-col overflow-hidden rounded-r-[1.75rem] border border-[#e8e2d9]/90 border-l-0 bg-[linear-gradient(180deg,#fffdf9_0%,#f8f4ec_55%,#faf7f0_100%)] shadow-[8px_0_48px_-12px_rgba(44,40,37,0.35)] ring-1 ring-black/[0.04]">
+              <div className="border-b border-[#ebe6dd]/90 px-4 pb-4 pt-5">
+                <p
+                  id="painel-menu-mobile-title"
+                  className="font-display text-lg font-semibold tracking-tight text-[#1f1c1a]"
+                >
+                  Menu
+                </p>
+                <p className="mt-1 text-xs text-[#8a8278]">Ações rápidas</p>
+              </div>
               <nav
-                className="flex flex-col gap-2"
+                className="flex flex-1 flex-col gap-3 overflow-y-auto p-4"
                 aria-label="Ações do painel (mobile)"
               >
-                <p className="truncate rounded-lg bg-[#faf8f5] px-3 py-2 text-xs text-[#6b635a]">
-                  {session.user.email}
-                </p>
+                <div className="flex items-center gap-3 rounded-2xl border border-[#e8e2d9] bg-white/80 px-3.5 py-3 shadow-sm">
+                  <span
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#f0ebe3] text-lg"
+                    aria-hidden
+                  >
+                    ✉️
+                  </span>
+                  <span className="min-w-0 truncate text-xs font-medium text-[#5c5348]">
+                    {session.user.email}
+                  </span>
+                </div>
                 <button
                   type="button"
-                  className="w-full rounded-xl border border-[#c5d4d0] bg-white px-4 py-3.5 text-left text-sm font-semibold text-[#3d6b62] shadow-sm"
+                  className="group flex w-full items-center gap-3 rounded-2xl border border-[#d4e8e0] bg-white px-3 py-3 text-left shadow-sm transition-[transform,box-shadow] hover:border-[#3d6b62]/35 hover:shadow-md active:scale-[0.98]"
                   onClick={() => {
                     setMobileMenuOpen(false);
                     setProfessionalsOpen(true);
                   }}
                 >
-                  Profissionais
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#e8f4ef] text-xl transition-transform group-hover:scale-105">
+                    👥
+                  </span>
+                  <span className="text-sm font-semibold text-[#2a4d44]">
+                    Profissionais
+                  </span>
                 </button>
                 <button
                   type="button"
-                  className="w-full rounded-xl border border-[#c9d4e8] bg-[#f5f8fc] px-4 py-3.5 text-left text-sm font-semibold text-[#3d5a7a] shadow-sm"
+                  className="group flex w-full items-center gap-3 rounded-2xl border border-[#d0dde8] bg-white px-3 py-3 text-left shadow-sm transition-[transform,box-shadow] hover:border-[#3d5a7a]/40 hover:shadow-md active:scale-[0.98]"
                   onClick={() => {
                     setMobileMenuOpen(false);
                     setSlotsManagerOpen(true);
                   }}
                 >
-                  Horários (vagas)
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#e8f0f8] text-xl transition-transform group-hover:scale-105">
+                    🗓️
+                  </span>
+                  <span className="text-sm font-semibold text-[#2e4a63]">
+                    Horários (vagas)
+                  </span>
                 </button>
                 <button
                   type="button"
-                  className="relative w-full rounded-xl border border-[#e8d4c8] bg-[#fff9f4] px-4 py-3.5 text-left text-sm font-semibold text-[#8b4513]"
+                  className="group relative flex w-full items-center gap-3 rounded-2xl border border-[#edd8c8] bg-[#fffbf7] px-3 py-3 text-left shadow-sm transition-[transform,box-shadow] hover:border-[#c2410c]/35 hover:shadow-md active:scale-[0.98]"
                   onClick={() => {
                     setMobileMenuOpen(false);
                     setWhatsappHumanOpen(true);
                   }}
                 >
-                  WhatsApp humano
-                  {humanQueueCount > 0 ? (
-                    <span className="ml-2 inline-flex min-h-6 min-w-6 items-center justify-center rounded-full bg-[#c2410c] px-1.5 text-[11px] font-bold text-white">
-                      {humanQueueCount > 99 ? "99+" : humanQueueCount}
-                    </span>
-                  ) : null}
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#ffe8d9] text-xl transition-transform group-hover:scale-105">
+                    💬
+                  </span>
+                  <span className="flex flex-1 items-center justify-between gap-2 text-sm font-semibold text-[#6b3d23]">
+                    WhatsApp humano
+                    {humanQueueCount > 0 ? (
+                      <span className="flex min-h-7 min-w-7 items-center justify-center rounded-full bg-[#c2410c] px-2 text-[11px] font-bold text-white shadow-sm">
+                        {humanQueueCount > 99 ? "99+" : humanQueueCount}
+                      </span>
+                    ) : null}
+                  </span>
                 </button>
                 <button
                   type="button"
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#3d6b62] px-4 py-3.5 text-sm font-semibold text-white shadow-md"
+                  className="group mt-1 flex w-full items-center gap-3 rounded-2xl bg-gradient-to-br from-[#4a7c72] to-[#356056] px-3 py-3.5 text-left text-white shadow-[0_8px_24px_-8px_rgba(61,107,98,0.55)] ring-1 ring-white/25 transition-[transform,box-shadow] hover:shadow-[0_12px_28px_-10px_rgba(61,107,98,0.5)] active:scale-[0.98]"
                   onClick={() => {
                     setMobileMenuOpen(false);
                     setScheduleOpen(true);
                   }}
                 >
-                  <IconPlus className="shrink-0 opacity-95" />
-                  Novo agendamento
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/20 text-xl backdrop-blur-sm transition-transform group-hover:scale-105">
+                    ✨
+                  </span>
+                  <span className="text-sm font-semibold">Novo agendamento</span>
                 </button>
                 <button
                   type="button"
-                  className="w-full rounded-xl border border-[#dcd5ca] bg-white px-4 py-3.5 text-left text-sm font-medium text-[#5c5348]"
+                  className="group mt-auto flex w-full items-center gap-3 rounded-2xl border border-[#dcd5ca] bg-white px-3 py-3 text-left shadow-sm transition-[transform,box-shadow] hover:bg-[#faf8f5] hover:shadow-md active:scale-[0.98]"
                   onClick={() => {
                     setMobileMenuOpen(false);
                     void handleSignOut();
                   }}
                 >
-                  Sair
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#f0ebe3] text-xl transition-transform group-hover:scale-105">
+                    🚪
+                  </span>
+                  <span className="text-sm font-semibold text-[#5c5348]">
+                    Sair
+                  </span>
                 </button>
               </nav>
             </div>
-          </>
-        ) : null}
-      </header>
+          </div>
+        </>
+      ) : null}
 
       <main
         id="conteudo-principal"

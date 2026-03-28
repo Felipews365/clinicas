@@ -55,6 +55,34 @@ body {
   animation: agenda-fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@keyframes agenda-drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes agenda-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.agenda-drawer-backdrop {
+  animation: agenda-backdrop-in 0.2s ease-out both;
+}
+
+.agenda-drawer-panel {
+  animation: agenda-drawer-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .agenda-skeleton {
   background: linear-gradient(
     100deg,
@@ -67,6 +95,13 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .agenda-drawer-backdrop,
+  .agenda-drawer-panel {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
   .agenda-animate-in {
     animation: none;
     opacity: 1;
