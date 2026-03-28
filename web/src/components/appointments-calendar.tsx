@@ -33,10 +33,10 @@ function rowsToEvents(rows: AppointmentRow[]): EventInput[] {
 
     const palette =
       r.status === "scheduled"
-        ? { bg: "#0d9488", border: "#0f766e" }
+        ? { bg: "#e8f0fe", border: "#1a73e8", text: "#1967d2" }
         : r.status === "cancelled"
-          ? { bg: "#64748b", border: "#475569" }
-          : { bg: "#059669", border: "#047857" };
+          ? { bg: "#f1f3f4", border: "#80868b", text: "#5f6368" }
+          : { bg: "#e6f4ea", border: "#188038", text: "#137333" };
 
     return {
       id: r.id,
@@ -45,6 +45,7 @@ function rowsToEvents(rows: AppointmentRow[]): EventInput[] {
       end: r.ends_at,
       backgroundColor: palette.bg,
       borderColor: palette.border,
+      textColor: palette.text,
       classNames: r.status === "cancelled" ? ["fc-event-cancelled"] : [],
       extendedProps: {
         status: r.status,
@@ -65,13 +66,50 @@ type Props = {
   focusDate?: Date;
 };
 
+function dayHeaderGoogle(arg: {
+  date: Date;
+  isToday: boolean;
+}) {
+  const wd = arg.date
+    .toLocaleDateString("pt-BR", { weekday: "short" })
+    .replace(/\.$/, "")
+    .toUpperCase();
+  const num = arg.date.getDate();
+
+  return (
+    <div className="flex flex-col items-center gap-1 py-2.5">
+      <span className="text-[10px] font-medium leading-none tracking-wide text-[#70757a] dark:text-[#9aa0a6]">
+        {wd}
+      </span>
+      <span
+        className={
+          arg.isToday
+            ? "flex h-9 w-9 items-center justify-center rounded-full bg-[#1a73e8] text-sm font-medium text-white shadow-sm"
+            : "flex h-9 w-9 items-center justify-center rounded-full text-sm font-medium text-[#3c4043] transition-colors hover:bg-[#f1f3f4] dark:text-[#e8eaed] dark:hover:bg-[#3c4043]"
+        }
+      >
+        {num}
+      </span>
+    </div>
+  );
+}
+
 export function AppointmentsCalendar({ rows, loading, focusDate }: Props) {
   const [selected, setSelected] = useState<EventClickArg["event"] | null>(
     null
   );
+  const [compactToolbar, setCompactToolbar] = useState(false);
   const calRef = useRef<FullCalendar | null>(null);
 
   const events = useMemo(() => rowsToEvents(rows), [rows]);
+
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 767px)");
+    const apply = () => setCompactToolbar(mql.matches);
+    apply();
+    mql.addEventListener("change", apply);
+    return () => mql.removeEventListener("change", apply);
+  }, []);
 
   useEffect(() => {
     if (!focusDate) return;
@@ -79,38 +117,50 @@ export function AppointmentsCalendar({ rows, loading, focusDate }: Props) {
     if (api) api.gotoDate(focusDate);
   }, [focusDate]);
 
+  const headerToolbar = compactToolbar
+    ? {
+        left: "prev",
+        center: "title",
+        right: "next today",
+      }
+    : {
+        left: "prev,next today",
+        center: "title",
+        right: "dayGridMonth,timeGridWeek,timeGridDay,listWeek",
+      };
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-600 dark:text-zinc-400">
-        <span className="font-medium text-zinc-800 dark:text-zinc-200">
-          Legenda:
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-[#e8eaed] bg-[#f8f9fa] px-3 py-2.5 text-xs text-[#5f6368] dark:border-[#3c4043] dark:bg-[#292a2d] dark:text-[#9aa0a6]">
+        <span className="font-medium text-[#3c4043] dark:text-[#e8eaed]">
+          Legenda
         </span>
-        <span className="inline-flex items-center gap-1.5">
+        <span className="inline-flex items-center gap-2">
           <span
-            className="inline-block h-2.5 w-2.5 rounded-sm"
-            style={{ background: "#0d9488" }}
+            className="inline-block h-2 w-2 rounded-full border-2 border-[#1a73e8] bg-[#e8f0fe]"
+            aria-hidden
           />
           Agendado
         </span>
-        <span className="inline-flex items-center gap-1.5">
+        <span className="inline-flex items-center gap-2">
           <span
-            className="inline-block h-2.5 w-2.5 rounded-sm"
-            style={{ background: "#059669" }}
+            className="inline-block h-2 w-2 rounded-full border-2 border-[#188038] bg-[#e6f4ea]"
+            aria-hidden
           />
           Concluído
         </span>
-        <span className="inline-flex items-center gap-1.5">
+        <span className="inline-flex items-center gap-2">
           <span
-            className="inline-block h-2.5 w-2.5 rounded-sm opacity-60"
-            style={{ background: "#64748b" }}
+            className="inline-block h-2 w-2 rounded-full border-2 border-[#80868b] bg-[#f1f3f4]"
+            aria-hidden
           />
           Cancelado
         </span>
       </div>
 
-      <div className="fc-consultorio rounded-xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 md:p-4">
+      <div className="fc-consultorio overflow-hidden rounded-xl border border-[#dadce0] bg-white shadow-[0_1px_2px_rgba(60,64,67,0.12)] dark:border-[#3c4043] dark:bg-[#202124] md:rounded-2xl">
         {loading && !rows.length ? (
-          <p className="py-16 text-center text-sm text-zinc-500">
+          <p className="py-16 text-center text-sm text-[#5f6368]">
             A carregar calendário…
           </p>
         ) : (
@@ -124,11 +174,7 @@ export function AppointmentsCalendar({ rows, loading, focusDate }: Props) {
             ]}
             locale={ptBrLocale}
             initialView="timeGridWeek"
-            headerToolbar={{
-              left: "prev,next today",
-              center: "title",
-              right: "dayGridMonth,timeGridWeek,timeGridDay,listWeek",
-            }}
+            headerToolbar={headerToolbar}
             buttonText={{
               today: "Hoje",
               month: "Mês",
@@ -136,14 +182,16 @@ export function AppointmentsCalendar({ rows, loading, focusDate }: Props) {
               day: "Dia",
               list: "Lista",
             }}
-            slotMinTime="07:00:00"
-            slotMaxTime="21:00:00"
+            slotMinTime="06:00:00"
+            slotMaxTime="22:00:00"
             slotDuration="00:30:00"
+            slotLabelInterval="01:00:00"
             allDaySlot={false}
             height="auto"
-            contentHeight={640}
+            contentHeight={compactToolbar ? 520 : 720}
+            expandRows
             nowIndicator
-            dayHeaderFormat={{ weekday: "short", day: "numeric", month: "short" }}
+            dayHeaderContent={(arg) => dayHeaderGoogle(arg)}
             slotLabelFormat={{
               hour: "2-digit",
               minute: "2-digit",
@@ -154,8 +202,8 @@ export function AppointmentsCalendar({ rows, loading, focusDate }: Props) {
               setSelected(info.event);
             }}
             eventContent={(arg) => (
-              <div className="overflow-hidden px-0.5 py-0.5 leading-tight">
-                <div className="text-[10px] font-semibold opacity-90">
+              <div className="overflow-hidden px-0.5 py-0.5 leading-snug">
+                <div className="text-[10px] font-semibold leading-tight opacity-90">
                   {arg.timeText}
                 </div>
                 <div className="truncate text-[11px] font-medium">
@@ -168,22 +216,22 @@ export function AppointmentsCalendar({ rows, loading, focusDate }: Props) {
       </div>
 
       {selected ? (
-        <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="rounded-xl border border-[#dadce0] bg-white p-4 text-sm shadow-sm dark:border-[#3c4043] dark:bg-[#202124]">
           <div className="mb-2 flex items-start justify-between gap-2">
-            <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">
+            <h3 className="font-semibold text-[#3c4043] dark:text-[#e8eaed]">
               Detalhe do agendamento
             </h3>
             <button
               type="button"
               onClick={() => setSelected(null)}
-              className="shrink-0 rounded-md px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              className="shrink-0 rounded-full px-3 py-1 text-xs font-medium text-[#5f6368] hover:bg-[#f1f3f4] dark:hover:bg-[#3c4043]"
             >
               Fechar
             </button>
           </div>
-          <dl className="grid gap-2 text-zinc-700 dark:text-zinc-300">
+          <dl className="grid gap-2 text-[#3c4043] dark:text-[#e8eaed]">
             <div>
-              <dt className="text-xs font-medium text-zinc-500">Quando</dt>
+              <dt className="text-xs font-medium text-[#70757a]">Quando</dt>
               <dd>
                 {selected.start && selected.end
                   ? formatRange(
@@ -194,7 +242,7 @@ export function AppointmentsCalendar({ rows, loading, focusDate }: Props) {
               </dd>
             </div>
             <div>
-              <dt className="text-xs font-medium text-zinc-500">Estado</dt>
+              <dt className="text-xs font-medium text-[#70757a]">Estado</dt>
               <dd>
                 {statusLabel[
                   (selected.extendedProps.status as AppointmentRow["status"]) ??
@@ -203,19 +251,19 @@ export function AppointmentsCalendar({ rows, loading, focusDate }: Props) {
               </dd>
             </div>
             <div>
-              <dt className="text-xs font-medium text-zinc-500">Telefone</dt>
+              <dt className="text-xs font-medium text-[#70757a]">Telefone</dt>
               <dd className="font-mono text-xs">
                 {(selected.extendedProps.phone as string) ?? "—"}
               </dd>
             </div>
             <div>
-              <dt className="text-xs font-medium text-zinc-500">
+              <dt className="text-xs font-medium text-[#70757a]">
                 Profissional
               </dt>
               <dd>{(selected.extendedProps.professional as string) ?? "—"}</dd>
             </div>
             <div>
-              <dt className="text-xs font-medium text-zinc-500">Serviço</dt>
+              <dt className="text-xs font-medium text-[#70757a]">Serviço</dt>
               <dd>{(selected.extendedProps.service as string) ?? "—"}</dd>
             </div>
           </dl>
