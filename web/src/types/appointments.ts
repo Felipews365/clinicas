@@ -19,14 +19,20 @@ export const statusLabel: Record<AppointmentRow["status"], string> = {
   completed: "Concluído",
 };
 
-/** Agendamento ativo marcado como confirmado no painel (`source = painel`). */
+/**
+ * Agendamento ativo já considerado confirmado na agenda:
+ * marcado no painel, ou criado pelo agente/n8n em `cs_agendamentos` (id `cs:…`, fonte WhatsApp).
+ */
 export function isClinicConfirmed(r: AppointmentRow): boolean {
-  return r.status === "scheduled" && r.source === "painel";
+  if (r.status !== "scheduled") return false;
+  if (r.source === "painel") return true;
+  if (r.id.startsWith("cs:") && r.source === "whatsapp") return true;
+  return false;
 }
 
-/** Agendamento ativo ainda por confirmar (ex.: WhatsApp / n8n). */
+/** Agendamento ativo ainda por confirmar manualmente no painel. */
 export function awaitsConfirmation(r: AppointmentRow): boolean {
-  return r.status === "scheduled" && r.source !== "painel";
+  return r.status === "scheduled" && !isClinicConfirmed(r);
 }
 
 export function one<T>(x: T | T[] | null | undefined): T | null {

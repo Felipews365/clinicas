@@ -324,7 +324,12 @@ export function AgendaPortal() {
   const removeAppointment = useCallback(
     async (id: string) => {
       if (!supabase || access?.kind !== "clinic") return;
-      if (!window.confirm("Cancelar este agendamento?")) return;
+      if (
+        !window.confirm(
+          "Deseja realmente excluir / cancelar este agendamento? Esta ação não pode ser desfeita."
+        )
+      )
+        return;
       setRowBusy(id);
       setListError(null);
       let error: { message: string; code?: string } | null = null;
@@ -880,7 +885,7 @@ export function AgendaPortal() {
               type="button"
               disabled={!dayKey}
               onClick={() => dayKey && setDayKey((k) => addDaysToYmd(k, -1))}
-              className="rounded-xl border border-[#dcd5ca] bg-white px-3.5 py-2.5 text-sm font-medium text-[#4a453d] shadow-sm transition-colors hover:bg-[#faf8f5] disabled:opacity-40"
+              className="rounded-xl border border-[#b8c8dc] bg-[#eef3fb] px-3.5 py-2.5 text-sm font-semibold text-[#2a4a6e] shadow-sm transition-colors hover:bg-[#e2ebf8] disabled:opacity-40"
             >
               Dia anterior
             </button>
@@ -901,7 +906,7 @@ export function AgendaPortal() {
               type="button"
               disabled={!dayKey}
               onClick={() => dayKey && setDayKey((k) => addDaysToYmd(k, 1))}
-              className="rounded-xl border border-[#dcd5ca] bg-white px-3.5 py-2.5 text-sm font-medium text-[#4a453d] shadow-sm transition-colors hover:bg-[#faf8f5] disabled:opacity-40"
+              className="rounded-xl border border-[#e4c9a8] bg-[#fff6eb] px-3.5 py-2.5 text-sm font-semibold text-[#8b4e12] shadow-sm transition-colors hover:bg-[#ffefd9] disabled:opacity-40"
             >
               Próximo dia
             </button>
@@ -919,7 +924,7 @@ export function AgendaPortal() {
                 );
               }}
               disabled={!dayKey || isYmdToday(dayKey)}
-              className="rounded-xl bg-[#3d6b62] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#355a52] disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-xl bg-[#4D6D66] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-[#3f5e58] active:bg-[#283f3a] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
             >
               Ir para hoje
             </button>

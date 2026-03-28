@@ -318,7 +318,7 @@ export function SlotsManagerModal({
               type="button"
               disabled={!activeDayKey}
               onClick={() => shiftModalDay(-1)}
-              className="rounded-xl border border-[#dcd5ca] bg-white px-3 py-2 text-sm font-medium text-[#4a453d] shadow-sm transition-colors hover:bg-white disabled:opacity-40"
+              className="rounded-xl border border-[#b8c8dc] bg-[#eef3fb] px-3 py-2 text-sm font-semibold text-[#2a4a6e] shadow-sm transition-colors hover:bg-[#e2ebf8] disabled:opacity-40"
             >
               Dia anterior
             </button>
@@ -341,7 +341,7 @@ export function SlotsManagerModal({
               type="button"
               disabled={!activeDayKey}
               onClick={() => shiftModalDay(1)}
-              className="rounded-xl border border-[#dcd5ca] bg-white px-3 py-2 text-sm font-medium text-[#4a453d] shadow-sm transition-colors hover:bg-white disabled:opacity-40"
+              className="rounded-xl border border-[#e4c9a8] bg-[#fff6eb] px-3 py-2 text-sm font-semibold text-[#8b4e12] shadow-sm transition-colors hover:bg-[#ffefd9] disabled:opacity-40"
             >
               Próximo dia
             </button>
@@ -349,7 +349,7 @@ export function SlotsManagerModal({
               type="button"
               disabled={!activeDayKey || isYmdToday(activeDayKey)}
               onClick={() => goModalToday()}
-              className="rounded-xl bg-[#3d6b62] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#355a52] disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-xl bg-[#4D6D66] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-[#3f5e58] active:bg-[#283f3a] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
             >
               Ir para hoje
             </button>

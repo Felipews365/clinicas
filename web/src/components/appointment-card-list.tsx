@@ -230,9 +230,8 @@ export function AppointmentCardList({
         const profSpecialty = prof?.specialty?.trim() || null;
         const pending = r.status === "scheduled" && awaitsConfirmation(r);
         const confirmed = r.status === "scheduled" && isClinicConfirmed(r);
-        const fromWhatsApp =
-          pending &&
-          (r.source === "whatsapp" || r.id.startsWith("cs:"));
+        const fromWhatsAppPending =
+          pending && (r.source === "whatsapp" || r.id.startsWith("cs:"));
 
         const avatarClass =
           r.status === "cancelled"
@@ -265,9 +264,15 @@ export function AppointmentCardList({
                       <h2 className="font-display text-[1.35rem] font-semibold leading-snug tracking-tight text-[#1f1c1a]">
                         {name}
                       </h2>
-                      {fromWhatsApp && pending ? (
+                      {fromWhatsAppPending ? (
                         <p className="mt-1 text-xs font-medium text-[#7a7165]">
                           Origem: WhatsApp · aguarda confirmação da clínica
+                        </p>
+                      ) : r.status === "scheduled" &&
+                        confirmed &&
+                        (r.source === "whatsapp" || r.id.startsWith("cs:")) ? (
+                        <p className="mt-1 text-xs font-medium text-[#7a7165]">
+                          Origem: agente WhatsApp
                         </p>
                       ) : null}
                     </div>
@@ -389,9 +394,9 @@ export function AppointmentCardList({
                     aria-label={`Cancelar agendamento de ${name}`}
                     disabled={busyId === r.id}
                     onClick={() => onRemove(r.id)}
-                    className="inline-flex h-11 min-w-[2.75rem] items-center justify-center rounded-xl border border-[#ddd8cf] bg-white text-[#5c5348] transition-colors hover:bg-[#f7f4ef] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8a8278] disabled:opacity-50"
+                    className="group inline-flex h-11 min-w-[2.75rem] items-center justify-center rounded-xl border border-[#ddd8cf] bg-white text-[#5c5348] transition-colors hover:border-[#f0a8a8] hover:bg-[#fef2f2] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8a8278] disabled:opacity-50"
                   >
-                    <IconTrash />
+                    <IconTrash className="text-[#6b635a] transition-colors group-hover:text-[#dc2626]" />
                   </button>
                 </div>
               ) : null}
