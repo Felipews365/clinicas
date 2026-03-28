@@ -61,6 +61,42 @@ function IconPlus({ className }: { className?: string }) {
   );
 }
 
+function IconMenu({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  );
+}
+
+function IconClose({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <path d="M18 6L6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
 function AgendaListSkeleton() {
   return (
     <div
@@ -108,6 +144,7 @@ export function AgendaPortal() {
   const [professionalsOpen, setProfessionalsOpen] = useState(false);
   const [whatsappHumanOpen, setWhatsappHumanOpen] = useState(false);
   const [slotsManagerOpen, setSlotsManagerOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [humanQueueCount, setHumanQueueCount] = useState(0);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [access, setAccess] = useState<AccessState | null>(null);
@@ -407,6 +444,20 @@ export function AgendaPortal() {
   }, [session]);
 
   useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
     if (!clientSynced || !supabase) return;
     if (!session?.user) {
       router.replace("/login");
@@ -530,9 +581,25 @@ export function AgendaPortal() {
         </>
       ) : null}
 
-      <header className="sticky top-0 z-30 border-b border-[#e8e2d9]/90 bg-[#fffdf9]/88 backdrop-blur-md shadow-[0_1px_0_rgba(44,40,37,0.04)]">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
-          <div className="flex min-w-0 items-center gap-3">
+      <header className="relative z-30 border-b border-[#e8e2d9]/90 bg-[#fffdf9] shadow-[0_1px_0_rgba(44,40,37,0.04)] sm:sticky sm:top-0 sm:bg-[#fffdf9]/88 sm:backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:flex-wrap sm:justify-between sm:gap-4 sm:py-4 sm:px-6">
+          <button
+            type="button"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#dcd5ca] bg-white text-[#2a2623] shadow-sm transition-colors hover:bg-[#faf8f5] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3d6b62] sm:hidden"
+            aria-expanded={mobileMenuOpen}
+            aria-controls="painel-menu-mobile"
+            onClick={() => setMobileMenuOpen((o) => !o)}
+          >
+            <span className="sr-only">
+              {mobileMenuOpen ? "Fechar menu" : "Abrir menu"}
+            </span>
+            {mobileMenuOpen ? (
+              <IconClose className="shrink-0" />
+            ) : (
+              <IconMenu className="shrink-0" />
+            )}
+          </button>
+          <div className="flex min-w-0 flex-1 items-center gap-3 sm:flex-initial">
             <div
               className="hidden h-10 w-10 shrink-0 rounded-xl bg-[#3d6b62] shadow-inner sm:flex sm:items-center sm:justify-center"
               aria-hidden
@@ -560,7 +627,7 @@ export function AgendaPortal() {
             </div>
           </div>
           <nav
-            className="flex flex-wrap items-center justify-end gap-2 sm:gap-2.5"
+            className="hidden flex-wrap items-center justify-end gap-2 sm:flex sm:gap-2.5"
             aria-label="Ações do painel"
           >
             <span className="order-last hidden max-w-[210px] truncate text-xs text-[#8a8278] lg:order-none lg:inline">
@@ -613,6 +680,92 @@ export function AgendaPortal() {
             </button>
           </nav>
         </div>
+
+        {mobileMenuOpen ? (
+          <>
+            <button
+              type="button"
+              className="fixed inset-0 z-40 bg-[#1c1917]/35 sm:hidden"
+              aria-label="Fechar menu"
+              onClick={() => setMobileMenuOpen(false)}
+            />
+            <div
+              id="painel-menu-mobile"
+              className="absolute inset-x-0 top-full z-50 max-h-[min(72vh,calc(100dvh-4rem))] overflow-y-auto border-b border-[#e8e2d9] bg-[#fffdf9] px-4 py-4 shadow-[0_12px_40px_-12px_rgba(44,40,37,0.2)] sm:hidden"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="painel-menu-mobile-title"
+            >
+              <p id="painel-menu-mobile-title" className="sr-only">
+                Menu do painel
+              </p>
+              <nav
+                className="flex flex-col gap-2"
+                aria-label="Ações do painel (mobile)"
+              >
+                <p className="truncate rounded-lg bg-[#faf8f5] px-3 py-2 text-xs text-[#6b635a]">
+                  {session.user.email}
+                </p>
+                <button
+                  type="button"
+                  className="w-full rounded-xl border border-[#c5d4d0] bg-white px-4 py-3.5 text-left text-sm font-semibold text-[#3d6b62] shadow-sm"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setProfessionalsOpen(true);
+                  }}
+                >
+                  Profissionais
+                </button>
+                <button
+                  type="button"
+                  className="w-full rounded-xl border border-[#c9d4e8] bg-[#f5f8fc] px-4 py-3.5 text-left text-sm font-semibold text-[#3d5a7a] shadow-sm"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setSlotsManagerOpen(true);
+                  }}
+                >
+                  Horários (vagas)
+                </button>
+                <button
+                  type="button"
+                  className="relative w-full rounded-xl border border-[#e8d4c8] bg-[#fff9f4] px-4 py-3.5 text-left text-sm font-semibold text-[#8b4513]"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setWhatsappHumanOpen(true);
+                  }}
+                >
+                  WhatsApp humano
+                  {humanQueueCount > 0 ? (
+                    <span className="ml-2 inline-flex min-h-6 min-w-6 items-center justify-center rounded-full bg-[#c2410c] px-1.5 text-[11px] font-bold text-white">
+                      {humanQueueCount > 99 ? "99+" : humanQueueCount}
+                    </span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#3d6b62] px-4 py-3.5 text-sm font-semibold text-white shadow-md"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setScheduleOpen(true);
+                  }}
+                >
+                  <IconPlus className="shrink-0 opacity-95" />
+                  Novo agendamento
+                </button>
+                <button
+                  type="button"
+                  className="w-full rounded-xl border border-[#dcd5ca] bg-white px-4 py-3.5 text-left text-sm font-medium text-[#5c5348]"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    void handleSignOut();
+                  }}
+                >
+                  Sair
+                </button>
+              </nav>
+            </div>
+          </>
+        ) : null}
       </header>
 
       <main
