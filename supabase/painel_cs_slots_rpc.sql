@@ -34,7 +34,21 @@ begin
             'especialidade', p.especialidade,
             'data', h.data,
             'horario', to_char(h.horario, 'HH24:MI'),
-            'disponivel', h.disponivel
+            'disponivel', h.disponivel,
+            'indisponivel_por',
+              case
+                when h.disponivel then null
+                when exists (
+                  select 1
+                  from public.cs_agendamentos a
+                  where a.profissional_id = h.profissional_id
+                    and a.data_agendamento = h.data
+                    and a.horario = h.horario
+                    and a.status not in ('cancelado', 'concluido')
+                )
+                  then 'cliente'
+                else 'medico'
+              end
           )
           order by p.nome asc, h.horario asc
         )

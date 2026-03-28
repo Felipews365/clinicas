@@ -580,6 +580,7 @@ export function AgendaPortal() {
             clinicId={access.clinicId}
             dayKey={dayKey}
             onAutoAdvanceDay={setDayKey}
+            onDayKeyChange={setDayKey}
           />
         </>
       ) : null}

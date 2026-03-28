@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   addDaysToYmd,
   filterSlotRowsNotPastToday,
+  formatLocalYmd,
   isYmdToday,
   parseLocalYmd,
 } from "@/lib/local-day";
@@ -17,6 +18,8 @@ export type CsSlotRow = {
   data: string;
   horario: string;
   disponivel: boolean;
+  /** Só quando `disponivel` é false: ocupado por agendamento ativo vs bloqueio manual no painel. */
+  indisponivel_por: "cliente" | "medico" | null;
 };
 
 type Props = {
@@ -24,10 +27,12 @@ type Props = {
   onClose: () => void;
   supabase: SupabaseClient;
   clinicId: string;
-  /** YYYY-MM-DD — sincroniza com o dia escolhido no painel */
+  /** YYYY-MM-DD — dia inicial ao abrir (sincroniza com o painel) */
   dayKey: string;
   /** Quando hoje já não tem vagas úteis, avança o dia do painel (ex.: sábado à noite → segunda). */
   onAutoAdvanceDay?: (ymd: string) => void;
+  /** Atualiza o dia do painel quando o utilizador muda a data dentro deste modal. */
+  onDayKeyChange?: (ymd: string) => void;
 };
 
 function parseSlots(raw: unknown): CsSlotRow[] {
@@ -41,7 +46,28 @@ function parseSlots(raw: unknown): CsSlotRow[] {
     }
   }
   if (!Array.isArray(v)) return [];
-  return v as CsSlotRow[];
+  return v.map((item) => {
+    const o = item as Record<string, unknown>;
+    const disponivel = Boolean(o.disponivel);
+    let indisponivel_por: CsSlotRow["indisponivel_por"] = null;
+    if (!disponivel) {
+      const por = o.indisponivel_por;
+      indisponivel_por = por === "cliente" ? "cliente" : "medico";
+    }
+    return {
+      horario_id: String(o.horario_id ?? ""),
+      profissional_id: String(o.profissional_id ?? ""),
+      profissional_nome: String(o.profissional_nome ?? ""),
+      especialidade:
+        o.especialidade == null || o.especialidade === ""
+          ? null
+          : String(o.especialidade),
+      data: String(o.data ?? ""),
+      horario: String(o.horario ?? ""),
+      disponivel,
+      indisponivel_por,
+    } satisfies CsSlotRow;
+  });
 }
 
 const MAX_DAYS_SCAN = 21;
@@ -53,19 +79,26 @@ export function SlotsManagerModal({
   clinicId,
   dayKey,
   onAutoAdvanceDay,
+  onDayKeyChange,
 }: Props) {
   const [rows, setRows] = useState<CsSlotRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  /** Dia cuja lista está a ser mostrada (pode adiantar-se ao calendário se hoje já passou tudo). */
+  /** Dia selecionado neste modal (pode diferir do painel até sincronizar). */
+  const [activeDayKey, setActiveDayKey] = useState("");
+  /** Dia efetivamente carregado (scan “hoje” pode saltar para o próximo dia útil). */
   const [viewDayKey, setViewDayKey] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) setViewDayKey(null);
-  }, [open]);
+    if (!open) {
+      setViewDayKey(null);
+      return;
+    }
+    if (dayKey) setActiveDayKey(dayKey);
+  }, [open, dayKey]);
 
-  const labelKey = viewDayKey ?? dayKey;
+  const labelKey = viewDayKey ?? activeDayKey;
   const dateLabel = useMemo(() => {
     if (!labelKey) return "";
     try {
@@ -81,7 +114,7 @@ export function SlotsManagerModal({
   }, [labelKey]);
 
   const load = useCallback(async () => {
-    if (!open || !dayKey) return;
+    if (!open || !activeDayKey) return;
     setLoading(true);
     setError(null);
 
@@ -96,8 +129,8 @@ export function SlotsManagerModal({
       filterSlotRowsNotPastToday(parseSlots(raw), k);
 
     try {
-      if (isYmdToday(dayKey)) {
-        let k = dayKey;
+      if (isYmdToday(activeDayKey)) {
+        let k = activeDayKey;
         for (let i = 0; i < MAX_DAYS_SCAN; i++) {
           const { data, error: e } = await fetchDay(k);
           if (e) {
@@ -112,18 +145,23 @@ export function SlotsManagerModal({
           }
           const visible = applyTimeFilter(data, k);
           if (visible.length > 0) {
-            if (k !== dayKey) onAutoAdvanceDay?.(k);
+            if (k !== activeDayKey) {
+              onAutoAdvanceDay?.(k);
+              onDayKeyChange?.(k);
+              setActiveDayKey(k);
+            }
             setViewDayKey(k);
             setRows(visible);
             return;
           }
           k = addDaysToYmd(k, 1);
         }
+        setViewDayKey(activeDayKey);
         setRows([]);
         return;
       }
 
-      const { data, error: e } = await fetchDay(dayKey);
+      const { data, error: e } = await fetchDay(activeDayKey);
       if (e) {
         setError(
           e.message +
@@ -134,16 +172,36 @@ export function SlotsManagerModal({
         setRows([]);
         return;
       }
-      setViewDayKey(dayKey);
-      setRows(applyTimeFilter(data, dayKey));
+      setViewDayKey(activeDayKey);
+      setRows(applyTimeFilter(data, activeDayKey));
     } finally {
       setLoading(false);
     }
-  }, [open, dayKey, clinicId, supabase, onAutoAdvanceDay]);
+  }, [
+    open,
+    activeDayKey,
+    clinicId,
+    supabase,
+    onAutoAdvanceDay,
+    onDayKeyChange,
+  ]);
 
   useEffect(() => {
     if (open) void load();
   }, [open, load]);
+
+  function shiftModalDay(delta: number) {
+    if (!activeDayKey) return;
+    const next = addDaysToYmd(activeDayKey, delta);
+    setActiveDayKey(next);
+    onDayKeyChange?.(next);
+  }
+
+  function goModalToday() {
+    const t = formatLocalYmd(new Date());
+    setActiveDayKey(t);
+    onDayKeyChange?.(t);
+  }
 
   const byProf = useMemo(() => {
     const map = new Map<string, CsSlotRow[]>();
@@ -157,9 +215,17 @@ export function SlotsManagerModal({
 
   async function toggleSlot(slot: CsSlotRow) {
     if (busyId) return;
+    const next = !slot.disponivel;
+    if (next && slot.indisponivel_por === "cliente") {
+      const ok = window.confirm(
+        "Este horário está indisponível porque um cliente agendou.\n\n" +
+          "Tem certeza de que quer tirar esta reserva da agenda (tornar a vaga disponível)? " +
+          "Isto não apaga o agendamento na base — se a consulta não vai realizar-se, cancele o agendamento no painel antes."
+      );
+      if (!ok) return;
+    }
     setBusyId(slot.horario_id);
     setError(null);
-    const next = !slot.disponivel;
     const { data, error: e } = await supabase.rpc(
       "painel_cs_set_slot_disponivel",
       {
@@ -185,7 +251,11 @@ export function SlotsManagerModal({
     setRows((prev) =>
       prev.map((x) =>
         x.horario_id === slot.horario_id
-          ? { ...x, disponivel: next }
+          ? {
+              ...x,
+              disponivel: next,
+              indisponivel_por: next ? null : "medico",
+            }
           : x
       )
     );
@@ -221,15 +291,14 @@ export function SlotsManagerModal({
               agente oferece em <code className="rounded bg-[#f0ebe3] px-1 text-xs">consultar vagas</code>)
               e <strong className="font-medium">indisponível</strong> (não entra na lista). No{" "}
               <strong className="font-medium">dia de hoje</strong> só aparecem horários ainda por
-              vir.{" "}
-              <span className="capitalize">{dateLabel}</span>
-              {labelKey !== dayKey ? (
-                <span className="mt-1 block text-xs text-[#9a9278]">
-                  (O calendário do painel foi ajustado para este dia — dias sem expediente na base são
-                  ignorados.)
-                </span>
-              ) : null}
+              vir. Use <strong className="font-medium">mudar o dia</strong> abaixo para gerir outras
+              datas.
             </p>
+            {labelKey ? (
+              <p className="mt-2 text-sm font-medium capitalize text-[#2c2825]">
+                {dateLabel}
+              </p>
+            ) : null}
           </div>
           <button
             type="button"
@@ -240,9 +309,56 @@ export function SlotsManagerModal({
           </button>
         </header>
 
+        <div className="shrink-0 border-b border-[#ebe6dd] bg-[#faf8f5]/90 px-4 py-3 sm:px-6">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#8a8278]">
+            Dia a gerir
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={!activeDayKey}
+              onClick={() => shiftModalDay(-1)}
+              className="rounded-xl border border-[#dcd5ca] bg-white px-3 py-2 text-sm font-medium text-[#4a453d] shadow-sm transition-colors hover:bg-white disabled:opacity-40"
+            >
+              Dia anterior
+            </button>
+            <label className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial">
+              <span className="sr-only">Data</span>
+              <input
+                type="date"
+                disabled={!activeDayKey}
+                value={activeDayKey}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  setActiveDayKey(v);
+                  onDayKeyChange?.(v);
+                }}
+                className="min-w-0 flex-1 rounded-xl border border-[#dcd5ca] bg-white px-3 py-2 font-sans text-sm text-[#2c2825] shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3d6b62] disabled:opacity-50 sm:min-w-[11rem] sm:flex-initial"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={!activeDayKey}
+              onClick={() => shiftModalDay(1)}
+              className="rounded-xl border border-[#dcd5ca] bg-white px-3 py-2 text-sm font-medium text-[#4a453d] shadow-sm transition-colors hover:bg-white disabled:opacity-40"
+            >
+              Próximo dia
+            </button>
+            <button
+              type="button"
+              disabled={!activeDayKey || isYmdToday(activeDayKey)}
+              onClick={() => goModalToday()}
+              className="rounded-xl bg-[#3d6b62] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#355a52] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Ir para hoje
+            </button>
+          </div>
+        </div>
+
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
-          {!dayKey ? (
-            <p className="text-sm text-[#7a7268]">Escolha uma data no painel.</p>
+          {!activeDayKey ? (
+            <p className="text-sm text-[#7a7268]">Escolha uma data no painel ou aguarde…</p>
           ) : error ? (
             <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
               {error}
@@ -251,17 +367,18 @@ export function SlotsManagerModal({
             <p className="text-sm text-[#7a7268]">A carregar horários…</p>
           ) : rows.length === 0 ? (
             <p className="text-sm leading-relaxed text-[#6b635a]">
-              {isYmdToday(dayKey) ? (
+              {isYmdToday(activeDayKey) ? (
                 <>
-                  Não há horários futuros hoje (ou os blocos já passaram) e não foi encontrada agenda
-                  nos próximos {MAX_DAYS_SCAN} dias em{" "}
+                  Não há horários futuros neste dia (ou os blocos já passaram) e não foi encontrada
+                  agenda nos próximos {MAX_DAYS_SCAN} dias em{" "}
                   <code className="rounded bg-[#f0ebe3] px-1 text-xs">cs_horarios_disponiveis</code>.
                   Confirme o seed/SQL, o <code className="rounded bg-[#f0ebe3] px-1 text-xs">clinic_id</code>{" "}
-                  dos profissionais, ou escolha outra data no calendário.
+                  dos profissionais, ou escolha <strong className="font-medium">outro dia</strong> acima.
                 </>
               ) : (
                 <>
-                  Sem blocos de horário em <span className="font-medium">{dayKey}</span> na base{" "}
+                  Sem blocos de horário em{" "}
+                  <span className="font-medium">{activeDayKey}</span> na base{" "}
                   <code className="rounded bg-[#f0ebe3] px-1 text-xs">cs_horarios_disponiveis</code>.
                   Gere vagas pelo seed/SQL ou confirme se os profissionais têm{" "}
                   <code className="rounded bg-[#f0ebe3] px-1 text-xs">clinic_id</code> igual à sua
@@ -271,6 +388,27 @@ export function SlotsManagerModal({
             </p>
           ) : (
             <ul className="flex flex-col gap-6" role="list">
+              <li className="list-none rounded-xl border border-[#ebe6dd] bg-[#faf8f5] px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8a8278]">
+                  Legenda
+                </p>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-xs text-[#5c5348]">
+                  <span className="inline-flex items-center gap-2">
+                    <span
+                      className="h-4 w-6 shrink-0 rounded-md border border-[#b8c5e0] bg-[#eef2fb]"
+                      aria-hidden
+                    />
+                    Indisponível — cliente agendou
+                  </span>
+                  <span className="inline-flex items-center gap-2">
+                    <span
+                      className="h-4 w-6 shrink-0 rounded-md border border-[#e8b4b4] bg-[#fef2f2]"
+                      aria-hidden
+                    />
+                    Indisponível — bloqueio manual
+                  </span>
+                </div>
+              </li>
               {Array.from(byProf.entries()).map(([profId, slots]) => {
                 const head = slots[0];
                 return (
@@ -284,7 +422,19 @@ export function SlotsManagerModal({
                     <div className="flex flex-wrap gap-2">
                       {slots.map((s) => {
                         const livre = s.disponivel;
+                        const porCliente =
+                          !livre && s.indisponivel_por === "cliente";
                         const busy = busyId === s.horario_id;
+                        const estadoLabel = livre
+                          ? "disponível para o agente"
+                          : porCliente
+                            ? "indisponível — ocupado por agendamento"
+                            : "indisponível — bloqueio manual";
+                        const chipLabel = livre
+                          ? "Disponível"
+                          : porCliente
+                            ? "Com cliente"
+                            : "Bloqueado";
                         return (
                           <button
                             key={s.horario_id}
@@ -292,27 +442,33 @@ export function SlotsManagerModal({
                             disabled={busy}
                             onClick={() => void toggleSlot(s)}
                             aria-pressed={!livre}
-                            aria-label={`${s.horario} — ${
-                              livre ? "disponível para o agente" : "indisponível para o agente"
-                            }. Clicar para alternar.`}
+                            aria-label={`${s.horario} — ${estadoLabel}. Clicar para alternar.`}
                             title={
                               livre
                                 ? "Marcar como indisponível (o agente deixa de listar)"
-                                : "Marcar como disponível de novo"
+                                : porCliente
+                                  ? "Tornar disponível (confirma se quer libertar a vaga com agendamento)"
+                                  : "Marcar como disponível de novo"
                             }
                             className={`flex min-w-[5.5rem] flex-col items-stretch gap-0.5 rounded-xl px-3 py-2 text-sm font-semibold tabular-nums transition-[transform,box-shadow] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60 ${
                               livre
                                 ? "border border-[#c5ddd4] bg-[#f0faf6] text-[#1e4d40] shadow-sm hover:-translate-y-px focus-visible:outline-[#3d6b62]"
-                                : "border border-[#e0d5cc] bg-[#f5f0eb] text-[#6b5344] line-through decoration-[#9a8678] hover:no-underline focus-visible:outline-[#8b735a]"
+                                : porCliente
+                                  ? "border border-[#b8c5e0] bg-[#eef2fb] text-[#2c3d6b] line-through decoration-[#7d8ab0] hover:no-underline focus-visible:outline-[#4a5f8a]"
+                                  : "border border-[#e8b4b4] bg-[#fef2f2] text-[#7f1d1d] line-through decoration-[#b91c1c]/55 hover:no-underline focus-visible:outline-[#b91c1c]"
                             }`}
                           >
                             <span>{busy ? "…" : s.horario}</span>
                             <span
-                              className={`text-[10px] font-medium uppercase tracking-wide ${
-                                livre ? "text-[#3d6b62]/90" : "text-[#8b735a]"
+                              className={`text-[10px] font-medium uppercase tracking-wide not-italic no-underline ${
+                                livre
+                                  ? "text-[#3d6b62]/90"
+                                  : porCliente
+                                    ? "text-[#4a5f8a]"
+                                    : "text-[#b91c1c]"
                               }`}
                             >
-                              {livre ? "Disponível" : "Indisponível"}
+                              {chipLabel}
                             </span>
                           </button>
                         );
@@ -327,10 +483,13 @@ export function SlotsManagerModal({
 
         <footer className="shrink-0 border-t border-[#ebe6dd] px-6 py-4">
           <p className="text-xs leading-relaxed text-[#8a8278]">
-            O campo na base é <code className="rounded bg-[#f0ebe3] px-1">disponivel</code>:
-            só entradas <strong className="font-medium text-[#6b635a]">true</strong> aparecem em{" "}
-            <code className="rounded bg-[#f0ebe3] px-1">n8n_cs_consultar_vagas</code>. Marcar como
-            indisponível bloqueia também o agendamento automático.
+            A cor <strong className="font-medium text-[#6b635a]">azul</strong> indica vaga com
+            agendamento ativo em{" "}
+            <code className="rounded bg-[#f0ebe3] px-1">cs_agendamentos</code>; a cor{" "}
+            <strong className="font-medium text-[#6b635a]">vermelha</strong> indica bloqueio manual
+            só pela coluna <code className="rounded bg-[#f0ebe3] px-1">disponivel</code>. Só entradas{" "}
+            <strong className="font-medium text-[#6b635a]">true</strong> aparecem em{" "}
+            <code className="rounded bg-[#f0ebe3] px-1">n8n_cs_consultar_vagas</code>.
           </p>
         </footer>
       </div>
