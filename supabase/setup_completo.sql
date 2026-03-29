@@ -374,3 +374,4 @@ comment on table public."Agendamentos" is 'Agendamentos simples do workflow Isa 
 -- rode supabase/seed_cs_clinica_saude_equipe_horarios.sql para profissionais + vagas nos horários da clínica.
 -- Projetos antigos: aplicar também supabase/migration_cs_agendamentos_nomes_snapshot.sql
 -- (colunas nome_cliente, nome_profissional, nome_procedimento em cs_agendamentos + RPCs atualizadas).
+-- Catálogo de procedimentos por clínica (painel + agente): supabase/clinic_procedures.sql

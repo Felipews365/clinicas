@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   addDaysToYmd,
@@ -89,14 +89,30 @@ export function SlotsManagerModal({
   const [activeDayKey, setActiveDayKey] = useState("");
   /** Dia efetivamente carregado (scan “hoje” pode saltar para o próximo dia útil). */
   const [viewDayKey, setViewDayKey] = useState<string | null>(null);
+  /** Mobile (< sm): null = só lista de profissionais; id = horários desse profissional. */
+  const [mobileProfId, setMobileProfId] = useState<string | null>(null);
+  const [layoutWide, setLayoutWide] = useState(false);
+
+  useEffect(() => {
+    const q = window.matchMedia("(min-width: 640px)");
+    const apply = () => setLayoutWide(q.matches);
+    apply();
+    q.addEventListener("change", apply);
+    return () => q.removeEventListener("change", apply);
+  }, []);
 
   useEffect(() => {
     if (!open) {
       setViewDayKey(null);
+      setMobileProfId(null);
       return;
     }
     if (dayKey) setActiveDayKey(dayKey);
   }, [open, dayKey]);
+
+  useEffect(() => {
+    setMobileProfId(null);
+  }, [activeDayKey]);
 
   const labelKey = viewDayKey ?? activeDayKey;
   const dateLabel = useMemo(() => {
@@ -213,6 +229,69 @@ export function SlotsManagerModal({
     return map;
   }, [rows]);
 
+  useEffect(() => {
+    if (!mobileProfId) return;
+    if (!rows.some((r) => r.profissional_id === mobileProfId)) {
+      setMobileProfId(null);
+    }
+  }, [rows, mobileProfId]);
+
+  function renderSlotButton(s: CsSlotRow, compact: boolean): ReactNode {
+    const livre = s.disponivel;
+    const porCliente = !livre && s.indisponivel_por === "cliente";
+    const busy = busyId === s.horario_id;
+    const estadoLabel = livre
+      ? "disponível para o agente"
+      : porCliente
+        ? "indisponível — ocupado por agendamento"
+        : "indisponível — bloqueio manual";
+    const chipLabel = livre
+      ? "Disponível"
+      : porCliente
+        ? "Com cliente"
+        : "Bloqueado";
+    const pad = compact ? "px-2 py-1.5 min-w-[4.25rem]" : "px-3 py-2 min-w-[5.5rem]";
+    const textMain = compact ? "text-xs" : "text-sm";
+    const textChip = compact ? "text-[8px]" : "text-[10px]";
+    return (
+      <button
+        key={s.horario_id}
+        type="button"
+        disabled={busy}
+        onClick={() => void toggleSlot(s)}
+        aria-pressed={!livre}
+        aria-label={`${s.horario} — ${estadoLabel}. Clicar para alternar.`}
+        title={
+          livre
+            ? "Marcar como indisponível (o agente deixa de listar)"
+            : porCliente
+              ? "Tornar disponível (confirma se quer libertar a vaga com agendamento)"
+              : "Marcar como disponível de novo"
+        }
+        className={`flex ${pad} flex-col items-stretch gap-0.5 rounded-xl font-semibold tabular-nums transition-[transform,box-shadow] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60 ${textMain} ${
+          livre
+            ? "border border-[#c5ddd4] bg-[#f0faf6] text-[#1e4d40] shadow-sm hover:-translate-y-px focus-visible:outline-[#3d6b62]"
+            : porCliente
+              ? "border border-[#b8c5e0] bg-[#eef2fb] text-[#2c3d6b] line-through decoration-[#7d8ab0] hover:no-underline focus-visible:outline-[#4a5f8a]"
+              : "border border-[#e8b4b4] bg-[#fef2f2] text-[#7f1d1d] line-through decoration-[#b91c1c]/55 hover:no-underline focus-visible:outline-[#b91c1c]"
+        }`}
+      >
+        <span>{busy ? "…" : s.horario}</span>
+        <span
+          className={`${textChip} font-medium uppercase tracking-wide not-italic no-underline ${
+            livre
+              ? "text-[#3d6b62]/90"
+              : porCliente
+                ? "text-[#4a5f8a]"
+                : "text-[#b91c1c]"
+          }`}
+        >
+          {chipLabel}
+        </span>
+      </button>
+    );
+  }
+
   async function toggleSlot(slot: CsSlotRow) {
     if (busyId) return;
     const next = !slot.disponivel;
@@ -286,13 +365,18 @@ export function SlotsManagerModal({
             >
               Horários da agenda (WhatsApp)
             </h2>
-            <p id="slots-modal-desc" className="mt-1 text-sm text-[#6b635a]">
-              Cada bloco alterna entre <strong className="font-medium">disponível</strong> (o
-              agente oferece em <code className="rounded bg-[#f0ebe3] px-1 text-xs">consultar vagas</code>)
-              e <strong className="font-medium">indisponível</strong> (não entra na lista). No{" "}
-              <strong className="font-medium">dia de hoje</strong> só aparecem horários ainda por
-              vir. Use <strong className="font-medium">mudar o dia</strong> abaixo para gerir outras
-              datas.
+            <p id="slots-modal-desc" className="mt-1 text-[#6b635a]">
+              <span className="block text-xs sm:hidden">
+                Toque num profissional para ver os horários deste dia.
+              </span>
+              <span className="hidden text-sm sm:block">
+                Cada bloco alterna entre <strong className="font-medium">disponível</strong> (o
+                agente oferece em <code className="rounded bg-[#f0ebe3] px-1 text-xs">consultar vagas</code>)
+                e <strong className="font-medium">indisponível</strong> (não entra na lista). No{" "}
+                <strong className="font-medium">dia de hoje</strong> só aparecem horários ainda por
+                vir. Use <strong className="font-medium">mudar o dia</strong> abaixo para gerir outras
+                datas.
+              </span>
             </p>
             {labelKey ? (
               <p className="mt-2 text-sm font-medium capitalize text-[#2c2825]">
@@ -356,7 +440,13 @@ export function SlotsManagerModal({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+        <div
+          className={`min-h-0 flex-1 px-6 py-4 ${
+            !layoutWide && mobileProfId
+              ? "flex min-h-[12rem] flex-col overflow-hidden"
+              : "overflow-y-auto"
+          }`}
+        >
           {!activeDayKey ? (
             <p className="text-sm text-[#7a7268]">Escolha uma data no painel ou aguarde…</p>
           ) : error ? (
@@ -386,6 +476,81 @@ export function SlotsManagerModal({
                 </>
               )}
             </p>
+          ) : !layoutWide && !mobileProfId ? (
+            <ul className="flex flex-col gap-2" role="list">
+              {Array.from(byProf.entries()).map(([profId, slots]) => {
+                const head = slots[0];
+                return (
+                  <li key={profId} className="list-none">
+                    <button
+                      type="button"
+                      onClick={() => setMobileProfId(profId)}
+                      className="flex w-full flex-col items-stretch gap-0.5 rounded-xl border border-[#ebe6dd] bg-[#faf8f5] px-4 py-3 text-left shadow-sm transition-[background-color,transform] hover:bg-[#f5f2ec] active:scale-[0.99]"
+                    >
+                      <span className="text-base font-semibold text-[#1f1c1a]">
+                        {head.profissional_nome}
+                      </span>
+                      <span className="text-xs text-[#8a8278]">
+                        {head.especialidade?.trim() || "Profissional"}
+                      </span>
+                      <span className="text-[11px] font-medium tabular-nums text-[#6b635a]">
+                        {slots.length} horário{slots.length === 1 ? "" : "s"}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : !layoutWide && mobileProfId ? (
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <button
+                type="button"
+                onClick={() => setMobileProfId(null)}
+                className="mb-3 shrink-0 self-start rounded-xl border border-[#dcd5ca] bg-white px-3 py-2 text-sm font-medium text-[#5c5348] hover:bg-[#f7f4ef]"
+              >
+                ← Profissionais
+              </button>
+              {(() => {
+                const slots = byProf.get(mobileProfId) ?? [];
+                const head = slots[0];
+                return (
+                  <>
+                    {head ? (
+                      <div className="shrink-0">
+                        <h3 className="text-base font-semibold text-[#1f1c1a]">
+                          {head.profissional_nome}
+                        </h3>
+                        <p className="mt-0.5 text-xs text-[#8a8278]">
+                          {head.especialidade?.trim() || "Profissional"}
+                        </p>
+                      </div>
+                    ) : null}
+                    <p className="mt-2 text-[10px] leading-snug text-[#5c5348] sm:hidden">
+                      <span className="mr-2 inline-block">
+                        <span
+                          className="mr-1 inline-block h-2.5 w-4 rounded border border-[#b8c5e0] bg-[#eef2fb] align-middle"
+                          aria-hidden
+                        />
+                        Cliente
+                      </span>
+                      <span className="inline-block">
+                        <span
+                          className="mr-1 inline-block h-2.5 w-4 rounded border border-[#e8b4b4] bg-[#fef2f2] align-middle"
+                          aria-hidden
+                        />
+                        Bloqueio
+                      </span>
+                    </p>
+                    <div
+                      className="mt-3 grid min-h-0 min-w-0 flex-1 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4"
+                      style={{ maxHeight: "min(52dvh, 360px)" }}
+                    >
+                      {slots.map((s) => renderSlotButton(s, true))}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
           ) : (
             <ul className="flex flex-col gap-6" role="list">
               <li className="list-none rounded-xl border border-[#ebe6dd] bg-[#faf8f5] px-3 py-2.5">
@@ -420,59 +585,7 @@ export function SlotsManagerModal({
                       {head.especialidade?.trim() || "Profissional"}
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      {slots.map((s) => {
-                        const livre = s.disponivel;
-                        const porCliente =
-                          !livre && s.indisponivel_por === "cliente";
-                        const busy = busyId === s.horario_id;
-                        const estadoLabel = livre
-                          ? "disponível para o agente"
-                          : porCliente
-                            ? "indisponível — ocupado por agendamento"
-                            : "indisponível — bloqueio manual";
-                        const chipLabel = livre
-                          ? "Disponível"
-                          : porCliente
-                            ? "Com cliente"
-                            : "Bloqueado";
-                        return (
-                          <button
-                            key={s.horario_id}
-                            type="button"
-                            disabled={busy}
-                            onClick={() => void toggleSlot(s)}
-                            aria-pressed={!livre}
-                            aria-label={`${s.horario} — ${estadoLabel}. Clicar para alternar.`}
-                            title={
-                              livre
-                                ? "Marcar como indisponível (o agente deixa de listar)"
-                                : porCliente
-                                  ? "Tornar disponível (confirma se quer libertar a vaga com agendamento)"
-                                  : "Marcar como disponível de novo"
-                            }
-                            className={`flex min-w-[5.5rem] flex-col items-stretch gap-0.5 rounded-xl px-3 py-2 text-sm font-semibold tabular-nums transition-[transform,box-shadow] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60 ${
-                              livre
-                                ? "border border-[#c5ddd4] bg-[#f0faf6] text-[#1e4d40] shadow-sm hover:-translate-y-px focus-visible:outline-[#3d6b62]"
-                                : porCliente
-                                  ? "border border-[#b8c5e0] bg-[#eef2fb] text-[#2c3d6b] line-through decoration-[#7d8ab0] hover:no-underline focus-visible:outline-[#4a5f8a]"
-                                  : "border border-[#e8b4b4] bg-[#fef2f2] text-[#7f1d1d] line-through decoration-[#b91c1c]/55 hover:no-underline focus-visible:outline-[#b91c1c]"
-                            }`}
-                          >
-                            <span>{busy ? "…" : s.horario}</span>
-                            <span
-                              className={`text-[10px] font-medium uppercase tracking-wide not-italic no-underline ${
-                                livre
-                                  ? "text-[#3d6b62]/90"
-                                  : porCliente
-                                    ? "text-[#4a5f8a]"
-                                    : "text-[#b91c1c]"
-                              }`}
-                            >
-                              {chipLabel}
-                            </span>
-                          </button>
-                        );
-                      })}
+                      {slots.map((s) => renderSlotButton(s, false))}
                     </div>
                   </li>
                 );
@@ -482,7 +595,7 @@ export function SlotsManagerModal({
         </div>
 
         <footer className="shrink-0 border-t border-[#ebe6dd] px-6 py-4">
-          <p className="text-xs leading-relaxed text-[#8a8278]">
+          <p className="hidden text-xs leading-relaxed text-[#8a8278] sm:block">
             A cor <strong className="font-medium text-[#6b635a]">azul</strong> indica vaga com
             agendamento ativo em{" "}
             <code className="rounded bg-[#f0ebe3] px-1">cs_agendamentos</code>; a cor{" "}
