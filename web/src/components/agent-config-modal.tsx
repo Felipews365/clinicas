@@ -146,7 +146,7 @@ function configToInstructions(cfg: AgentConfig): string {
     .join("\n\n");
 }
 
-// ─── sub-componente: card de secção ──────────────────────────────────────────
+// ─── sub-componente: card de secção (layout flat) ────────────────────────────
 
 function SectionCard({
   emoji,
@@ -165,69 +165,53 @@ function SectionCard({
   templates: { label: string; value: string }[];
   onChange: (v: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-
   return (
-    <div className={`rounded-2xl border transition-colors ${value.trim() ? "border-[#c5d4d0] bg-white/80" : "border-[#e4ddd3] bg-white/50"}`}>
-      {/* header clicável */}
-      <button
-        type="button"
-        onClick={() => setOpen((p) => !p)}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left"
-      >
-        <span className="text-xl">{emoji}</span>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-[#1f1c1a]">{title}</p>
-          <p className="text-xs text-[#8a8278] truncate">{value.trim() ? value.split("\n")[0].slice(0, 80) : hint}</p>
-        </div>
-        <span className={`shrink-0 text-[#8a8278] transition-transform ${open ? "rotate-180" : ""}`}>
-          <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
-            <path fillRule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
-          </svg>
-        </span>
+    <div className="space-y-2">
+      {/* título da secção */}
+      <div className="flex items-center gap-2">
+        <span className="text-base">{emoji}</span>
+        <p className="text-sm font-semibold text-[#1f1c1a]">{title}</p>
         {value.trim() && (
-          <span className="ml-1 h-2 w-2 shrink-0 rounded-full bg-[#3d6b62]" aria-label="configurado" />
+          <span className="h-2 w-2 rounded-full bg-[#3d6b62]" aria-label="configurado" />
         )}
-      </button>
+      </div>
+      <p className="text-xs text-[#8a8278]">{hint}</p>
 
-      {/* conteúdo expansível */}
-      {open && (
-        <div className="border-t border-[#e8e2d9] px-4 pb-4 pt-3 space-y-3">
-          {/* templates rápidos */}
-          {templates.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              <span className="self-center text-xs text-[#8a8278]">Modelo:</span>
-              {templates.map((t) => (
-                <button
-                  key={t.label}
-                  type="button"
-                  onClick={() => onChange(t.value)}
-                  className="rounded-lg border border-[#d8cfe8] bg-[#f8f6fc] px-2.5 py-1 text-xs font-medium text-[#5c4d7a] transition-colors hover:bg-[#f0ebf8]"
-                >
-                  {t.label}
-                </button>
-              ))}
-              {value.trim() && (
-                <button
-                  type="button"
-                  onClick={() => onChange("")}
-                  className="rounded-lg border border-[#e8c8c8] bg-[#fdf4f4] px-2.5 py-1 text-xs font-medium text-[#7a2a2a] transition-colors hover:bg-[#fce8e8]"
-                >
-                  Limpar
-                </button>
-              )}
-            </div>
+      {/* templates rápidos */}
+      {templates.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          <span className="self-center text-xs text-[#8a8278]">Modelo:</span>
+          {templates.map((t) => (
+            <button
+              key={t.label}
+              type="button"
+              onClick={() => onChange(t.value)}
+              className="rounded-lg border border-[#d8cfe8] bg-[#f8f6fc] px-2.5 py-1 text-xs font-medium text-[#5c4d7a] transition-colors hover:bg-[#f0ebf8]"
+            >
+              {t.label}
+            </button>
+          ))}
+          {value.trim() && (
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="rounded-lg border border-[#e8c8c8] bg-[#fdf4f4] px-2.5 py-1 text-xs font-medium text-[#7a2a2a] transition-colors hover:bg-[#fce8e8]"
+            >
+              Limpar
+            </button>
           )}
-          <textarea
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            rows={5}
-            className="w-full resize-y rounded-xl border border-[#ddd8d0] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#2c2825] placeholder-[#b8b0a6] shadow-inner outline-none transition-[border-color,box-shadow] focus:border-[#3d6b62] focus:shadow-[0_0_0_3px_rgba(61,107,98,0.12)]"
-            spellCheck={false}
-          />
         </div>
       )}
+
+      {/* textarea */}
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={4}
+        className="w-full resize-y rounded-xl border border-[#ddd8d0] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#2c2825] placeholder-[#b8b0a6] shadow-inner outline-none transition-[border-color,box-shadow] focus:border-[#3d6b62] focus:shadow-[0_0_0_3px_rgba(61,107,98,0.12)]"
+        spellCheck={false}
+      />
     </div>
   );
 }
@@ -239,11 +223,13 @@ export function AgentConfigModal({
   onClose,
   supabase,
   clinicId,
+  onOpenProcedures,
 }: {
   open: boolean;
   onClose: () => void;
   supabase: SupabaseClient | null;
   clinicId: string;
+  onOpenProcedures?: () => void;
 }) {
   const [config, setConfig] = useState<AgentConfig>({ ...EMPTY_CONFIG });
   const [loading, setLoading] = useState(false);
@@ -313,37 +299,52 @@ export function AgentConfigModal({
                 : "Configure como o agente deve se comportar com os seus pacientes"}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fechar"
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-[#8a8278] transition-colors hover:bg-[#ece7df] hover:text-[#2c2825]"
-          >
-            <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
-              <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-2">
+            {onOpenProcedures && (
+              <button
+                type="button"
+                onClick={onOpenProcedures}
+                className="flex items-center gap-1.5 rounded-xl border border-[#d8cfe8] bg-[#f8f6fc] px-3 py-2 text-xs font-semibold text-[#5c4d7a] transition-colors hover:bg-[#f0ebf8]"
+              >
+                <span>📋</span>
+                <span>Procedimentos</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Fechar"
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-[#8a8278] transition-colors hover:bg-[#ece7df] hover:text-[#2c2825]"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+                <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* secções */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <span className="text-sm text-[#8a8278]">A carregar…</span>
             </div>
           ) : (
-            SECTIONS.map((s) => (
-              <SectionCard
-                key={s.key}
-                emoji={s.emoji}
-                title={s.title}
-                hint={s.hint}
-                placeholder={s.placeholder}
-                value={config[s.key]}
-                templates={s.templates}
-                onChange={(v) => updateSection(s.key, v)}
-              />
-            ))
+            <div className="space-y-6 divide-y divide-[#ebe6dd]">
+              {SECTIONS.map((s, i) => (
+                <div key={s.key} className={i > 0 ? "pt-5" : ""}>
+                  <SectionCard
+                    emoji={s.emoji}
+                    title={s.title}
+                    hint={s.hint}
+                    placeholder={s.placeholder}
+                    value={config[s.key]}
+                    templates={s.templates}
+                    onChange={(v) => updateSection(s.key, v)}
+                  />
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
@@ -356,7 +357,7 @@ export function AgentConfigModal({
           )}
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-[#8a8278]">
-              Clique numa secção para expandir e editar.
+              {filledCount > 0 ? `${filledCount} de ${SECTIONS.length} secções preenchidas` : "Preencha as secções que desejar e guarde."}
             </p>
             <button
               type="button"

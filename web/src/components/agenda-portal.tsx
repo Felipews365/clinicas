@@ -609,6 +609,7 @@ export function AgendaPortal() {
             onClose={() => setAgentConfigOpen(false)}
             supabase={supabase}
             clinicId={access.clinicId}
+            onOpenProcedures={() => { setAgentConfigOpen(false); setProceduresOpen(true); }}
           />
         </>
       ) : null}
@@ -674,14 +675,6 @@ export function AgendaPortal() {
               className="inline-flex items-center rounded-xl border border-[#c5d4d0] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#3d6b62] shadow-sm transition-[transform,colors,box-shadow] hover:-translate-y-px hover:bg-[#f4faf8] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3d6b62] active:translate-y-0"
             >
               <LabelEmoji emoji="👥">Profissionais</LabelEmoji>
-            </button>
-            <button
-              type="button"
-              title="Procedimentos oferecidos (para o agente IA)"
-              onClick={() => setProceduresOpen(true)}
-              className="inline-flex items-center rounded-xl border border-[#d8cfe8] bg-[#f8f6fc] px-3.5 py-2.5 text-sm font-semibold text-[#5c4d7a] shadow-sm transition-[transform,colors,box-shadow] hover:-translate-y-px hover:bg-[#f0ebf8] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#6b5b95] active:translate-y-0"
-            >
-              <LabelEmoji emoji="📋">Procedimentos</LabelEmoji>
             </button>
             <button
               type="button"
@@ -796,21 +789,6 @@ export function AgendaPortal() {
                   </span>
                   <span className="text-sm font-semibold text-[#2a4d44]">
                     Profissionais
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="group flex w-full items-center gap-3 rounded-2xl border border-[#ddd6eb] bg-white px-3 py-3 text-left shadow-sm transition-[transform,box-shadow] hover:border-[#6b5b95]/35 hover:shadow-md active:scale-[0.98]"
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    setProceduresOpen(true);
-                  }}
-                >
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#efeaf8] text-xl transition-transform group-hover:scale-105">
-                    📋
-                  </span>
-                  <span className="text-sm font-semibold text-[#4a3d63]">
-                    Procedimentos
                   </span>
                 </button>
                 <button
