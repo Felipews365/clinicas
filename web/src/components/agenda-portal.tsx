@@ -589,7 +589,6 @@ export function AgendaPortal() {
             onClose={() => setAgentConfigOpen(false)}
             supabase={supabase}
             clinicId={access.clinicId}
-            onOpenProcedures={() => { setAgentConfigOpen(false); setProceduresOpen(true); }}
           />
         </>
       ) : null}
