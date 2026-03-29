@@ -6,6 +6,7 @@ import { AppointmentRow, one, statusLabel } from "@/types/appointments";
 // ─── tipos ────────────────────────────────────────────────────────────────────
 
 type Period = "week" | "month" | "last_month" | "30d" | "90d";
+type View = "all" | string; // "all" ou nome do profissional
 
 const PERIOD_LABELS: Record<Period, string> = {
   week: "Esta semana",
@@ -34,23 +35,16 @@ function getPeriodRange(period: Period): { from: Date; to: Date } {
     return { from: monday, to: sunday };
   }
   if (period === "month") {
-    return {
-      from: new Date(y, m, 1),
-      to: new Date(y, m + 1, 0, 23, 59, 59, 999),
-    };
+    return { from: new Date(y, m, 1), to: new Date(y, m + 1, 0, 23, 59, 59, 999) };
   }
   if (period === "last_month") {
-    return {
-      from: new Date(y, m - 1, 1),
-      to: new Date(y, m, 0, 23, 59, 59, 999),
-    };
+    return { from: new Date(y, m - 1, 1), to: new Date(y, m, 0, 23, 59, 59, 999) };
   }
   if (period === "30d") {
     const from = new Date(today);
     from.setDate(d - 29);
     return { from, to: new Date(y, m, d, 23, 59, 59, 999) };
   }
-  // 90d
   const from = new Date(today);
   from.setDate(d - 89);
   return { from, to: new Date(y, m, d, 23, 59, 59, 999) };
@@ -61,11 +55,14 @@ function inRange(isoDate: string, from: Date, to: Date): boolean {
   return t >= from.getTime() && t <= to.getTime();
 }
 
-function profName(r: AppointmentRow): string {
+function getProfName(r: AppointmentRow): string {
   return one(r.professionals)?.name ?? "—";
 }
 
-function countBy<T>(items: T[], key: (item: T) => string): { label: string; count: number }[] {
+function countBy<T>(
+  items: T[],
+  key: (item: T) => string,
+): { label: string; count: number }[] {
   const map = new Map<string, number>();
   for (const item of items) {
     const k = key(item);
@@ -76,17 +73,24 @@ function countBy<T>(items: T[], key: (item: T) => string): { label: string; coun
     .sort((a, b) => b.count - a.count);
 }
 
+function buildStats(subset: AppointmentRow[]) {
+  const total = subset.length;
+  const scheduled = subset.filter((r) => r.status === "scheduled").length;
+  const completed = subset.filter((r) => r.status === "completed").length;
+  const cancelled = subset.filter((r) => r.status === "cancelled").length;
+  const fromPainel = subset.filter((r) => r.source === "painel").length;
+  const fromWhatsapp = subset.filter((r) => r.source === "whatsapp").length;
+  const fromOther = total - fromPainel - fromWhatsapp;
+  const byService = countBy(
+    subset.filter((r) => r.service_name),
+    (r) => r.service_name!,
+  );
+  return { total, scheduled, completed, cancelled, fromPainel, fromWhatsapp, fromOther, byService };
+}
+
 // ─── sub-componentes ──────────────────────────────────────────────────────────
 
-function StatCard({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number;
-  color: string;
-}) {
+function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <div className={`rounded-2xl border ${color} px-4 py-3.5`}>
       <p className="text-xs font-medium uppercase tracking-wider opacity-70">{label}</p>
@@ -112,7 +116,7 @@ function BarRow({
       <span className="w-36 shrink-0 truncate text-sm font-medium text-[#2c2825]" title={label}>
         {label}
       </span>
-      <div className="relative flex-1 overflow-hidden rounded-full bg-[#ede8e0] h-3">
+      <div className="relative h-3 flex-1 overflow-hidden rounded-full bg-[#ede8e0]">
         <div
           className={`absolute inset-y-0 left-0 rounded-full ${colorClass} transition-all duration-500`}
           style={{ width: `${pct}%` }}
@@ -121,6 +125,94 @@ function BarRow({
       <span className="w-7 shrink-0 text-right text-sm font-semibold tabular-nums text-[#5c5348]">
         {count}
       </span>
+    </div>
+  );
+}
+
+function StatsBlock({
+  subset,
+  showProfBar,
+  allRows,
+}: {
+  subset: AppointmentRow[];
+  showProfBar: boolean;
+  allRows: AppointmentRow[];
+}) {
+  const stats = useMemo(() => buildStats(subset), [subset]);
+  const maxServ = stats.byService[0]?.count ?? 1;
+  const maxTotal = allRows.length || 1;
+
+  if (subset.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-10 text-center">
+        <span className="text-3xl">📭</span>
+        <p className="text-sm text-[#8a8278]">Sem agendamentos neste período</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* cards */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        <StatCard label="Total" value={stats.total} color="border-[#c5d4d0] bg-[#f4faf8] text-[#2a4d44]" />
+        <StatCard label={statusLabel.scheduled} value={stats.scheduled} color="border-[#c9d4e8] bg-[#f0f5fc] text-[#2e4a63]" />
+        <StatCard label={statusLabel.completed} value={stats.completed} color="border-[#b8d4b0] bg-[#f0faf0] text-[#2a5a22]" />
+        <StatCard label={statusLabel.cancelled} value={stats.cancelled} color="border-[#e8c8c8] bg-[#fdf4f4] text-[#7a2a2a]" />
+      </div>
+
+      {/* origem */}
+      <section>
+        <h4 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[#8a8278]">
+          Por origem
+        </h4>
+        <div className="space-y-2.5 rounded-2xl border border-[#e4ddd3] bg-white/70 p-4">
+          <BarRow label="Painel" count={stats.fromPainel} max={stats.total} colorClass="bg-[#3d6b62]" />
+          <BarRow label="WhatsApp" count={stats.fromWhatsapp} max={stats.total} colorClass="bg-[#25a244]" />
+          {stats.fromOther > 0 && (
+            <BarRow label="Outra origem" count={stats.fromOther} max={stats.total} colorClass="bg-[#8a8278]" />
+          )}
+        </div>
+      </section>
+
+      {/* profissional (só no modo "tudo junto") */}
+      {showProfBar && (() => {
+        const byProf = countBy(subset, getProfName);
+        const maxProf = byProf[0]?.count ?? 1;
+        return byProf.length > 0 ? (
+          <section>
+            <h4 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[#8a8278]">
+              Por profissional
+            </h4>
+            <div className="space-y-2.5 rounded-2xl border border-[#e4ddd3] bg-white/70 p-4">
+              {byProf.map(({ label, count }) => (
+                <BarRow key={label} label={label} count={count} max={maxProf} colorClass="bg-[#5c4d7a]" />
+              ))}
+            </div>
+          </section>
+        ) : null;
+      })()}
+
+      {/* procedimento */}
+      {stats.byService.length > 0 && (
+        <section>
+          <h4 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[#8a8278]">
+            Por procedimento
+          </h4>
+          <div className="space-y-2.5 rounded-2xl border border-[#e4ddd3] bg-white/70 p-4">
+            {stats.byService.slice(0, 8).map(({ label, count }) => (
+              <BarRow key={label} label={label} count={count} max={maxServ} colorClass="bg-[#b87333]" />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* barra de contribuição (só por profissional, quando há total global) */}
+      {!showProfBar && (
+        <p className="text-right text-xs text-[#8a8278]">
+          {stats.total} de {maxTotal} agendamentos no período
+        </p>
+      )}
     </div>
   );
 }
@@ -137,35 +229,33 @@ export function ReportModal({
   rows: AppointmentRow[];
 }) {
   const [period, setPeriod] = useState<Period>("month");
+  const [view, setView] = useState<View>("all");
 
   const filtered = useMemo(() => {
     const { from, to } = getPeriodRange(period);
     return rows.filter((r) => inRange(r.starts_at, from, to));
   }, [rows, period]);
 
-  const stats = useMemo(() => {
-    const total = filtered.length;
-    const scheduled = filtered.filter((r) => r.status === "scheduled").length;
-    const completed = filtered.filter((r) => r.status === "completed").length;
-    const cancelled = filtered.filter((r) => r.status === "cancelled").length;
-
-    const fromPainel = filtered.filter((r) => r.source === "painel").length;
-    const fromWhatsapp = filtered.filter((r) => r.source === "whatsapp").length;
-    const fromOther = total - fromPainel - fromWhatsapp;
-
-    const byProf = countBy(filtered, profName);
-    const byService = countBy(
-      filtered.filter((r) => r.service_name),
-      (r) => r.service_name!,
-    );
-
-    return { total, scheduled, completed, cancelled, fromPainel, fromWhatsapp, fromOther, byProf, byService };
+  // lista única de profissionais com agendamentos no período
+  const profList = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const r of filtered) {
+      const n = getProfName(r);
+      if (!seen.has(n)) { seen.add(n); out.push(n); }
+    }
+    return out.sort((a, b) => a.localeCompare(b, "pt"));
   }, [filtered]);
 
-  if (!open) return null;
+  // garante que a view é válida quando o período muda
+  const safeView: View = view === "all" || profList.includes(view) ? view : "all";
 
-  const maxProf = stats.byProf[0]?.count ?? 1;
-  const maxServ = stats.byService[0]?.count ?? 1;
+  const viewSubset = useMemo(
+    () => safeView === "all" ? filtered : filtered.filter((r) => getProfName(r) === safeView),
+    [filtered, safeView],
+  );
+
+  if (!open) return null;
 
   return (
     <>
@@ -186,12 +276,8 @@ export function ReportModal({
         {/* cabeçalho */}
         <div className="flex shrink-0 items-center justify-between border-b border-[#ebe6dd] px-6 py-4">
           <div>
-            <h2 className="font-display text-lg font-semibold text-[#1f1c1a]">
-              Relatório
-            </h2>
-            <p className="mt-0.5 text-xs text-[#8a8278]">
-              Resumo de agendamentos por período
-            </p>
+            <h2 className="font-display text-lg font-semibold text-[#1f1c1a]">Relatório</h2>
+            <p className="mt-0.5 text-xs text-[#8a8278]">Resumo de agendamentos por período</p>
           </div>
           <button
             type="button"
@@ -205,8 +291,9 @@ export function ReportModal({
           </button>
         </div>
 
-        {/* seletor de período */}
-        <div className="shrink-0 border-b border-[#ebe6dd] px-6 py-3">
+        {/* filtros */}
+        <div className="shrink-0 space-y-3 border-b border-[#ebe6dd] px-6 py-3">
+          {/* período */}
           <div className="flex flex-wrap gap-1.5">
             {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
               <button
@@ -223,11 +310,41 @@ export function ReportModal({
               </button>
             ))}
           </div>
+
+          {/* vista — só aparece se houver profissionais */}
+          {profList.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setView("all")}
+                className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  safeView === "all"
+                    ? "bg-[#7a5c2e] text-white shadow-sm"
+                    : "bg-[#ece7df] text-[#5c5348] hover:bg-[#e0d9cf]"
+                }`}
+              >
+                Tudo junto
+              </button>
+              {profList.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setView(name)}
+                  className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    safeView === name
+                      ? "bg-[#5c4d7a] text-white shadow-sm"
+                      : "bg-[#ece7df] text-[#5c5348] hover:bg-[#e0d9cf]"
+                  }`}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* conteúdo */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
               <span className="text-4xl">📭</span>
@@ -237,103 +354,14 @@ export function ReportModal({
             </div>
           ) : (
             <>
-              {/* cards de resumo */}
-              <section>
-                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#8a8278]">
-                  Resumo
-                </h3>
-                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                  <StatCard
-                    label="Total"
-                    value={stats.total}
-                    color="border-[#c5d4d0] bg-[#f4faf8] text-[#2a4d44]"
-                  />
-                  <StatCard
-                    label={statusLabel.scheduled}
-                    value={stats.scheduled}
-                    color="border-[#c9d4e8] bg-[#f0f5fc] text-[#2e4a63]"
-                  />
-                  <StatCard
-                    label={statusLabel.completed}
-                    value={stats.completed}
-                    color="border-[#b8d4b0] bg-[#f0faf0] text-[#2a5a22]"
-                  />
-                  <StatCard
-                    label={statusLabel.cancelled}
-                    value={stats.cancelled}
-                    color="border-[#e8c8c8] bg-[#fdf4f4] text-[#7a2a2a]"
-                  />
-                </div>
-              </section>
-
-              {/* por origem */}
-              <section>
-                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#8a8278]">
-                  Por origem
-                </h3>
-                <div className="rounded-2xl border border-[#e4ddd3] bg-white/70 p-4 space-y-3">
-                  <BarRow
-                    label="Painel"
-                    count={stats.fromPainel}
-                    max={stats.total}
-                    colorClass="bg-[#3d6b62]"
-                  />
-                  <BarRow
-                    label="WhatsApp"
-                    count={stats.fromWhatsapp}
-                    max={stats.total}
-                    colorClass="bg-[#25a244]"
-                  />
-                  {stats.fromOther > 0 && (
-                    <BarRow
-                      label="Outra origem"
-                      count={stats.fromOther}
-                      max={stats.total}
-                      colorClass="bg-[#8a8278]"
-                    />
-                  )}
-                </div>
-              </section>
-
-              {/* por profissional */}
-              {stats.byProf.length > 0 && (
-                <section>
-                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#8a8278]">
-                    Por profissional
-                  </h3>
-                  <div className="rounded-2xl border border-[#e4ddd3] bg-white/70 p-4 space-y-3">
-                    {stats.byProf.map(({ label, count }) => (
-                      <BarRow
-                        key={label}
-                        label={label}
-                        count={count}
-                        max={maxProf}
-                        colorClass="bg-[#5c4d7a]"
-                      />
-                    ))}
-                  </div>
-                </section>
+              {safeView !== "all" && (
+                <p className="mb-4 text-sm font-semibold text-[#5c4d7a]">{safeView}</p>
               )}
-
-              {/* por procedimento */}
-              {stats.byService.length > 0 && (
-                <section>
-                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#8a8278]">
-                    Por procedimento
-                  </h3>
-                  <div className="rounded-2xl border border-[#e4ddd3] bg-white/70 p-4 space-y-3">
-                    {stats.byService.slice(0, 8).map(({ label, count }) => (
-                      <BarRow
-                        key={label}
-                        label={label}
-                        count={count}
-                        max={maxServ}
-                        colorClass="bg-[#b87333]"
-                      />
-                    ))}
-                  </div>
-                </section>
-              )}
+              <StatsBlock
+                subset={viewSubset}
+                showProfBar={safeView === "all"}
+                allRows={filtered}
+              />
             </>
           )}
         </div>
