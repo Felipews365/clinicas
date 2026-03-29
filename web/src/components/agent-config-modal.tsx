@@ -455,11 +455,11 @@ function ProceduresSectionInline({
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-[#8a8278]">Pagamento e condições</p>
                             <div className="grid gap-2 sm:grid-cols-2">
                               <label className="text-[10px] font-medium text-[#8a8278]">
-                                Tabela (R$)
+                                Tabela (R$, opcional)
                                 <input type="text" inputMode="decimal" value={d.price_brl} onChange={(e) => setRowDraft(r.id, { price_brl: e.target.value })} className={inputClsSm} />
                               </label>
                               <label className="text-[10px] font-medium text-[#8a8278]">
-                                À vista (R$)
+                                À vista (R$, opcional)
                                 <input type="text" inputMode="decimal" value={d.preco_a_vista_brl} onChange={(e) => setRowDraft(r.id, { preco_a_vista_brl: e.target.value })} className={inputClsSm} />
                               </label>
                             </div>

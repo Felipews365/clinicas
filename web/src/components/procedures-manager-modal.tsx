@@ -636,7 +636,7 @@ export function ProceduresManagerModal({
                               </p>
                               <div className="grid gap-2 sm:grid-cols-2">
                                 <label className="text-[10px] font-medium text-[#8a8278]">
-                                  Tabela (R$)
+                                  Tabela (R$, opcional)
                                   <input
                                     type="text"
                                     inputMode="decimal"
@@ -650,7 +650,7 @@ export function ProceduresManagerModal({
                                   />
                                 </label>
                                 <label className="text-[10px] font-medium text-[#8a8278]">
-                                  À vista (R$)
+                                  À vista (R$, opcional)
                                   <input
                                     type="text"
                                     inputMode="decimal"
