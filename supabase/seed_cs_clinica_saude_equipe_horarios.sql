@@ -19,13 +19,19 @@ where not exists (
 );
 
 -- Vagas: próximos 30 dias, regras por dia da semana
+-- seg–sex: 08h–20h; sáb: 08h–12h; dom: fechado
+-- Bloqueados por defeito: 12h, 13h (almoço), 18h, 19h, 20h (fim do dia)
 -- dow: 0=domingo … 6=sábado (PostgreSQL)
 insert into public.cs_horarios_disponiveis (profissional_id, data, horario, disponivel)
 select
   p.id,
   d.day_date,
   slot.t,
-  true
+  -- bloqueado por defeito nas horas de almoço e fim do dia
+  case
+    when extract(hour from slot.t) in (12, 13, 18, 19, 20) then false
+    else true
+  end
 from public.cs_profissionais p
 cross join lateral (
   select (g.gs)::date as day_date, extract(dow from (g.gs)::date)::int as dow
@@ -43,10 +49,15 @@ cross join lateral unnest(
         time '09:00',
         time '10:00',
         time '11:00',
+        time '12:00',
+        time '13:00',
         time '14:00',
         time '15:00',
         time '16:00',
-        time '17:00'
+        time '17:00',
+        time '18:00',
+        time '19:00',
+        time '20:00'
       ]
     when d.dow = 6 then
       array[

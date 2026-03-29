@@ -15,6 +15,8 @@ export type CsSlotRow = {
   profissional_id: string;
   profissional_nome: string;
   especialidade: string | null;
+  /** Preenchido quando há agendamento ativo neste horário (nome do serviço / snapshot). */
+  nome_procedimento: string | null;
   data: string;
   horario: string;
   disponivel: boolean;
@@ -62,6 +64,12 @@ function parseSlots(raw: unknown): CsSlotRow[] {
         o.especialidade == null || o.especialidade === ""
           ? null
           : String(o.especialidade),
+      nome_procedimento:
+        o.nome_procedimento == null ||
+        o.nome_procedimento === "" ||
+        String(o.nome_procedimento).trim() === ""
+          ? null
+          : String(o.nome_procedimento).trim(),
       data: String(o.data ?? ""),
       horario: String(o.horario ?? ""),
       disponivel,
@@ -71,6 +79,18 @@ function parseSlots(raw: unknown): CsSlotRow[] {
 }
 
 const MAX_DAYS_SCAN = 21;
+
+function uniqueProceduresFromSlots(slots: CsSlotRow[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of slots) {
+    const n = s.nome_procedimento?.trim();
+    if (!n || seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+  }
+  return out;
+}
 
 export function SlotsManagerModal({
   open,
@@ -240,6 +260,7 @@ export function SlotsManagerModal({
     const livre = s.disponivel;
     const porCliente = !livre && s.indisponivel_por === "cliente";
     const busy = busyId === s.horario_id;
+    const procLabel = s.nome_procedimento?.trim() ?? null;
     const estadoLabel = livre
       ? "disponível para o agente"
       : porCliente
@@ -253,6 +274,8 @@ export function SlotsManagerModal({
     const pad = compact ? "px-2 py-1.5 min-w-[4.25rem]" : "px-3 py-2 min-w-[5.5rem]";
     const textMain = compact ? "text-xs" : "text-sm";
     const textChip = compact ? "text-[8px]" : "text-[10px]";
+    const procSize = compact ? "text-[9px]" : "text-[10px]";
+    const ariaProc = procLabel ? ` Procedimento: ${procLabel}.` : "";
     return (
       <button
         key={s.horario_id}
@@ -260,12 +283,13 @@ export function SlotsManagerModal({
         disabled={busy}
         onClick={() => void toggleSlot(s)}
         aria-pressed={!livre}
-        aria-label={`${s.horario} — ${estadoLabel}. Clicar para alternar.`}
+        aria-label={`${s.horario} — ${estadoLabel}.${ariaProc} Clicar para alternar.`}
         title={
           livre
             ? "Marcar como indisponível (o agente deixa de listar)"
             : porCliente
-              ? "Tornar disponível (confirma se quer libertar a vaga com agendamento)"
+              ? (procLabel ? `${procLabel} — ` : "") +
+                "Tornar disponível (confirma se quer libertar a vaga com agendamento)"
               : "Marcar como disponível de novo"
         }
         className={`flex ${pad} flex-col items-stretch gap-0.5 rounded-xl font-semibold tabular-nums transition-[transform,box-shadow] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60 ${textMain} ${
@@ -288,6 +312,14 @@ export function SlotsManagerModal({
         >
           {chipLabel}
         </span>
+        {procLabel ? (
+          <span
+            className={`${procSize} mt-0.5 line-clamp-2 text-left font-medium normal-case leading-tight no-underline ${porCliente ? "text-[#2c3d6b]/95" : livre ? "text-[#3d6b62]/85" : "text-[#7f1d1d]/90"}`}
+            title={procLabel}
+          >
+            {procLabel}
+          </span>
+        ) : null}
       </button>
     );
   }
@@ -480,6 +512,8 @@ export function SlotsManagerModal({
             <ul className="flex flex-col gap-2" role="list">
               {Array.from(byProf.entries()).map(([profId, slots]) => {
                 const head = slots[0];
+                const procsAgend = uniqueProceduresFromSlots(slots);
+                const procsLine = procsAgend.join(" · ");
                 return (
                   <li key={profId} className="list-none">
                     <button
@@ -493,6 +527,14 @@ export function SlotsManagerModal({
                       <span className="text-xs text-[#8a8278]">
                         {head.especialidade?.trim() || "Profissional"}
                       </span>
+                      {procsLine ? (
+                        <span
+                          className="line-clamp-2 text-left text-[11px] font-medium text-[#2c3d6b]"
+                          title={procsLine}
+                        >
+                          {procsLine}
+                        </span>
+                      ) : null}
                       <span className="text-[11px] font-medium tabular-nums text-[#6b635a]">
                         {slots.length} horário{slots.length === 1 ? "" : "s"}
                       </span>
@@ -513,6 +555,8 @@ export function SlotsManagerModal({
               {(() => {
                 const slots = byProf.get(mobileProfId) ?? [];
                 const head = slots[0];
+                const procsAgend = uniqueProceduresFromSlots(slots);
+                const procsLine = procsAgend.join(" · ");
                 return (
                   <>
                     {head ? (
@@ -523,6 +567,14 @@ export function SlotsManagerModal({
                         <p className="mt-0.5 text-xs text-[#8a8278]">
                           {head.especialidade?.trim() || "Profissional"}
                         </p>
+                        {procsLine ? (
+                          <p
+                            className="mt-1 line-clamp-2 text-sm font-medium text-[#2c3d6b]"
+                            title={procsLine}
+                          >
+                            {procsLine}
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
                     <p className="mt-2 text-[10px] leading-snug text-[#5c5348] sm:hidden">
@@ -576,15 +628,25 @@ export function SlotsManagerModal({
               </li>
               {Array.from(byProf.entries()).map(([profId, slots]) => {
                 const head = slots[0];
+                const procsAgend = uniqueProceduresFromSlots(slots);
+                const procsLine = procsAgend.join(" · ");
                 return (
                   <li key={profId} className="list-none">
                     <h3 className="text-base font-semibold text-[#1f1c1a]">
                       {head.profissional_nome}
                     </h3>
-                    <p className="mb-3 mt-0.5 text-xs text-[#8a8278]">
+                    <p className="mt-0.5 text-xs text-[#8a8278]">
                       {head.especialidade?.trim() || "Profissional"}
                     </p>
-                    <div className="flex flex-wrap gap-2">
+                    {procsLine ? (
+                      <p
+                        className="mb-2 mt-1 text-sm font-medium text-[#2c3d6b]"
+                        title={procsLine}
+                      >
+                        {procsLine}
+                      </p>
+                    ) : null}
+                    <div className={`flex flex-wrap gap-2 ${procsLine ? "" : "mt-3"}`}>
                       {slots.map((s) => renderSlotButton(s, false))}
                     </div>
                   </li>

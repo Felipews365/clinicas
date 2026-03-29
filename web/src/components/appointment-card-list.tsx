@@ -304,7 +304,7 @@ export function AppointmentCardList({
                         <dt className="text-[10px] font-semibold uppercase tracking-wider text-[#9a9288]">
                           Data
                         </dt>
-                        <dd className="text-sm font-medium text-[#2c2825]">
+                        <dd className="text-sm font-medium text-[#2c2825]" suppressHydrationWarning>
                           {formatDateLine(r.starts_at)}
                         </dd>
                       </div>
@@ -317,7 +317,7 @@ export function AppointmentCardList({
                         <dt className="text-[10px] font-semibold uppercase tracking-wider text-[#9a9288]">
                           Horário
                         </dt>
-                        <dd className="text-sm font-medium tabular-nums text-[#2c2825]">
+                        <dd className="text-sm font-medium tabular-nums text-[#2c2825]" suppressHydrationWarning>
                           {formatTimeLine(r.starts_at)}
                         </dd>
                       </div>
@@ -332,15 +332,16 @@ export function AppointmentCardList({
                         </dt>
                         <dd className="text-sm font-medium text-[#2c2825]">
                           {profName ?? "Profissional"}
-                          {profSpecialty ? (
+                          {profSpecialty && (
                             <span className="mt-0.5 block text-xs font-normal text-[#6b635a]">
                               {profSpecialty}
                             </span>
-                          ) : r.service_name ? (
-                            <span className="mt-0.5 block text-xs font-normal text-[#6b635a]">
+                          )}
+                          {r.service_name && (
+                            <span className="mt-0.5 block text-xs font-semibold text-[#4D6D66]">
                               {r.service_name}
                             </span>
-                          ) : null}
+                          )}
                         </dd>
                       </div>
                     </div>
