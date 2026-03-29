@@ -3,7 +3,9 @@
     "allow": [
       "mcp__claude_ai_Supabase__execute_sql",
       "mcp__claude_ai_Supabase__apply_migration",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(curl -s -H \"X-N8N-API-KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkODUwY2QwZi02YmZhLTRhNmQtYWI1YS01NTUyMWNmZDY4NTQiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiOWE2ZTliNzctZmFkNS00MmYzLWEwODktODk4YmJjOWQ4ZTRjIiwiaWF0IjoxNzc0ODAxOTg3fQ.mj9Oj8RNKw2Pb7rL15NDa2UTCImLaGPPWzGFrL6LoTw\" \"https://n8n.vps7846.panel.icontainer.cloud/api/v1/workflows/x22UDZ4n5BuR7bUk\")",
+      "Bash(node -e \":*)"
     ]
   }
 }
