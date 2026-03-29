@@ -352,19 +352,7 @@ function ProceduresSectionInline({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[#d4cfc4]">
-      {/* cabeçalho estilo Procedimentos */}
-      <div className="bg-[#4D6D66] px-4 py-3 text-white">
-        <div className="flex items-center gap-2">
-          <span className="text-base">📋</span>
-          <p className="font-display text-sm font-semibold">Tipos de Procedimento / Consulta</p>
-        </div>
-        <p className="mt-0.5 text-xs text-white/80">
-          Crie ou edite nome, descrição, duração e pagamento. O agente obtém os dados via{" "}
-          <code className="rounded bg-white/15 px-1 text-[10px]">n8n_clinic_procedimentos</code>.
-        </p>
-      </div>
-
+    <div>
       <div className="space-y-4 bg-[#faf8f4] p-4">
         {/* formulário de novo procedimento */}
         <form onSubmit={(e) => void addProcedure(e)} className="space-y-3 rounded-xl border border-[#e6e1d8] bg-white p-4">
@@ -529,6 +517,8 @@ function SectionCard({
   value,
   templates,
   onChange,
+  isOpen,
+  onToggle,
 }: {
   emoji: string;
   title: string;
@@ -537,51 +527,69 @@ function SectionCard({
   value: string;
   templates: { label: string; value: string }[];
   onChange: (v: string) => void;
+  isOpen: boolean;
+  onToggle: () => void;
 }) {
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
+    <div className="overflow-hidden rounded-xl border border-[#e4ddd3] bg-white">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-2.5 px-4 py-3.5 text-left transition-colors hover:bg-[#faf7f2]"
+      >
         <span className="text-base">{emoji}</span>
-        <p className="text-sm font-semibold text-[#1f1c1a]">{title}</p>
+        <p className="flex-1 text-sm font-semibold text-[#1f1c1a]">{title}</p>
         {value.trim() && (
           <span className="h-2 w-2 rounded-full bg-[#3d6b62]" aria-label="configurado" />
         )}
-      </div>
-      <p className="text-xs text-[#8a8278]">{hint}</p>
+        <svg
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          className={`h-4 w-4 shrink-0 text-[#8a8278] transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+        >
+          <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+        </svg>
+      </button>
 
-      {templates.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          <span className="self-center text-xs text-[#8a8278]">Modelo:</span>
-          {templates.map((t) => (
-            <button
-              key={t.label}
-              type="button"
-              onClick={() => onChange(t.value)}
-              className="rounded-lg border border-[#d8cfe8] bg-[#f8f6fc] px-2.5 py-1 text-xs font-medium text-[#5c4d7a] transition-colors hover:bg-[#f0ebf8]"
-            >
-              {t.label}
-            </button>
-          ))}
-          {value.trim() && (
-            <button
-              type="button"
-              onClick={() => onChange("")}
-              className="rounded-lg border border-[#e8c8c8] bg-[#fdf4f4] px-2.5 py-1 text-xs font-medium text-[#7a2a2a] transition-colors hover:bg-[#fce8e8]"
-            >
-              Limpar
-            </button>
+      {isOpen && (
+        <div className="space-y-2 border-t border-[#ebe6dd] px-4 pb-4 pt-3">
+          <p className="text-xs text-[#8a8278]">{hint}</p>
+
+          {templates.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              <span className="self-center text-xs text-[#8a8278]">Modelo:</span>
+              {templates.map((t) => (
+                <button
+                  key={t.label}
+                  type="button"
+                  onClick={() => onChange(t.value)}
+                  className="rounded-lg border border-[#d8cfe8] bg-[#f8f6fc] px-2.5 py-1 text-xs font-medium text-[#5c4d7a] transition-colors hover:bg-[#f0ebf8]"
+                >
+                  {t.label}
+                </button>
+              ))}
+              {value.trim() && (
+                <button
+                  type="button"
+                  onClick={() => onChange("")}
+                  className="rounded-lg border border-[#e8c8c8] bg-[#fdf4f4] px-2.5 py-1 text-xs font-medium text-[#7a2a2a] transition-colors hover:bg-[#fce8e8]"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
           )}
+
+          <textarea
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            rows={4}
+            className="w-full resize-y rounded-xl border border-[#ddd8d0] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#2c2825] placeholder-[#b8b0a6] shadow-inner outline-none transition-[border-color,box-shadow] focus:border-[#3d6b62] focus:shadow-[0_0_0_3px_rgba(61,107,98,0.12)]"
+            spellCheck={false}
+          />
         </div>
       )}
-
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={4}
-        className="w-full resize-y rounded-xl border border-[#ddd8d0] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#2c2825] placeholder-[#b8b0a6] shadow-inner outline-none transition-[border-color,box-shadow] focus:border-[#3d6b62] focus:shadow-[0_0_0_3px_rgba(61,107,98,0.12)]"
-        spellCheck={false}
-      />
     </div>
   );
 }
@@ -604,6 +612,11 @@ export function AgentConfigModal({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openSection, setOpenSection] = useState<string | null>(null);
+
+  function toggleSection(key: string) {
+    setOpenSection((prev) => (prev === key ? null : key));
+  }
 
   useEffect(() => {
     if (!open || !supabase || !clinicId) return;
@@ -689,10 +702,10 @@ export function AgentConfigModal({
               <span className="text-sm text-[#8a8278]">A carregar…</span>
             </div>
           ) : (
-            <div className="space-y-6 divide-y divide-[#ebe6dd]">
+            <div className="space-y-2">
               {SECTIONS.map((s, i) => (
                 <>
-                  <div key={s.key} className={i > 0 ? "pt-5" : ""}>
+                  <div key={s.key}>
                     <SectionCard
                       emoji={s.emoji}
                       title={s.title}
@@ -701,15 +714,36 @@ export function AgentConfigModal({
                       value={config[s.key]}
                       templates={s.templates}
                       onChange={(v) => updateSection(s.key, v)}
+                      isOpen={openSection === s.key}
+                      onToggle={() => toggleSection(s.key)}
                     />
                   </div>
                   {i === triagemIdx && (
-                    <div key="procedimentos-inline" className="pt-5">
-                      <ProceduresSectionInline
-                        supabase={supabase}
-                        clinicId={clinicId}
-                        modalOpen={open}
-                      />
+                    <div key="procedimentos-inline" className="overflow-hidden rounded-xl border border-[#e4ddd3] bg-white">
+                      <button
+                        type="button"
+                        onClick={() => toggleSection("procedimentos")}
+                        className="flex w-full items-center gap-2.5 px-4 py-3.5 text-left transition-colors hover:bg-[#faf7f2]"
+                      >
+                        <span className="text-base">📋</span>
+                        <p className="flex-1 text-sm font-semibold text-[#1f1c1a]">Tipos de Procedimento / Consulta</p>
+                        <svg
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          className={`h-4 w-4 shrink-0 text-[#8a8278] transition-transform duration-200 ${openSection === "procedimentos" ? "rotate-180" : ""}`}
+                        >
+                          <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                      {openSection === "procedimentos" && (
+                        <div className="border-t border-[#ebe6dd]">
+                          <ProceduresSectionInline
+                            supabase={supabase}
+                            clinicId={clinicId}
+                            modalOpen={open}
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
                 </>
