@@ -10,6 +10,7 @@ import { ProfessionalsManagerModal } from "@/components/professionals-manager-mo
 import { ScheduleAppointmentModal } from "@/components/schedule-appointment-modal";
 import { SlotsManagerModal } from "@/components/slots-manager-modal";
 import { WhatsappHumanModal } from "@/components/whatsapp-human-modal";
+import { ReportModal } from "@/components/report-modal";
 import {
   addDaysToYmd,
   formatLocalYmd,
@@ -149,6 +150,7 @@ export function AgendaPortal() {
   const [proceduresOpen, setProceduresOpen] = useState(false);
   const [whatsappHumanOpen, setWhatsappHumanOpen] = useState(false);
   const [slotsManagerOpen, setSlotsManagerOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [humanQueueCount, setHumanQueueCount] = useState(0);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
@@ -595,6 +597,11 @@ export function AgendaPortal() {
             onAutoAdvanceDay={setDayKey}
             onDayKeyChange={setDayKey}
           />
+          <ReportModal
+            open={reportOpen}
+            onClose={() => setReportOpen(false)}
+            rows={rows}
+          />
         </>
       ) : null}
 
@@ -688,6 +695,14 @@ export function AgendaPortal() {
                   {humanQueueCount > 99 ? "99+" : humanQueueCount}
                 </span>
               ) : null}
+            </button>
+            <button
+              type="button"
+              title="Ver relatório de agendamentos"
+              onClick={() => setReportOpen(true)}
+              className="inline-flex items-center rounded-xl border border-[#d4c9b8] bg-[#faf6ef] px-3.5 py-2.5 text-sm font-semibold text-[#7a5c2e] shadow-sm transition-[transform,colors,box-shadow] hover:-translate-y-px hover:bg-[#f5ede0] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#b87333] active:translate-y-0"
+            >
+              <LabelEmoji emoji="📊">Relatório</LabelEmoji>
             </button>
             <button
               type="button"
@@ -815,6 +830,21 @@ export function AgendaPortal() {
                         {humanQueueCount > 99 ? "99+" : humanQueueCount}
                       </span>
                     ) : null}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="group flex w-full items-center gap-3 rounded-2xl border border-[#d4c9b8] bg-[#faf6ef] px-3 py-3 text-left shadow-sm transition-[transform,box-shadow] hover:border-[#b87333]/40 hover:shadow-md active:scale-[0.98]"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setReportOpen(true);
+                  }}
+                >
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#f5ede0] text-xl transition-transform group-hover:scale-105">
+                    📊
+                  </span>
+                  <span className="text-sm font-semibold text-[#7a5c2e]">
+                    Relatório
                   </span>
                 </button>
                 <button

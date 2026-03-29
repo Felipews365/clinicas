@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=xkwdwioawosthwjqijfb"
+    },
+    "n8n": {
+      "command": "npx",
+      "args": ["-y", "n8n-mcp"],
+      "env": {
+        "N8N_URL": "https://n8n.vps7846.panel.icontainer.cloud",
+        "N8N_API_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkODUwY2QwZi02YmZhLTRhNmQtYWI1YS01NTUyMWNmZDY4NTQiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiOWE2ZTliNzctZmFkNS00MmYzLWEwODktODk4YmJjOWQ4ZTRjIiwiaWF0IjoxNzc0ODAxOTg3fQ.mj9Oj8RNKw2Pb7rL15NDa2UTCImLaGPPWzGFrL6LoTw"
+      }
+    }
+  }
+}
