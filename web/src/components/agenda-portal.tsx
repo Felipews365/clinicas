@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { AppointmentCardList } from "@/components/appointment-card-list";
 import { AppointmentsCalendar } from "@/components/appointments-calendar";
@@ -83,6 +83,108 @@ function IconClose({ className }: { className?: string }) {
 }
 
 
+function playNotificationSound() {
+  try {
+    const ctx = new AudioContext();
+    const playTone = (freq: number, start: number, dur: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+      gain.gain.setValueAtTime(0, ctx.currentTime + start);
+      gain.gain.linearRampToValueAtTime(0.22, ctx.currentTime + start + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + dur);
+    };
+    playTone(880, 0, 0.18);
+    playTone(1100, 0.14, 0.22);
+    void ctx.resume();
+  } catch {
+    /* Web Audio not available */
+  }
+}
+
+type AppointmentNotif = {
+  uid: string;
+  type: "new" | "cancelled" | "rescheduled";
+  time?: string;
+};
+
+function NotifToast({
+  notif,
+  onClose,
+}: {
+  notif: AppointmentNotif;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 7000);
+    return () => clearTimeout(t);
+  }, [onClose]);
+
+  const config = {
+    new: {
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
+          <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18M8 14h2v2H8z" />
+        </svg>
+      ),
+      bg: "bg-[#0f766e]",
+      title: "Novo agendamento",
+      sub: notif.time ? `Marcado para as ${notif.time}` : "Recebido pelo WhatsApp",
+    },
+    cancelled: {
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
+          <circle cx="12" cy="12" r="9" /><path d="M15 9l-6 6M9 9l6 6" />
+        </svg>
+      ),
+      bg: "bg-[#dc2626]",
+      title: "Agendamento cancelado",
+      sub: notif.time ? `Horário das ${notif.time}` : "Cliente cancelou",
+    },
+    rescheduled: {
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
+          <path d="M23 4v6h-6M1 20v-6h6" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+      ),
+      bg: "bg-[#d97706]",
+      title: "Reagendamento",
+      sub: notif.time ? `Novo horário: ${notif.time}` : "Cliente reagendou",
+    },
+  }[notif.type];
+
+  return (
+    <div
+      role="alert"
+      aria-live="assertive"
+      className="flex items-start gap-3 rounded-2xl bg-white shadow-xl border border-[#e2e8f0] p-4 pr-3 min-w-[280px] max-w-xs animate-in slide-in-from-right-4 fade-in duration-300"
+    >
+      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white ${config.bg}`}>
+        {config.icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-[#1e293b]">{config.title}</p>
+        <p className="text-xs text-[#64748b] mt-0.5">{config.sub}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Fechar notificação"
+        className="ml-1 shrink-0 rounded-lg p-1 text-[#94a3b8] hover:bg-[#f1f5f9] hover:text-[#475569] transition-colors"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 function AgendaListSkeleton() {
   return (
     <div
@@ -137,6 +239,9 @@ export function AgendaPortal() {
   const [humanQueueCount, setHumanQueueCount] = useState(0);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [access, setAccess] = useState<AccessState | null>(null);
+  const [notifs, setNotifs] = useState<AppointmentNotif[]>([]);
+  const locallyModified = useRef(new Set<string>());
+  const prevRowsRef = useRef<AppointmentRow[]>([]);
   /** Vazio até ao mount no cliente — evita hidratação (data UTC vs fuso local). */
   const [dayKey, setDayKey] = useState("");
   const [todayLabel, setTodayLabel] = useState("");
@@ -227,6 +332,7 @@ export function AgendaPortal() {
         new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
     );
     setRows(merged);
+    prevRowsRef.current = merged;
     setListLoading(false);
   }, [supabase, access]);
 
@@ -278,6 +384,7 @@ export function AgendaPortal() {
       setListError(null);
       let error: { message: string; code?: string } | null = null;
 
+      locallyModified.current.add(id);
       if (id.startsWith("cs:")) {
         const { error: e } = await supabase.rpc("painel_confirm_cs_agendamento", {
           p_clinic_id: access.clinicId,
@@ -292,6 +399,7 @@ export function AgendaPortal() {
         error = e;
       }
 
+      locallyModified.current.delete(id);
       setRowBusy(null);
       if (error) {
         setListError(
@@ -320,6 +428,7 @@ export function AgendaPortal() {
       setListError(null);
       let error: { message: string; code?: string } | null = null;
 
+      locallyModified.current.add(id);
       if (id.startsWith("cs:")) {
         const { error: e } = await supabase.rpc("painel_cancel_cs_agendamento", {
           p_clinic_id: access.clinicId,
@@ -334,6 +443,7 @@ export function AgendaPortal() {
         error = e;
       }
 
+      locallyModified.current.delete(id);
       setRowBusy(null);
       if (error) {
         setListError(
@@ -428,6 +538,56 @@ export function AgendaPortal() {
   useEffect(() => {
     void refreshHumanQueue();
   }, [refreshHumanQueue, whatsappHumanOpen]);
+
+  useEffect(() => {
+    if (!supabase || access?.kind !== "clinic") return;
+    const clinicId = access.clinicId;
+
+    const fmt = (iso: string) =>
+      new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+
+    const pushNotif = (type: AppointmentNotif["type"], startsAt?: string) => {
+      playNotificationSound();
+      setNotifs((prev) => [
+        { uid: crypto.randomUUID(), type, time: startsAt ? fmt(startsAt) : undefined },
+        ...prev.slice(0, 4),
+      ]);
+    };
+
+    const channel = supabase
+      .channel(`appt-notif:${clinicId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "appointments", filter: `clinic_id=eq.${clinicId}` },
+        (payload) => {
+          const row = payload.new as { id: string; source?: string | null; starts_at?: string };
+          if (locallyModified.current.has(row.id)) return;
+          if (row.source === "painel") return;
+          pushNotif("new", row.starts_at);
+          void loadAppointments();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "appointments", filter: `clinic_id=eq.${clinicId}` },
+        (payload) => {
+          const row = payload.new as { id: string; status?: string; starts_at?: string };
+          if (locallyModified.current.has(row.id)) return;
+          const prev = prevRowsRef.current.find((r) => r.id === row.id);
+          if (row.status === "cancelled" && prev?.status !== "cancelled") {
+            pushNotif("cancelled", row.starts_at);
+          } else if (prev && row.starts_at && prev.starts_at !== row.starts_at) {
+            pushNotif("rescheduled", row.starts_at);
+          } else {
+            return;
+          }
+          void loadAppointments();
+        }
+      )
+      .subscribe();
+
+    return () => { void supabase.removeChannel(channel); };
+  }, [supabase, access, loadAppointments]);
 
   useEffect(() => {
     if (!session) {
@@ -1020,6 +1180,19 @@ export function AgendaPortal() {
           />
         )}
       </main>
+
+      {/* Notificações em tempo real */}
+      {notifs.length > 0 && (
+        <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2">
+          {notifs.map((n) => (
+            <NotifToast
+              key={n.uid}
+              notif={n}
+              onClose={() => setNotifs((prev) => prev.filter((x) => x.uid !== n.uid))}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
