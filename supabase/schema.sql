@@ -17,6 +17,7 @@ create table public.clinics (
   slug text unique, -- opcional: identificador em URLs / webhook
   phone text,
   timezone text not null default 'America/Sao_Paulo',
+  agent_instructions text, -- configuração do Agente IA em JSON
   created_at timestamptz not null default now()
 );
 

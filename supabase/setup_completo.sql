@@ -18,6 +18,7 @@ create table if not exists public.clinics (
   phone text,
   timezone text not null default 'America/Sao_Paulo',
   owner_id uuid references auth.users (id),
+  agent_instructions text, -- configuração do Agente IA em JSON
   created_at timestamptz not null default now()
 );
 
