@@ -19,7 +19,7 @@ const itemVariants = {
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.6, ease: 'easeOut' },
+    transition: { duration: 0.6, ease: 'easeOut' as const },
   },
 };
 
@@ -28,7 +28,7 @@ const cardVariants = {
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.6, ease: 'easeOut' },
+    transition: { duration: 0.6, ease: 'easeOut' as const },
   },
   hover: {
     y: -8,
@@ -45,7 +45,7 @@ const stepVariants = {
     transition: {
       duration: 0.6,
       delay: i * 0.15,
-      ease: 'easeOut',
+      ease: 'easeOut' as const,
     },
   }),
 };
@@ -55,7 +55,7 @@ const titleVariants = {
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.7, ease: 'easeOut' },
+    transition: { duration: 0.7, ease: 'easeOut' as const },
   },
 };
 
@@ -969,7 +969,7 @@ export default function LandingPage() {
                 <motion.h1
                   initial={{ opacity: 0, y: 30 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.8, ease: 'easeOut' }}
+                  transition={{ duration: 0.8, ease: 'easeOut' as const }}
                 >
                   Seu consultório merecia estar organizado.<br/>Agora pode estar em 48 horas.
                 </motion.h1>
@@ -977,7 +977,7 @@ export default function LandingPage() {
                   className="subtitle"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.8, delay: 0.2, ease: 'easeOut' }}
+                  transition={{ duration: 0.8, delay: 0.2, ease: 'easeOut' as const }}
                 >
                   Enquanto você lê isso, 500+ clínicas já estão usando AgendaClinic para eliminar faltas de pacientes, libertar a recepção e ganhar 5h por semana. Você está fora dessa?
                 </motion.p>
@@ -1013,7 +1013,7 @@ export default function LandingPage() {
                 className="hero-image"
                 initial={{ opacity: 0, y: 40 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.4, ease: 'easeOut' }}
+                transition={{ duration: 0.8, delay: 0.4, ease: 'easeOut' as const }}
               >
                 <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 400' width='100%' height='auto'%3E%3Crect width='800' height='400' fill='%23f8f7f5'/%3E%3Crect x='50' y='50' width='700' height='300' rx='8' fill='white' stroke='%23e8e8e8' stroke-width='2'/%3E%3Crect x='70' y='70' width='660' height='40' fill='%230d6b7a' opacity='0.1' rx='4'/%3E%3Crect x='70' y='130' width='300' height='20' fill='%230d6b7a' opacity='0.2' rx='2'/%3E%3Crect x='70' y='160' width='250' height='120' fill='%230d6b7a' opacity='0.05' rx='4'/%3E%3Crect x='430' y='130' width='300' height='150' fill='%232d8a6b' opacity='0.1' rx='4'/%3E%3C/svg%3E" alt="Interface do sistema de agendamento" />
               </motion.div>
