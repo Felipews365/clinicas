@@ -237,19 +237,19 @@ export function AppointmentCardList({
 
         const avatarClass =
           r.status === "cancelled"
-            ? "bg-zinc-400"
+            ? "bg-[var(--text-muted)]"
             : pending
               ? colorForPending(r.id)
               : confirmed
                 ? colorForConfirmed(r.id)
-                : "bg-[#5f736e]";
+                : "bg-[var(--primary-strong)]";
 
         const staggerMs = Math.min(index, 14) * 52;
 
         return (
           <li
             key={r.id}
-            className="agenda-animate-in list-none rounded-[1.35rem] border border-[#e8e2d9] bg-white/95 p-6 shadow-[0_1px_3px_rgba(44,40,37,0.06)] ring-1 ring-black/[0.03] transition-[box-shadow,transform] duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_40px_-12px_rgba(44,40,37,0.18)] focus-within:ring-2 focus-within:ring-[#4D6D66]/25"
+            className="agenda-animate-in list-none rounded-[1.35rem] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[var(--shadow-card)] ring-1 ring-[var(--text)]/[0.06] transition-[box-shadow,transform] duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[var(--shadow-card)] focus-within:ring-2 focus-within:ring-[var(--primary)]/25"
             style={{ animationDelay: `${staggerMs}ms` }}
           >
             <article className="flex flex-col gap-5 lg:flex-row lg:items-stretch lg:justify-between lg:gap-6">
@@ -275,24 +275,24 @@ export function AppointmentCardList({
                       ) : r.status === "scheduled" &&
                         confirmed &&
                         (r.source === "whatsapp" || r.id.startsWith("cs:")) ? (
-                        <p className="mt-1 text-xs font-medium text-[#7a7165]">
+                        <p className="mt-1 text-xs font-medium text-[var(--text-muted)]">
                           {fromAgentIa ? "Agendamento IA" : "Origem: agente WhatsApp"}
                         </p>
                       ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                       {r.status === "scheduled" && pending ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full border border-[#f0dcc8] bg-[#fff8f2] px-3.5 py-1.5 text-xs font-semibold text-[#9a4f1c]">
-                          <IconHourglass className="text-[#c45c26]" />
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--warning-border)] bg-[var(--warning-soft)] px-3.5 py-1.5 text-xs font-semibold text-[var(--warning-text)]">
+                          <IconHourglass className="text-[var(--warning-icon)]" />
                           Pendente
                         </span>
                       ) : r.status === "scheduled" && confirmed ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full border border-[#c5ddd4] bg-[#f0faf6] px-3.5 py-1.5 text-xs font-semibold text-[#1e4d40]">
-                          <IconCheck className="h-3.5 w-3.5 text-[#3d6b62]" />
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--success-soft)] px-3.5 py-1.5 text-xs font-semibold text-[var(--success-text)]">
+                          <IconCheck className="h-3.5 w-3.5 text-[var(--primary)]" />
                           Confirmado
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-3.5 py-1.5 text-xs font-semibold text-zinc-700">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--surface-soft)] px-3.5 py-1.5 text-xs font-semibold text-[var(--text-muted)]">
                           {statusLabel[r.status]}
                         </span>
                       )}
@@ -300,83 +300,83 @@ export function AppointmentCardList({
                   </div>
 
                   <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fill,minmax(200px,1fr))]">
-                    <div className="flex items-start gap-3 rounded-xl bg-[#faf8f5] px-3 py-2.5">
-                      <span className="mt-0.5 text-[#4D6D66]">
+                    <div className="flex items-start gap-3 rounded-xl bg-[var(--surface-soft)] px-3 py-2.5">
+                      <span className="mt-0.5 text-[var(--primary)]">
                         <IconCalendar className="opacity-90" />
                       </span>
                       <div>
-                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-[#9a9288]">
+                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                           Data
                         </dt>
-                        <dd className="text-sm font-medium text-[#2c2825]" suppressHydrationWarning>
+                        <dd className="text-sm font-medium text-[var(--text)]" suppressHydrationWarning>
                           {formatDateLine(r.starts_at)}
                         </dd>
                       </div>
                     </div>
-                    <div className="flex items-start gap-3 rounded-xl bg-[#faf8f5] px-3 py-2.5">
-                      <span className="mt-0.5 text-[#4D6D66]">
+                    <div className="flex items-start gap-3 rounded-xl bg-[var(--surface-soft)] px-3 py-2.5">
+                      <span className="mt-0.5 text-[var(--primary)]">
                         <IconClock className="opacity-90" />
                       </span>
                       <div>
-                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-[#9a9288]">
+                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                           Horário
                         </dt>
-                        <dd className="text-sm font-medium tabular-nums text-[#2c2825]" suppressHydrationWarning>
+                        <dd className="text-sm font-medium tabular-nums text-[var(--text)]" suppressHydrationWarning>
                           {formatTimeLine(r.starts_at)}
                         </dd>
                       </div>
                     </div>
-                    <div className="flex items-start gap-3 rounded-xl bg-[#faf8f5] px-3 py-2.5 sm:col-span-2 lg:col-span-1">
-                      <span className="mt-0.5 shrink-0 text-[#4D6D66]">
+                    <div className="flex items-start gap-3 rounded-xl bg-[var(--surface-soft)] px-3 py-2.5 sm:col-span-2 lg:col-span-1">
+                      <span className="mt-0.5 shrink-0 text-[var(--primary)]">
                         <IconStethoscope className="opacity-90" />
                       </span>
                       <div className="min-w-0">
-                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-[#9a9288]">
+                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                           Profissional e serviço
                         </dt>
-                        <dd className="text-sm font-medium text-[#2c2825]">
+                        <dd className="text-sm font-medium text-[var(--text)]">
                           {fromAgentIa ? (
-                            <span className="mb-1 block text-xs font-semibold text-[#4D6D66]">
+                            <span className="mb-1 block text-xs font-semibold text-[var(--primary)]">
                               Agendamento IA
                             </span>
                           ) : null}
                           {profName ?? "Profissional"}
                           {profSpecialty && (
-                            <span className="mt-0.5 block text-xs font-normal text-[#6b635a]">
+                            <span className="mt-0.5 block text-xs font-normal text-[var(--text-muted)]">
                               {profSpecialty}
                             </span>
                           )}
                           {r.service_name && (
-                            <span className="mt-0.5 block text-xs font-semibold text-[#4D6D66]">
+                            <span className="mt-0.5 block text-xs font-semibold text-[var(--primary)]">
                               {r.service_name}
                             </span>
                           )}
                         </dd>
                       </div>
                     </div>
-                    <div className="flex items-start gap-3 rounded-xl bg-[#faf8f5] px-3 py-2.5">
-                      <span className="mt-0.5 text-[#4D6D66]">
+                    <div className="flex items-start gap-3 rounded-xl bg-[var(--surface-soft)] px-3 py-2.5">
+                      <span className="mt-0.5 text-[var(--primary)]">
                         <IconPhone className="opacity-90" />
                       </span>
                       <div>
-                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-[#9a9288]">
+                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                           Contacto
                         </dt>
-                        <dd className="text-sm font-medium tabular-nums text-[#2c2825]">
+                        <dd className="text-sm font-medium tabular-nums text-[var(--text)]">
                           {formatPhoneDisplay(phone)}
                         </dd>
                       </div>
                     </div>
                     {r.notes ? (
-                      <div className="flex items-start gap-3 rounded-xl bg-[#faf8f5] px-3 py-2.5 sm:col-span-2">
-                        <span className="mt-0.5 text-[#4D6D66]">
+                      <div className="flex items-start gap-3 rounded-xl bg-[var(--surface-soft)] px-3 py-2.5 sm:col-span-2">
+                        <span className="mt-0.5 text-[var(--primary)]">
                           <IconChat className="opacity-90" />
                         </span>
                         <div className="min-w-0">
-                          <dt className="text-[10px] font-semibold uppercase tracking-wider text-[#9a9288]">
+                          <dt className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                             Notas
                           </dt>
-                          <dd className="line-clamp-3 text-sm leading-relaxed text-[#6b635a]">
+                          <dd className="line-clamp-3 text-sm leading-relaxed text-[var(--text-muted)]">
                             {r.notes}
                           </dd>
                         </div>
@@ -387,14 +387,14 @@ export function AppointmentCardList({
               </div>
 
               {r.status === "scheduled" ? (
-                <div className="flex shrink-0 flex-row items-center justify-end gap-2 border-t border-[#efeae3] pt-4 lg:flex-col lg:items-stretch lg:justify-center lg:border-t-0 lg:border-l lg:border-[#efeae3] lg:pt-0 lg:pl-6">
+                <div className="flex shrink-0 flex-row items-center justify-end gap-2 border-t border-[var(--border)] pt-4 lg:flex-col lg:items-stretch lg:justify-center lg:border-t-0 lg:border-l lg:border-[var(--border)] lg:pt-0 lg:pl-6">
                   {pending ? (
                     <button
                       type="button"
                       aria-label={`Confirmar agendamento de ${name}`}
                       disabled={busyId === r.id}
                       onClick={() => onConfirm(r.id)}
-                      className="inline-flex h-11 min-w-[2.75rem] items-center justify-center rounded-xl bg-[#3d6b62] text-white shadow-sm transition-colors hover:bg-[#355a52] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3d6b62] disabled:opacity-50"
+                      className="inline-flex h-11 min-w-[2.75rem] items-center justify-center rounded-xl bg-[var(--primary)] text-white shadow-sm transition-colors hover:bg-[var(--primary-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] disabled:opacity-50"
                     >
                       <IconCheck />
                     </button>
@@ -404,9 +404,9 @@ export function AppointmentCardList({
                     aria-label={`Cancelar agendamento de ${name}`}
                     disabled={busyId === r.id}
                     onClick={() => onRemove(r.id)}
-                    className="group inline-flex h-11 min-w-[2.75rem] items-center justify-center rounded-xl border border-[#ddd8cf] bg-white text-[#5c5348] transition-colors hover:border-[#f0a8a8] hover:bg-[#fef2f2] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8a8278] disabled:opacity-50"
+                    className="group inline-flex h-11 min-w-[2.75rem] items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] transition-colors hover:border-[var(--danger-text)] hover:bg-[var(--danger-soft)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--text-muted)] disabled:opacity-50"
                   >
-                    <IconTrash className="text-[#6b635a] transition-colors group-hover:text-[#dc2626]" />
+                    <IconTrash className="text-[var(--text-muted)] transition-colors group-hover:text-[var(--danger-text)]" />
                   </button>
                 </div>
               ) : null}

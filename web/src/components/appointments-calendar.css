@@ -153,36 +153,40 @@
   background: #f1f3f4;
 }
 
-@media (prefers-color-scheme: dark) {
-  .fc-consultorio {
-    --fc-border-color: #3c4043;
-    --fc-page-bg-color: #202124;
-    --fc-neutral-bg-color: #292a2d;
-    --fc-today-bg-color: rgba(138, 180, 248, 0.08);
-    --fc-button-text-color: #e8eaed;
-    --fc-button-bg-color: #303134;
-    --fc-button-border-color: #5f6368;
-    --fc-button-hover-bg-color: #3c4043;
-    --fc-button-hover-border-color: #5f6368;
-    color: #e8eaed;
-  }
+[data-theme="dark"] .fc-consultorio {
+  --fc-border-color: #2a3a3c;
+  --fc-page-bg-color: #162123;
+  --fc-neutral-bg-color: #1b2a2c;
+  --fc-today-bg-color: rgba(88, 184, 174, 0.12);
+  --fc-button-text-color: #ecf3f2;
+  --fc-button-bg-color: #1b2a2c;
+  --fc-button-border-color: #3a4a4c;
+  --fc-button-hover-bg-color: #243a3d;
+  --fc-button-hover-border-color: #4a5a5c;
+  --fc-button-active-bg-color: rgba(88, 184, 174, 0.2);
+  --fc-button-active-border-color: #58b8ae;
+  color: #ecf3f2;
+}
 
-  .fc-consultorio .fc-toolbar-title {
-    color: #e8eaed;
-  }
+[data-theme="dark"] .fc-consultorio .fc-toolbar-title {
+  color: #ecf3f2;
+}
 
-  .fc-consultorio .fc-toolbar {
-    border-bottom-color: #3c4043;
-  }
+[data-theme="dark"] .fc-consultorio .fc-toolbar {
+  border-bottom-color: #2a3a3c;
+}
 
-  .fc-consultorio .fc-col-header-cell,
-  .fc-consultorio .fc-timegrid-axis,
-  .fc-consultorio .fc-timegrid-col {
-    background: #202124;
-  }
+[data-theme="dark"] .fc-consultorio .fc-col-header-cell,
+[data-theme="dark"] .fc-consultorio .fc-timegrid-axis,
+[data-theme="dark"] .fc-consultorio .fc-timegrid-col {
+  background: #162123;
+}
 
-  .fc-consultorio .fc-timegrid-slot-label-cushion,
-  .fc-consultorio .fc-timegrid-axis-cushion {
-    color: #9aa0a6;
-  }
+[data-theme="dark"] .fc-consultorio .fc-timegrid-slot {
+  border-color: #243a3d !important;
+}
+
+[data-theme="dark"] .fc-consultorio .fc-timegrid-slot-label-cushion,
+[data-theme="dark"] .fc-consultorio .fc-timegrid-axis-cushion {
+  color: #9fb2b0;
 }

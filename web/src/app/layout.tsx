@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import "./globals.css";
 
@@ -31,10 +32,14 @@ export default function RootLayout({
   return (
     <html
       lang="pt"
+      data-theme="light"
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        <Script id="painel-theme-init" strategy="beforeInteractive">
+          {`(function(){try{var k="painel-theme";var s=localStorage.getItem(k);var t=s==="dark"||s==="light"?s:(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.setAttribute("data-theme",t);document.documentElement.style.colorScheme=t==="dark"?"dark":"light";}catch(e){}})()`}
+        </Script>
         {children}
       </body>
     </html>

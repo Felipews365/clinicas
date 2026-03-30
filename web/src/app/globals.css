@@ -1,5 +1,53 @@
 @import "tailwindcss";
 
+/* -----------------------------------------------------------------------------
+   Painel: tema claro / escuro (data-theme no <html>)
+   ----------------------------------------------------------------------------- */
+
+[data-theme="light"] {
+  --bg: #f4f8f8;
+  --surface: #ffffff;
+  --surface-soft: #eef7f6;
+  --text: #1f2a2a;
+  --text-muted: #5f7474;
+  --border: #d8e3e1;
+  --primary: #1f7a74;
+  --primary-strong: #155e59;
+  --sidebar-bg: #ffffff;
+  --sidebar-active: #dff3f1;
+  --danger-soft: #fff1f1;
+  --danger-text: #b54747;
+  --success-soft: #ecfbf7;
+  --success-text: #256b5a;
+  --warning-soft: #fff8f2;
+  --warning-border: #f0dcc8;
+  --warning-text: #9a4f1c;
+  --warning-icon: #c45c26;
+  --shadow-card: 0 8px 40px -16px rgba(24, 40, 38, 0.12);
+}
+
+[data-theme="dark"] {
+  --bg: #0f1718;
+  --surface: #162123;
+  --surface-soft: #1b2a2c;
+  --text: #ecf3f2;
+  --text-muted: #9fb2b0;
+  --border: #2a3a3c;
+  --primary: #58b8ae;
+  --primary-strong: #7fd1c8;
+  --sidebar-bg: #121c1d;
+  --sidebar-active: #1c3130;
+  --danger-soft: #2a1719;
+  --danger-text: #ff8f8f;
+  --success-soft: #102722;
+  --success-text: #7ee0bf;
+  --warning-soft: #2c2418;
+  --warning-border: #5c4a38;
+  --warning-text: #f0c49a;
+  --warning-icon: #e8a86e;
+  --shadow-card: 0 8px 40px -12px rgba(0, 0, 0, 0.45);
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -11,23 +59,56 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-display: var(--font-playfair);
+  --color-p-bg: var(--bg);
+  --color-p-surface: var(--surface);
+  --color-p-surface-soft: var(--surface-soft);
+  --color-p-text: var(--text);
+  --color-p-text-muted: var(--text-muted);
+  --color-p-border: var(--border);
+  --color-p-primary: var(--primary);
+  --color-p-primary-strong: var(--primary-strong);
+  --color-p-sidebar-bg: var(--sidebar-bg);
+  --color-p-sidebar-active: var(--sidebar-active);
+  --color-p-danger-soft: var(--danger-soft);
+  --color-p-danger-text: var(--danger-text);
+  --color-p-success-soft: var(--success-soft);
+  --color-p-success-text: var(--success-text);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+html[data-theme="light"],
+html[data-theme="dark"] {
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg);
+  color: var(--text);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 .font-display {
   font-family: var(--font-playfair), ui-serif, Georgia, "Times New Roman", serif;
+}
+
+/* Utilitários semânticos (opcional) */
+.painel-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.painel-input {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
 }
 
 /* Painel de agendamentos: entrada suave e estados de carga */
@@ -86,9 +167,9 @@ body {
 .agenda-skeleton {
   background: linear-gradient(
     100deg,
-    #f0ebe3 0%,
-    #f7f3ec 45%,
-    #f0ebe3 90%
+    var(--surface-soft) 0%,
+    var(--surface) 45%,
+    var(--surface-soft) 90%
   );
   background-size: 200% 100%;
   animation: agenda-shimmer 1.4s ease-in-out infinite;
@@ -109,6 +190,11 @@ body {
   }
   .agenda-skeleton {
     animation: none;
-    background: #f0ebe3;
+    background: var(--surface-soft);
+  }
+
+  html,
+  body {
+    transition: none;
   }
 }

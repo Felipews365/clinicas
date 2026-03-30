@@ -10,6 +10,7 @@ import { ProfessionalsManagerModal } from "@/components/professionals-manager-mo
 import { ScheduleAppointmentModal } from "@/components/schedule-appointment-modal";
 import { ClinicAgendaHoursModal } from "@/components/clinic-agenda-hours-modal";
 import { SlotsManagerModal } from "@/components/slots-manager-modal";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { WhatsappHumanModal } from "@/components/whatsapp-human-modal";
 import { ReportModal } from "@/components/report-modal";
 import { AgentConfigModal } from "@/components/agent-config-modal";
@@ -137,7 +138,7 @@ function NotifToast({
           <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18M8 14h2v2H8z" />
         </svg>
       ),
-      bg: "bg-[#0f766e]",
+      bg: "bg-[var(--primary)]",
       title: "Novo agendamento",
       sub: notif.time ? `Marcado para as ${notif.time}` : "Recebido pelo WhatsApp",
     },
@@ -167,20 +168,20 @@ function NotifToast({
     <div
       role="alert"
       aria-live="assertive"
-      className="flex items-start gap-3 rounded-2xl bg-white shadow-xl border border-[#e2e8f0] p-4 pr-3 min-w-[280px] max-w-xs animate-in slide-in-from-right-4 fade-in duration-300"
+      className="flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 pr-3 min-w-[280px] max-w-xs shadow-xl animate-in slide-in-from-right-4 fade-in duration-300"
     >
       <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white ${config.bg}`}>
         {config.icon}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-[#1e293b]">{config.title}</p>
-        <p className="text-xs text-[#64748b] mt-0.5">{config.sub}</p>
+        <p className="text-sm font-semibold text-[var(--text)]">{config.title}</p>
+        <p className="mt-0.5 text-xs text-[var(--text-muted)]">{config.sub}</p>
       </div>
       <button
         type="button"
         onClick={onClose}
         aria-label="Fechar notificação"
-        className="ml-1 shrink-0 rounded-lg p-1 text-[#94a3b8] hover:bg-[#f1f5f9] hover:text-[#475569] transition-colors"
+        className="ml-1 shrink-0 rounded-lg p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--text)]"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
           <path d="M18 6L6 18M6 6l12 12" />
@@ -201,7 +202,7 @@ function AgendaListSkeleton() {
       {[0, 1, 2].map((i) => (
         <div
           key={i}
-          className="agenda-animate-in rounded-[1.35rem] border border-[#e8e2d9] bg-white/90 p-6 shadow-sm"
+          className="agenda-animate-in rounded-[1.35rem] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm"
           style={{ animationDelay: `${i * 70}ms` }}
         >
           <div className="flex gap-5">
@@ -729,7 +730,7 @@ export function AgendaPortal() {
 
   if (!session?.user) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center px-4 text-center text-sm text-[#6b635a]">
+      <div className="flex min-h-[50vh] flex-col items-center justify-center px-4 text-center text-sm text-[var(--text-muted)]">
         <p>A abrir a página de login…</p>
       </div>
     );
@@ -737,7 +738,7 @@ export function AgendaPortal() {
 
   if (!access || access.kind === "loading") {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-[#F9F7F2] px-4 text-[#6b635a]">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--bg)] px-4 text-[var(--text-muted)]">
         <p className="text-sm">A carregar permissões…</p>
       </div>
     );
@@ -745,7 +746,7 @@ export function AgendaPortal() {
 
   if (access.kind === "onboarding") {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-[#F9F7F2] px-4 text-[#6b635a]">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--bg)] px-4 text-[var(--text-muted)]">
         <p className="text-sm">A abrir o cadastro da clínica…</p>
       </div>
     );
@@ -754,14 +755,14 @@ export function AgendaPortal() {
   if (access.kind === "denied") {
     return (
       <div className="mx-auto max-w-md px-4 py-20 text-center">
-        <h1 className="font-display text-xl font-semibold text-[#2c2825]">
+        <h1 className="font-display text-xl font-semibold text-[var(--text)]">
           Sem acesso ao painel
         </h1>
-        <p className="mt-3 text-sm text-[#6b635a]">{access.message}</p>
+        <p className="mt-3 text-sm text-[var(--text-muted)]">{access.message}</p>
         <button
           type="button"
           onClick={() => void handleSignOut()}
-          className="mt-6 rounded-lg bg-[#4D6D66] px-4 py-2 text-sm font-semibold text-white"
+          className="mt-6 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-strong)]"
         >
           Sair
         </button>
@@ -776,30 +777,30 @@ export function AgendaPortal() {
   const headerClinicName = access.clinicName || envClinic || "Clínica";
 
   const filterActive =
-    "rounded-full bg-[#0f766e] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-[#0d6560]";
+    "rounded-full bg-[var(--primary)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-[var(--primary-strong)]";
   const filterIdle =
-    "rounded-full border border-[#e2e8f0] bg-white px-5 py-2.5 text-sm font-medium text-[#64748b] shadow-sm transition-all duration-200 hover:border-[#cbd5e1] hover:bg-white";
+    "rounded-full border border-[var(--border)] bg-[var(--surface)] px-5 py-2.5 text-sm font-medium text-[var(--text-muted)] shadow-sm transition-all duration-200 hover:border-[var(--border)] hover:bg-[var(--surface-soft)]";
   const viewToggleActive =
-    "rounded-lg bg-[#0f766e] px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors";
+    "rounded-lg bg-[var(--primary)] px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors";
   const viewToggleIdle =
-    "rounded-lg px-3.5 py-2 text-xs font-medium text-[#64748b] transition-colors hover:bg-[#f8fafc]";
+    "rounded-lg px-3.5 py-2 text-xs font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-soft)]";
   const sidebarNavActive =
-    "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[#0f766e] bg-[#e8f5f2] shadow-sm transition-colors";
+    "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[var(--primary)] bg-[var(--sidebar-active)] shadow-sm transition-colors";
   const sidebarNavIdle =
-    "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#4a7a76] transition-colors hover:bg-[#f0faf8] hover:text-[#0f766e]";
+    "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--primary)]";
   function sidebarNavClass(page: SidebarPage) {
     return sidebarPage === page ? sidebarNavActive : sidebarNavIdle;
   }
   function mobileNavRowClass(page: SidebarPage) {
     return `flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm transition-colors ${
       sidebarPage === page
-        ? "bg-[#e8f5f2] font-semibold text-[#0f766e]"
-        : "font-medium text-[#4a7a76] hover:bg-[#f0faf8]"
+        ? "bg-[var(--sidebar-active)] font-semibold text-[var(--primary)]"
+        : "font-medium text-[var(--text-muted)] hover:bg-[var(--surface-soft)]"
     }`;
   }
 
   return (
-    <div className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-[#e5f3f0] to-[#ebebf5] text-[#1e293b] sm:flex-row">
+    <div className="painel-root flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[var(--bg)] text-[var(--text)] transition-colors duration-300 sm:flex-row">
       {supabase ? (
         <>
           <ScheduleAppointmentModal
@@ -820,19 +821,19 @@ export function AgendaPortal() {
       ) : null}
 
       {/* Sidebar desktop: largura fixa, altura viewport, scroll só no nav */}
-      <aside className="z-20 hidden h-full w-[280px] shrink-0 flex-col overflow-hidden border-r border-[#e8efed] bg-white shadow-[2px_0_24px_rgba(0,0,0,0.04)] sm:flex sm:flex-col">
+      <aside className="z-20 hidden h-full w-[280px] shrink-0 flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--sidebar-bg)] shadow-sm transition-colors duration-300 sm:flex sm:flex-col">
         {/* Logo */}
         <button
           type="button"
           onClick={() => setSidebarPage("dashboard")}
-          className="flex w-full items-center gap-2.5 border-b border-[#f0f4f3] px-5 py-5 text-left transition-colors hover:bg-[#f7fcfb]"
+          className="flex w-full items-center gap-2.5 border-b border-[var(--border)] px-5 py-5 text-left transition-colors hover:bg-[var(--surface-soft)]"
         >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0f766e]">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)]">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h2v2H8z"/></svg>
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold leading-tight text-[#0f4c44]">{headerClinicName}</p>
-            <p className="text-[10px] text-[#6b9e97]">Painel</p>
+            <p className="truncate text-sm font-bold leading-tight text-[var(--text)]">{headerClinicName}</p>
+            <p className="text-[10px] text-[var(--text-muted)]">Painel</p>
           </div>
         </button>
         {/* New appointment button */}
@@ -840,7 +841,7 @@ export function AgendaPortal() {
           <button
             type="button"
             onClick={() => setScheduleOpen(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#0d6560] hover:shadow-md"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[var(--primary-strong)] hover:shadow-md"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
             Novo agendamento
@@ -913,9 +914,9 @@ export function AgendaPortal() {
           </button>
         </nav>
         {/* Footer */}
-        <div className="border-t border-[#f0f4f3] px-3 py-3 space-y-0.5">
-          <p className="truncate px-3 py-1 text-[11px] text-[#8ba9a6]">{session.user.email}</p>
-          <button type="button" onClick={() => void handleSignOut()} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#4a7a76] transition-colors hover:bg-[#f0faf8] hover:text-[#0f766e]">
+        <div className="border-t border-[var(--border)] px-3 py-3 space-y-0.5">
+          <p className="truncate px-3 py-1 text-[11px] text-[var(--text-muted)]">{session.user.email}</p>
+          <button type="button" onClick={() => void handleSignOut()} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--primary)]">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
             Sair
           </button>
@@ -923,11 +924,14 @@ export function AgendaPortal() {
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <header className={`sticky top-0 z-30 shrink-0 border-b border-white/60 bg-white/70 backdrop-blur-md sm:hidden ${mobileMenuOpen ? "z-[60]" : "z-30"}`}>
-        <div className="flex items-center gap-3 px-4 py-3">
+        <div className="z-[25] hidden shrink-0 items-center justify-end gap-3 border-b border-[var(--border)] bg-[var(--surface)]/95 px-5 py-2.5 backdrop-blur-md transition-colors duration-300 sm:flex">
+          <ThemeToggle />
+        </div>
+      <header className={`sticky top-0 z-30 shrink-0 border-b border-[var(--border)] bg-[var(--surface)]/85 backdrop-blur-md sm:hidden ${mobileMenuOpen ? "z-[60]" : "z-30"}`}>
+        <div className="flex items-center gap-2 px-4 py-3">
           <button
             type="button"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm text-[#1e293b] transition-colors hover:bg-[#f0faf8]"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--surface)] shadow-sm text-[var(--text)] transition-colors hover:bg-[var(--surface-soft)]"
             aria-expanded={mobileMenuOpen}
             aria-controls="painel-menu-mobile"
             onClick={() => setMobileMenuOpen((o) => !o)}
@@ -943,13 +947,14 @@ export function AgendaPortal() {
               setMobileMenuOpen(false);
             }}
           >
-            <p className="truncate text-sm font-bold text-[#0f4c44]">{headerClinicName}</p>
-            <p className="text-[10px] text-[#6b9e97]">Painel de agendamentos</p>
+            <p className="truncate text-sm font-bold text-[var(--text)]">{headerClinicName}</p>
+            <p className="text-[10px] text-[var(--text-muted)]">Painel de agendamentos</p>
           </button>
+          <ThemeToggle />
           <button
             type="button"
             onClick={() => setScheduleOpen(true)}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0f766e] text-white shadow-sm"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-white shadow-sm"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
           </button>
@@ -960,7 +965,7 @@ export function AgendaPortal() {
         <>
           <button
             type="button"
-            className="agenda-drawer-backdrop fixed inset-0 z-40 bg-[#1e293b]/30 backdrop-blur-[2px] sm:hidden"
+            className="agenda-drawer-backdrop fixed inset-0 z-40 bg-[var(--text)]/25 backdrop-blur-[2px] sm:hidden"
             aria-label="Fechar menu"
             onClick={() => setMobileMenuOpen(false)}
           />
@@ -972,25 +977,25 @@ export function AgendaPortal() {
             aria-modal="true"
             aria-labelledby="painel-menu-mobile-title"
           >
-            <div className="flex h-full flex-col overflow-hidden bg-white shadow-[4px_0_32px_rgba(0,0,0,0.1)]">
+            <div className="flex h-full flex-col overflow-hidden bg-[var(--surface)] shadow-[4px_0_32px_rgba(0,0,0,0.1)]">
               <button
                 type="button"
-                className="flex w-full items-center gap-2.5 border-b border-[#f0f4f3] px-5 py-5 text-left hover:bg-[#f7fcfb]"
+                className="flex w-full items-center gap-2.5 border-b border-[var(--border)] px-5 py-5 text-left hover:bg-[var(--surface-soft)]"
                 onClick={() => goToSidebarPageAfterMobileMenuClose("dashboard")}
               >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0f766e]">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)]">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h2v2H8z"/></svg>
                 </div>
                 <div className="min-w-0">
-                  <p id="painel-menu-mobile-title" className="truncate text-sm font-bold text-[#0f4c44]">{headerClinicName}</p>
-                  <p className="text-[10px] text-[#6b9e97]">Painel · toque para o Dashboard</p>
+                  <p id="painel-menu-mobile-title" className="truncate text-sm font-bold text-[var(--text)]">{headerClinicName}</p>
+                  <p className="text-[10px] text-[var(--text-muted)]">Painel · toque para o Dashboard</p>
                 </div>
               </button>
               {/* New appointment */}
               <div className="px-4 pt-4 pb-2">
                 <button
                   type="button"
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-4 py-2.5 text-sm font-semibold text-white"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-white"
                   onClick={() =>
                     openModalAfterMobileMenuClose(() => setScheduleOpen(true))
                   }
@@ -1006,7 +1011,7 @@ export function AgendaPortal() {
                   className={mobileNavRowClass("dashboard")}
                   onClick={() => goToSidebarPageAfterMobileMenuClose("dashboard")}
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
                   Dashboard
                 </button>
                 <button
@@ -1014,7 +1019,7 @@ export function AgendaPortal() {
                   className={mobileNavRowClass("professionals")}
                   onClick={() => goToSidebarPageAfterMobileMenuClose("professionals")}
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
                   Profissionais
                 </button>
                 <button
@@ -1023,7 +1028,7 @@ export function AgendaPortal() {
                   aria-label="Horários da clínica"
                   onClick={() => goToSidebarPageAfterMobileMenuClose("clinic-hours")}
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-lg leading-none">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-lg leading-none">
                     📅
                   </span>
                   <span className="min-w-0 flex-1 whitespace-nowrap text-left">
@@ -1036,7 +1041,7 @@ export function AgendaPortal() {
                   aria-label="Horários por Dr ou Dra."
                   onClick={() => goToSidebarPageAfterMobileMenuClose("slots")}
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-lg leading-none">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-lg leading-none">
                     🩺
                   </span>
                   <span className="min-w-0 flex-1 whitespace-nowrap text-left">
@@ -1048,7 +1053,7 @@ export function AgendaPortal() {
                   className={`relative ${mobileNavRowClass("whatsapp-human")}`}
                   onClick={() => goToSidebarPageAfterMobileMenuClose("whatsapp-human")}
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
                   <span className="flex-1 text-left">WhatsApp humano</span>
                   {humanQueueCount > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c2410c] px-1 text-[10px] font-bold text-white">{humanQueueCount > 99 ? "99+" : humanQueueCount}</span>}
                 </button>
@@ -1057,7 +1062,7 @@ export function AgendaPortal() {
                   className={mobileNavRowClass("agent")}
                   onClick={() => goToSidebarPageAfterMobileMenuClose("agent")}
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 15h.01M12 15h.01M16 15h.01"/></svg></span>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 15h.01M12 15h.01M16 15h.01"/></svg></span>
                   Agente IA
                 </button>
                 <button
@@ -1065,15 +1070,15 @@ export function AgendaPortal() {
                   className={mobileNavRowClass("report")}
                   onClick={() => goToSidebarPageAfterMobileMenuClose("report")}
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
                   Relatório
                 </button>
               </nav>
               {/* Footer */}
-              <div className="border-t border-[#f0f4f3] px-3 py-3 space-y-0.5">
-                <p className="truncate px-3 py-1 text-[11px] text-[#8ba9a6]">{session.user.email}</p>
-                <button type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]" onClick={() => { setMobileMenuOpen(false); void handleSignOut(); }}>
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f5f5f5] text-[#64748b]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></span>
+              <div className="border-t border-[var(--border)] px-3 py-3 space-y-0.5">
+                <p className="truncate px-3 py-1 text-[11px] text-[var(--text-muted)]">{session.user.email}</p>
+                <button type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[var(--text-muted)] hover:bg-[var(--surface-soft)]" onClick={() => { setMobileMenuOpen(false); void handleSignOut(); }}>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-soft)] text-[var(--text-muted)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></span>
                   Sair
                 </button>
               </div>
@@ -1091,16 +1096,16 @@ export function AgendaPortal() {
         <>
         <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div className="agenda-animate-in max-w-xl" style={{ animationDelay: "0ms" }}>
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#0f766e]">
+            <p className="text-xs font-semibold uppercase tracking-widest text-[var(--primary)]">
               Agenda do dia
             </p>
-            <h1 className="mt-2 font-bold text-3xl text-[#0f2d28] sm:text-4xl">
+            <h1 className="mt-2 font-bold text-3xl text-[var(--text)] sm:text-4xl">
               Agendamentos
             </h1>
-            <p className="mt-3 max-w-prose text-base leading-relaxed text-[#5c5348]">
+            <p className="mt-3 max-w-prose text-base leading-relaxed text-[var(--text-muted)]">
               <span className="capitalize">{selectedDayLabel}</span>
               {dayKey && !isYmdToday(dayKey) && todayLabel ? (
-                <span className="mt-1 block text-sm font-normal normal-case text-[#8a8278]">
+                <span className="mt-1 block text-sm font-normal normal-case text-[var(--text-muted)]">
                   Referência de hoje: {todayLabel}
                 </span>
               ) : null}
@@ -1144,17 +1149,17 @@ export function AgendaPortal() {
           </div>
         </div>
 
-        <div className="agenda-animate-in mb-8 flex flex-col gap-4 rounded-2xl bg-white shadow-sm p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:p-5">
+        <div className="agenda-animate-in mb-8 flex flex-col gap-4 rounded-2xl bg-[var(--surface)] shadow-sm p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:p-5">
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               disabled={!dayKey}
               onClick={() => dayKey && setDayKey((k) => addDaysToYmd(k, -1))}
-              className="rounded-xl border border-[#e2e8f0] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#475569] shadow-sm transition-colors hover:bg-[#f8fafc]"
+              className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-sm font-semibold text-[var(--text-muted)] shadow-sm transition-colors hover:bg-[var(--surface-soft)]"
             >
               Dia anterior
             </button>
-            <label className="flex items-center gap-2 text-sm text-[#6b635a]">
+            <label className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
               <span className="sr-only sm:not-sr-only">Data</span>
               <input
                 type="date"
@@ -1164,14 +1169,14 @@ export function AgendaPortal() {
                   const v = e.target.value;
                   if (v) setDayKey(v);
                 }}
-                className="rounded-xl border border-[#dcd5ca] bg-white px-3 py-2.5 font-sans text-[#2c2825] shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3d6b62] disabled:opacity-50"
+                className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 font-sans text-[var(--text)] shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] disabled:opacity-50"
               />
             </label>
             <button
               type="button"
               disabled={!dayKey}
               onClick={() => dayKey && setDayKey((k) => addDaysToYmd(k, 1))}
-              className="rounded-xl border border-[#e2e8f0] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#475569] shadow-sm transition-colors hover:bg-[#f8fafc]"
+              className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-sm font-semibold text-[var(--text-muted)] shadow-sm transition-colors hover:bg-[var(--surface-soft)]"
             >
               Próximo dia
             </button>
@@ -1189,14 +1194,14 @@ export function AgendaPortal() {
                 );
               }}
               disabled={!dayKey || isYmdToday(dayKey)}
-              className="rounded-xl bg-[#0f766e] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0d6560] disabled:opacity-40"
+              className="rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[var(--primary-strong)] disabled:opacity-40"
             >
               Ir para hoje
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <div
-              className="flex items-center gap-0.5 rounded-xl border border-[#e6e1d8] bg-[#faf8f5] p-1"
+              className="flex items-center gap-0.5 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-1"
               role="group"
               aria-label="Vista"
             >
@@ -1223,7 +1228,7 @@ export function AgendaPortal() {
               type="button"
               disabled={listLoading}
               onClick={() => void loadAppointments()}
-              className="rounded-xl border border-[#e2e8f0] bg-white px-4 py-2.5 text-sm font-medium text-[#475569] shadow-sm transition-colors hover:bg-[#f8fafc] disabled:opacity-50"
+              className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-medium text-[var(--text-muted)] shadow-sm transition-colors hover:bg-[var(--surface-soft)] disabled:opacity-50"
             >
               Atualizar dados
             </button>
@@ -1234,40 +1239,40 @@ export function AgendaPortal() {
           className="mb-10 grid gap-4 sm:grid-cols-3"
           aria-label="Resumo numérico do dia"
         >
-          <div className="agenda-animate-in rounded-2xl bg-white shadow-sm px-6 py-5">
-            <p className="font-display text-4xl font-semibold tabular-nums text-[#0f766e]">
+          <div className="agenda-animate-in rounded-2xl bg-[var(--surface)] shadow-sm px-6 py-5">
+            <p className="font-display text-4xl font-semibold tabular-nums text-[var(--primary)]">
               {stats.totalScheduled}
             </p>
-            <p className="mt-3 text-xs font-semibold uppercase tracking-wider text-[#94a3b8]">
+            <p className="mt-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               No dia
             </p>
-            <p className="mt-1 text-sm text-[#64748b]">Consultas agendadas</p>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">Consultas agendadas</p>
           </div>
           <div
-            className="agenda-animate-in rounded-2xl bg-white shadow-sm px-6 py-5"
+            className="agenda-animate-in rounded-2xl bg-[var(--surface)] shadow-sm px-6 py-5"
             style={{ animationDelay: "60ms" }}
           >
             <p className="font-display text-4xl font-semibold tabular-nums text-[#dc6526]">
               {stats.pending}
             </p>
-            <p className="mt-3 text-xs font-semibold uppercase tracking-wider text-[#94a3b8]">
+            <p className="mt-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               Pendentes
             </p>
-            <p className="mt-1 text-sm text-[#64748b]">
+            <p className="mt-1 text-sm text-[var(--text-muted)]">
               Inclui marcações via WhatsApp
             </p>
           </div>
           <div
-            className="agenda-animate-in rounded-2xl bg-white shadow-sm px-6 py-5"
+            className="agenda-animate-in rounded-2xl bg-[var(--surface)] shadow-sm px-6 py-5"
             style={{ animationDelay: "120ms" }}
           >
-            <p className="font-display text-4xl font-semibold tabular-nums text-[#0f766e]">
+            <p className="font-display text-4xl font-semibold tabular-nums text-[var(--primary)]">
               {stats.confirmedOnDay}
             </p>
-            <p className="mt-3 text-xs font-semibold uppercase tracking-wider text-[#94a3b8]">
+            <p className="mt-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               Confirmados
             </p>
-            <p className="mt-1 text-sm text-[#64748b]">
+            <p className="mt-1 text-sm text-[var(--text-muted)]">
               Validados no painel
             </p>
           </div>
@@ -1293,9 +1298,9 @@ export function AgendaPortal() {
         ) : listLoading && !rows.length ? (
           <AgendaListSkeleton />
         ) : listDisplayRows.length === 0 ? (
-          <div className="agenda-animate-in rounded-[1.35rem] border border-[#e8e2d9] bg-white/95 px-8 py-14 text-center shadow-[0_8px_40px_-16px_rgba(44,40,37,0.15)]">
+          <div className="agenda-animate-in rounded-[1.35rem] border border-[var(--border)] bg-[var(--surface)] px-8 py-14 text-center shadow-[var(--shadow-card)]">
             <div
-              className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f0f5f3] text-[#3d6b62]"
+              className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--success-soft)] text-[var(--success-text)]"
               aria-hidden
             >
               <svg
@@ -1310,20 +1315,20 @@ export function AgendaPortal() {
                 <path d="M3 10h18M8 3v4M16 3v4" />
               </svg>
             </div>
-            <p className="font-display text-xl font-semibold text-[#2c2825]">
+            <p className="font-display text-xl font-semibold text-[var(--text)]">
               {tabFilteredRows.length === 0
                 ? "Nenhum agendamento neste filtro"
                 : "Nenhum agendamento neste dia"}
             </p>
-            <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-[#6b635a]">
+            <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-[var(--text-muted)]">
               {tabFilteredRows.length > 0 && listDisplayRows.length === 0 ? (
                 <>
                   Existem marcações em outros dias com este filtro. Use{" "}
-                  <strong className="font-medium text-[#3d524d]">
+                  <strong className="font-medium text-[var(--text)]">
                     Dia anterior
                   </strong>
                   ,{" "}
-                  <strong className="font-medium text-[#3d524d]">
+                  <strong className="font-medium text-[var(--text)]">
                     Próximo dia
                   </strong>{" "}
                   ou o campo de data para navegar.
@@ -1335,7 +1340,7 @@ export function AgendaPortal() {
                     Pendentes
                   </strong>{" "}
                   até confirmar no painel. Depois ficam como{" "}
-                  <strong className="font-medium text-[#3d6b62]">
+                  <strong className="font-medium text-[var(--primary)]">
                     Confirmados
                   </strong>
                   .
