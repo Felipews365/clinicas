@@ -594,6 +594,9 @@ function SectionCard({
   );
 }
 
+const LEMBRETE_MENSAGEM_PADRAO =
+  "Olá, {{nome}}! Lembramos que você tem uma consulta agendada para *{{data}}* às *{{hora}}*. Não se atrase! 😊 Caso precise remarcar, é só nos avisar.";
+
 // ─── componente principal ─────────────────────────────────────────────────────
 
 export function AgentConfigModal({
@@ -608,6 +611,8 @@ export function AgentConfigModal({
   clinicId: string;
 }) {
   const [config, setConfig] = useState<AgentConfig>({ ...EMPTY_CONFIG });
+  const [lembreteMinutos, setLembreteMinutos] = useState<number | null>(null);
+  const [lembreteMensagem, setLembreteMensagem] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -630,7 +635,16 @@ export function AgentConfigModal({
       .then(({ data, error: e }) => {
         setLoading(false);
         if (e) { setError(e.message); return; }
-        setConfig(parseConfig(data?.agent_instructions ?? null));
+        const raw = data?.agent_instructions ?? null;
+        setConfig(parseConfig(raw));
+        try {
+          const parsed = raw ? JSON.parse(raw) : {};
+          setLembreteMinutos(parsed.lembrete_antecedencia_minutos ?? null);
+          setLembreteMensagem(parsed.lembrete_mensagem ?? "");
+        } catch {
+          setLembreteMinutos(null);
+          setLembreteMensagem("");
+        }
       });
   }, [open, supabase, clinicId]);
 
@@ -643,10 +657,11 @@ export function AgentConfigModal({
     if (!supabase) return;
     setSaving(true);
     setError(null);
-    const hasContent = Object.values(config).some((v) => v.trim());
+    const hasContent = Object.values(config).some((v) => v.trim()) || lembreteMinutos != null;
+    const fullConfig = { ...config, lembrete_antecedencia_minutos: lembreteMinutos, lembrete_mensagem: lembreteMensagem || null };
     const { error: e } = await supabase
       .from("clinics")
-      .update({ agent_instructions: hasContent ? JSON.stringify(config) : null })
+      .update({ agent_instructions: hasContent ? JSON.stringify(fullConfig) : null })
       .eq("id", clinicId);
     setSaving(false);
     if (e) { setError(e.message); return; }
@@ -703,6 +718,59 @@ export function AgentConfigModal({
             </div>
           ) : (
             <div className="space-y-2">
+              {/* Lembrete de consulta */}
+              <div className="overflow-hidden rounded-xl border border-[#e4ddd3] bg-white">
+                <div className="flex flex-wrap items-center gap-3 px-4 py-3.5">
+                  <span className="text-base">⏰</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[#1f1c1a]">Lembrete de Consulta</p>
+                    <p className="mt-0.5 text-xs text-[#8a8278]">Enviar mensagem ao cliente antes da consulta para não se atrasar.</p>
+                  </div>
+                  <select
+                    value={lembreteMinutos ?? ""}
+                    onChange={(e) => { setLembreteMinutos(e.target.value ? Number(e.target.value) : null); setSaved(false); }}
+                    className="rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-xs text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-1"
+                  >
+                    <option value="">Não enviar</option>
+                    <option value="30">30 min antes</option>
+                    <option value="60">1 hora antes</option>
+                    <option value="120">2 horas antes</option>
+                    <option value="180">3 horas antes</option>
+                    <option value="360">6 horas antes</option>
+                    <option value="720">12 horas antes</option>
+                    <option value="1440">24 horas antes</option>
+                    <option value="2880">48 horas antes</option>
+                  </select>
+                </div>
+                {lembreteMinutos != null && (
+                  <div className="border-t border-[#ebe6dd] px-4 pb-4 pt-3 space-y-2">
+                    <p className="text-xs text-[#8a8278]">
+                      Mensagem enviada ao cliente. Use <code className="rounded bg-[#f2ede6] px-1">{"{{nome}}"}</code>, <code className="rounded bg-[#f2ede6] px-1">{"{{data}}"}</code> e <code className="rounded bg-[#f2ede6] px-1">{"{{hora}}"}</code> como variáveis.
+                    </p>
+                    <textarea
+                      value={lembreteMensagem || LEMBRETE_MENSAGEM_PADRAO}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setLembreteMensagem(v === LEMBRETE_MENSAGEM_PADRAO ? "" : v);
+                        setSaved(false);
+                      }}
+                      rows={4}
+                      className="w-full resize-y rounded-xl border border-[#ddd8d0] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#2c2825] placeholder-[#b8b0a6] shadow-inner outline-none transition-[border-color,box-shadow] focus:border-[#3d6b62] focus:shadow-[0_0_0_3px_rgba(61,107,98,0.12)]"
+                      spellCheck={false}
+                    />
+                    {lembreteMensagem && lembreteMensagem !== LEMBRETE_MENSAGEM_PADRAO && (
+                      <button
+                        type="button"
+                        onClick={() => { setLembreteMensagem(""); setSaved(false); }}
+                        className="rounded-lg border border-[#e8c8c8] bg-[#fdf4f4] px-2.5 py-1 text-xs font-medium text-[#7a2a2a] transition-colors hover:bg-[#fce8e8]"
+                      >
+                        Restaurar mensagem padrão
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {SECTIONS.map((s, i) => (
                 <>
                   <div key={s.key}>
