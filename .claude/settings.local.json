@@ -6,7 +6,15 @@
       "Bash(npx tsc:*)",
       "Bash(curl -s -H \"X-N8N-API-KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkODUwY2QwZi02YmZhLTRhNmQtYWI1YS01NTUyMWNmZDY4NTQiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiOWE2ZTliNzctZmFkNS00MmYzLWEwODktODk4YmJjOWQ4ZTRjIiwiaWF0IjoxNzc0ODAxOTg3fQ.mj9Oj8RNKw2Pb7rL15NDa2UTCImLaGPPWzGFrL6LoTw\" \"https://n8n.vps7846.panel.icontainer.cloud/api/v1/workflows/x22UDZ4n5BuR7bUk\")",
       "Bash(node -e \":*)",
-      "mcp__n8n__tools_documentation"
+      "mcp__n8n__tools_documentation",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(npx skills:*)",
+      "Bash(grep -r \"landing\\\\|home\\\\|welcome\\\\|hero\" 'c:\\\\Users\\\\felip\\\\OneDrive\\\\Ambiente de Trabalho\\\\consultorio\\\\web\\\\src' --include=*.tsx --include=*.ts -l)",
+      "Bash(start \"c:\\\\Users\\\\felip\\\\OneDrive\\\\Ambiente de Trabalho\\\\consultorio\\\\landing-page.html\")",
+      "Bash(npm install:*)",
+      "Bash(/tmp/analise_copy.md:*)",
+      "Read(//tmp/**)"
     ]
   }
 }

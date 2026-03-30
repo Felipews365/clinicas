@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agendamento Inteligente para Clínicas | Sistema Profissional</title>
+    <meta name="description" content="Transforme o atendimento da sua clínica com agendamento inteligente, confirmação automática e redução de faltas. Solução premium para consultórios médicos, odontológicos e estética.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        :root {
+            --primary: #0d6b7a;
+            --primary-dark: #094f57;
+            --primary-light: #1a8d9e;
+            --accent: #e5484d;
+            --text-dark: #1a1a1a;
+            --text-light: #666666;
+            --text-lighter: #999999;
+            --bg-light: #ffffff;
+            --bg-alt: #f8f7f5;
+            --border: #e8e8e8;
+            --success: #2d8a6b;
+
+            --spacing-xs: 0.5rem;
+            --spacing-sm: 1rem;
+            --spacing-md: 1.5rem;
+            --spacing-lg: 2rem;
+            --spacing-xl: 3rem;
+            --spacing-2xl: 4rem;
+
+            --radius: 8px;
+            --radius-lg: 12px;
+
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+            --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.08);
+
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --text-dark: #f5f5f5;
+                --text-light: #d0d0d0;
+                --text-lighter: #888888;
+                --bg-light: #0d0d0d;
+                --bg-alt: #1a1a1a;
+                --border: #2a2a2a;
+            }
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: var(--text-dark);
+            background-color: var(--bg-light);
+            line-height: 1.6;
+            transition: var(--transition);
+        }
+
+        body.dark-mode {
+            color-scheme: dark;
+        }
+
+        body.light-mode {
+            color-scheme: light;
+        }
+
+        a {
+            color: var(--primary);
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        a:hover {
+            color: var(--primary-light);
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            line-height: 1.2;
+            color: var(--text-dark);
+        }
+
+        h1 {
+            font-size: clamp(2rem, 5vw, 3.5rem);
+            font-weight: 700;
+        }
+
+        h2 {
+            font-size: clamp(1.75rem, 4vw, 2.5rem);
+        }
+
+        h3 {
+            font-size: 1.5rem;
+        }
+
+        p {
+            color: var(--text-light);
+            font-size: 1rem;
+            line-height: 1.7;
+        }
+
+        /* Header */
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: var(--bg-light);
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(10px);
+            background-color: rgba(255, 255, 255, 0.8);
+            transition: var(--transition);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            header {
+                background-color: rgba(13, 13, 13, 0.8);
+            }
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: var(--spacing-md) var(--spacing-lg);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .logo svg {
+            width: 32px;
+            height: 32px;
+        }
+
+        nav {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-2xl);
+        }
+
+        nav a {
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--text-light);
+            transition: var(--transition);
+        }
+
+        nav a:hover {
+            color: var(--primary);
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+        }
+
+        .theme-toggle {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1.25rem;
+            color: var(--text-light);
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .theme-toggle:hover {
+            color: var(--primary);
+        }
+
+        .btn {
+            padding: var(--spacing-sm) var(--spacing-lg);
+            border: none;
+            border-radius: var(--radius-lg);
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: var(--transition);
+            font-family: 'Inter', sans-serif;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--primary);
+            border: 1.5px solid var(--primary);
+        }
+
+        .btn-secondary:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-lg {
+            padding: 1rem 2rem;
+            font-size: 1.05rem;
+        }
+
+        .btn-icon {
+            padding: var(--spacing-sm) var(--spacing-md);
+        }
+
+        /* Main content */
+        main {
+            margin-top: 80px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 var(--spacing-lg);
+        }
+
+        .section {
+            padding: var(--spacing-2xl) 0;
+        }
+
+        .section-bg-alt {
+            background-color: var(--bg-alt);
+        }
+
+        /* Hero */
+        .hero {
+            padding: calc(var(--spacing-2xl) * 1.5) 0;
+            text-align: center;
+        }
+
+        .hero-content {
+            max-width: 900px;
+            margin: 0 auto var(--spacing-2xl);
+        }
+
+        .hero h1 {
+            margin-bottom: var(--spacing-md);
+            color: var(--text-dark);
+        }
+
+        .hero .subtitle {
+            font-size: 1.25rem;
+            color: var(--text-light);
+            margin-bottom: var(--spacing-2xl);
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .hero-cta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--spacing-md);
+            justify-content: center;
+            margin-bottom: var(--spacing-2xl);
+        }
+
+        .hero-image {
+            margin-top: var(--spacing-2xl);
+            text-align: center;
+        }
+
+        .hero-image img {
+            max-width: 100%;
+            height: auto;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .trust-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--spacing-md);
+            justify-content: center;
+            margin-top: var(--spacing-2xl);
+            font-size: 0.9rem;
+            color: var(--text-light);
+        }
+
+        .trust-badge {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            padding: var(--spacing-sm) var(--spacing-md);
+            background: var(--bg-alt);
+            border-radius: var(--radius);
+            transition: var(--transition);
+        }
+
+        .trust-badge:hover {
+            background: var(--border);
+        }
+
+        .trust-badge::before {
+            content: "✓";
+            color: var(--success);
+            font-weight: 700;
+        }
+
+        /* Grid sections */
+        .grid {
+            display: grid;
+            gap: var(--spacing-lg);
+            margin: var(--spacing-xl) 0;
+        }
+
+        .grid-2 {
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        }
+
+        .grid-3 {
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        }
+
+        .grid-4 {
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        }
+
+        /* Cards */
+        .card {
+            padding: var(--spacing-lg);
+            border-radius: var(--radius-lg);
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            transition: var(--transition);
+        }
+
+        .card:hover {
+            border-color: var(--primary);
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-4px);
+        }
+
+        .card h3 {
+            margin-bottom: var(--spacing-md);
+            font-size: 1.25rem;
+        }
+
+        .card p {
+            margin: 0;
+        }
+
+        .card-icon {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border-radius: var(--radius-lg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-bottom: var(--spacing-md);
+            color: white;
+        }
+
+        /* Problem section */
+        .problem-item {
+            padding: var(--spacing-lg);
+            background: var(--bg-light);
+            border-left: 4px solid var(--accent);
+            border-radius: var(--radius);
+            transition: var(--transition);
+        }
+
+        .problem-item:hover {
+            box-shadow: var(--shadow-md);
+            border-left-color: var(--primary);
+        }
+
+        .problem-item h3 {
+            color: var(--accent);
+            margin-bottom: var(--spacing-sm);
+            font-size: 1.1rem;
+        }
+
+        /* Steps */
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: var(--spacing-lg);
+            margin: var(--spacing-xl) 0;
+        }
+
+        .step {
+            position: relative;
+            padding: var(--spacing-lg);
+            padding-left: 70px;
+        }
+
+        .step::before {
+            content: attr(data-step);
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.25rem;
+        }
+
+        .step h3 {
+            margin-bottom: var(--spacing-sm);
+            font-size: 1.15rem;
+        }
+
+        /* Testimonials */
+        .testimonial {
+            padding: var(--spacing-lg);
+            background: var(--bg-light);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            transition: var(--transition);
+        }
+
+        .testimonial:hover {
+            border-color: var(--primary);
+            box-shadow: var(--shadow-md);
+        }
+
+        .testimonial-quote {
+            color: var(--text-light);
+            margin-bottom: var(--spacing-md);
+            font-style: italic;
+            font-size: 0.95rem;
+            line-height: 1.8;
+        }
+
+        .testimonial-author {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+        }
+
+        .testimonial-avatar {
+            width: 45px;
+            height: 45px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .testimonial-info h4 {
+            margin: 0;
+            font-size: 0.95rem;
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+        }
+
+        .testimonial-info p {
+            margin: 0;
+            font-size: 0.85rem;
+            color: var(--text-lighter);
+        }
+
+        /* Comparison table */
+        .comparison {
+            overflow-x: auto;
+            margin: var(--spacing-xl) 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.95rem;
+        }
+
+        thead {
+            background: var(--bg-alt);
+            border-bottom: 2px solid var(--border);
+        }
+
+        th, td {
+            padding: var(--spacing-md);
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .check {
+            color: var(--success);
+            font-weight: 700;
+            font-size: 1.2rem;
+        }
+
+        .x {
+            color: var(--text-lighter);
+        }
+
+        /* Form */
+        .form-container {
+            max-width: 500px;
+            margin: var(--spacing-xl) auto;
+            padding: var(--spacing-lg);
+            background: var(--bg-alt);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+        }
+
+        .form-group {
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            margin-bottom: var(--spacing-sm);
+            font-weight: 500;
+            color: var(--text-dark);
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: var(--spacing-sm);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            color: var(--text-dark);
+            background: var(--bg-light);
+            transition: var(--transition);
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(13, 107, 122, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            text-align: center;
+            padding: var(--spacing-2xl) 0;
+        }
+
+        .cta-section h2 {
+            margin-bottom: var(--spacing-md);
+        }
+
+        .cta-section p {
+            margin-bottom: var(--spacing-xl);
+            font-size: 1.1rem;
+            color: var(--text-light);
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* Footer */
+        footer {
+            background: var(--bg-alt);
+            border-top: 1px solid var(--border);
+            padding: var(--spacing-2xl) 0;
+            margin-top: var(--spacing-2xl);
+        }
+
+        .footer-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: var(--spacing-lg);
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .footer-section h4 {
+            font-size: 0.95rem;
+            margin-bottom: var(--spacing-md);
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+        }
+
+        .footer-section ul {
+            list-style: none;
+        }
+
+        .footer-section ul li {
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .footer-section ul li a {
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .footer-section ul li a:hover {
+            color: var(--primary);
+        }
+
+        .footer-bottom {
+            border-top: 1px solid var(--border);
+            padding-top: var(--spacing-lg);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: var(--spacing-md);
+            font-size: 0.85rem;
+            color: var(--text-lighter);
+        }
+
+        .footer-bottom a {
+            color: var(--text-lighter);
+            font-size: 0.85rem;
+        }
+
+        /* Utilities */
+        .text-center {
+            text-align: center;
+        }
+
+        .mb-1 { margin-bottom: var(--spacing-sm); }
+        .mb-2 { margin-bottom: var(--spacing-md); }
+        .mb-3 { margin-bottom: var(--spacing-lg); }
+        .mb-4 { margin-bottom: var(--spacing-xl); }
+
+        .mt-1 { margin-top: var(--spacing-sm); }
+        .mt-2 { margin-top: var(--spacing-md); }
+        .mt-3 { margin-top: var(--spacing-lg); }
+        .mt-4 { margin-top: var(--spacing-xl); }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in-up {
+            animation: fadeInUp 0.6s ease-out;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            header {
+                padding: var(--spacing-md);
+            }
+
+            .header-content {
+                padding: var(--spacing-md);
+            }
+
+            nav {
+                display: none;
+            }
+
+            .hero {
+                padding: var(--spacing-xl) 0;
+            }
+
+            .hero h1 {
+                font-size: 1.75rem;
+            }
+
+            .hero .subtitle {
+                font-size: 1rem;
+            }
+
+            .hero-cta {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .btn {
+                width: 100%;
+                max-width: 300px;
+            }
+
+            .grid-2, .grid-3, .grid-4 {
+                grid-template-columns: 1fr;
+            }
+
+            .section {
+                padding: var(--spacing-xl) 0;
+            }
+
+            h2 {
+                font-size: 1.5rem;
+            }
+
+            .container {
+                padding: 0 var(--spacing-md);
+            }
+
+            table {
+                font-size: 0.85rem;
+            }
+
+            th, td {
+                padding: var(--spacing-sm);
+            }
+
+            .footer-bottom {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+
+        @media (max-width: 480px) {
+            main {
+                margin-top: 70px;
+            }
+
+            header {
+                padding: var(--spacing-sm);
+            }
+
+            .header-content {
+                padding: var(--spacing-sm);
+            }
+
+            .logo {
+                font-size: 1rem;
+                gap: var(--spacing-xs);
+            }
+
+            .logo svg {
+                width: 24px;
+                height: 24px;
+            }
+
+            .header-actions {
+                gap: var(--spacing-sm);
+            }
+
+            .btn-header {
+                padding: 0.65rem 1rem;
+                font-size: 0.85rem;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            h2 {
+                font-size: 1.25rem;
+            }
+
+            h3 {
+                font-size: 1.1rem;
+            }
+
+            .hero .subtitle {
+                font-size: 0.95rem;
+            }
+
+            .trust-badges {
+                gap: var(--spacing-sm);
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .step {
+                padding-left: 60px;
+            }
+
+            .step::before {
+                width: 45px;
+                height: 45px;
+                font-size: 1.1rem;
+            }
+
+            .form-container {
+                padding: var(--spacing-md);
+            }
+        }
+    </style>
+</head>
+<body class="light-mode">
+    <!-- Header -->
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="32" height="32" rx="8" fill="currentColor" opacity="0.1"/>
+                    <path d="M16 8C11.58 8 8 11.58 8 16s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8m0 14c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6m3-9h-3V11h-2v4h-3v2h3v3h2v-3h3v-2z" fill="currentColor"/>
+                </svg>
+                <span>AgendaClinic</span>
+            </div>
+
+            <nav>
+                <a href="#problemas">Problemas</a>
+                <a href="#solucao">Solução</a>
+                <a href="#beneficios">Benefícios</a>
+                <a href="#depoimentos">Depoimentos</a>
+            </nav>
+
+            <div class="header-actions">
+                <button class="theme-toggle" id="themeToggle" aria-label="Alternar tema">
+                    <span id="themeIcon">🌙</span>
+                </button>
+                <button class="btn btn-primary btn-icon" onclick="document.getElementById('demo-form').scrollIntoView({ behavior: 'smooth' })">
+                    Agendar Demo
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Hero Section -->
+        <section class="hero">
+            <div class="container">
+                <div class="hero-content">
+                    <h1>Transforme o atendimento da sua clínica com agendamento inteligente</h1>
+                    <p class="subtitle">Organize consultas, reduza faltas em até 60% e ofereça um atendimento mais rápido e profissional aos seus pacientes — tudo em um único painel centralizado.</p>
+                </div>
+
+                <div class="hero-cta">
+                    <button class="btn btn-primary btn-lg" onclick="document.getElementById('demo-form').scrollIntoView({ behavior: 'smooth' })">
+                        Quero uma demonstração
+                    </button>
+                    <a href="https://wa.me/5511999999999" class="btn btn-secondary btn-lg">
+                        Falar no WhatsApp
+                    </a>
+                </div>
+
+                <div class="hero-image">
+                    <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 400' width='100%' height='auto'%3E%3Crect width='800' height='400' fill='%23f8f7f5'/%3E%3Crect x='50' y='50' width='700' height='300' rx='8' fill='white' stroke='%23e8e8e8' stroke-width='2'/%3E%3Crect x='70' y='70' width='660' height='40' fill='%230d6b7a' opacity='0.1' rx='4'/%3E%3Crect x='70' y='130' width='300' height='20' fill='%230d6b7a' opacity='0.2' rx='2'/%3E%3Crect x='70' y='160' width='250' height='120' fill='%230d6b7a' opacity='0.05' rx='4'/%3E%3Crect x='430' y='130' width='300' height='150' fill='%232d8a6b' opacity='0.1' rx='4'/%3E%3C/svg%3E" alt="Interface do sistema de agendamento">
+                </div>
+
+                <div class="trust-badges">
+                    <div class="trust-badge">Confirmação Automática</div>
+                    <div class="trust-badge">Agenda Organizada</div>
+                    <div class="trust-badge">Atendimento Ágil</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Problems Section -->
+        <section id="problemas" class="section section-bg-alt">
+            <div class="container">
+                <h2 class="text-center mb-4">Você enfrenta esses problemas todos os dias?</h2>
+                <p class="text-center" style="color: var(--text-light); margin-bottom: var(--spacing-2xl); font-size: 1.05rem;">A recepção desorganizada custa tempo, profissionalismo e receita. Saiba se a sua clínica sofre com esses problemas.</p>
+
+                <div class="grid grid-2">
+                    <div class="problem-item">
+                        <h3>Recepção Sobrecarregada</h3>
+                        <p>Sua equipe gasta horas por semana atendendo ligações e mensagens para confirmar consultas?</p>
+                    </div>
+                    <div class="problem-item">
+                        <h3>Pacientes Esquecendo Consultas</h3>
+                        <p>Até 30% dos pacientes não comparece. Você perde receita e deixa o consultório vazio.</p>
+                    </div>
+                    <div class="problem-item">
+                        <h3>Agenda Desorganizada</h3>
+                        <p>Informações espalhadas em múltiplos sistemas. Sem visão clara de horários disponíveis.</p>
+                    </div>
+                    <div class="problem-item">
+                        <h3>Demora no Retorno</h3>
+                        <p>Pacientes aguardam horas por resposta. Perdem a confiança e buscam outra clínica.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Solution Section -->
+        <section id="solucao" class="section">
+            <div class="container">
+                <div style="max-width: 800px; margin: 0 auto;">
+                    <h2 class="text-center mb-3">Como o AgendaClinic Resolve Tudo Isso</h2>
+                    <p class="text-center" style="color: var(--text-light); margin-bottom: var(--spacing-2xl); font-size: 1.05rem;">Um painel único e inteligente que centraliza atendimento, automatiza confirmações e organiza completamente a sua agenda.</p>
+                </div>
+
+                <div class="grid grid-3 mb-4">
+                    <div class="card">
+                        <div class="card-icon">📱</div>
+                        <h3>Centraliza Atendimento</h3>
+                        <p>Todos os contatos de pacientes em um único lugar. Sem mais mensagens perdidas nem WhatsApp desorganizado.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">🤖</div>
+                        <h3>Confirmação Automática</h3>
+                        <p>O sistema envia lembretes automáticos. Pacientes confirmam com um clique. Reduz faltas drasticamente.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">⚡</div>
+                        <h3>Resposta Instantânea</h3>
+                        <p>Pacientes veem horários disponíveis e agrendam sozinhos. Sua equipe não precisa atender mais.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">📅</div>
+                        <h3>Agenda Clara e Simples</h3>
+                        <p>Visualização em tempo real de todos os horários. Nunca mais conflitos ou dobla-reservas.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">👥</div>
+                        <h3>Controle de Pacientes</h3>
+                        <p>Histórico completo de cada paciente: consultas, confirmações, contatos e preferências.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">📊</div>
+                        <h3>Relatórios Detalhados</h3>
+                        <p>Saiba quantos pacientes confirmam, quantos faltam e quanto a clínica ganha com isso.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- How It Works -->
+        <section class="section section-bg-alt">
+            <div class="container">
+                <h2 class="text-center mb-4">Como Funciona</h2>
+                <p class="text-center" style="color: var(--text-light); margin-bottom: var(--spacing-2xl); font-size: 1.05rem;">4 passos simples para organizar completamente sua clínica.</p>
+
+                <div class="steps">
+                    <div class="step" data-step="1">
+                        <h3>Paciente Entra em Contato</h3>
+                        <p>Via WhatsApp, formulário ou ligação. Tudo é registrado automaticamente no sistema.</p>
+                    </div>
+                    <div class="step" data-step="2">
+                        <h3>Escolhe o Horário</h3>
+                        <p>Visualiza horários disponíveis em tempo real e escolhe o que melhor se adequa.</p>
+                    </div>
+                    <div class="step" data-step="3">
+                        <h3>Recebe Confirmação</h3>
+                        <p>Lembretes automáticos 24h e 2h antes da consulta. Taxa de confirmação sobe para 95%.</p>
+                    </div>
+                    <div class="step" data-step="4">
+                        <h3>Sua Equipe Controla Tudo</h3>
+                        <p>Painel centralizado com agenda, confirmações, perfil de cada paciente e histórico completo.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Benefits Section -->
+        <section id="beneficios" class="section">
+            <div class="container">
+                <h2 class="text-center mb-4">Resultados Que Você Pode Esperar</h2>
+                <p class="text-center" style="color: var(--text-light); margin-bottom: var(--spacing-2xl); font-size: 1.05rem;">Ganhos concretos e mensuráveis que impactam diretamente na saúde financeira da sua clínica.</p>
+
+                <div class="grid grid-2 mb-4">
+                    <div style="padding: var(--spacing-lg); background: linear-gradient(135deg, var(--primary), var(--primary-light)); border-radius: var(--radius-lg); color: white;">
+                        <h3 style="color: white; font-size: 2.5rem; margin-bottom: var(--spacing-sm);">−60%</h3>
+                        <p style="color: rgba(255,255,255,0.9);">Redução de faltas de pacientes</p>
+                    </div>
+                    <div style="padding: var(--spacing-lg); background: linear-gradient(135deg, var(--primary), var(--primary-light)); border-radius: var(--radius-lg); color: white;">
+                        <h3 style="color: white; font-size: 2.5rem; margin-bottom: var(--spacing-sm);">+5h</h3>
+                        <p style="color: rgba(255,255,255,0.9);">Horas economizadas por semana na recepção</p>
+                    </div>
+                    <div style="padding: var(--spacing-lg); background: linear-gradient(135deg, var(--primary), var(--primary-light)); border-radius: var(--radius-lg); color: white;">
+                        <h3 style="color: white; font-size: 2.5rem; margin-bottom: var(--spacing-sm);">+40%</h3>
+                        <p style="color: rgba(255,255,255,0.9);">Mais agendamentos convertidos</p>
+                    </div>
+                    <div style="padding: var(--spacing-lg); background: linear-gradient(135deg, var(--primary), var(--primary-light)); border-radius: var(--radius-lg); color: white;">
+                        <h3 style="color: white; font-size: 2.5rem; margin-bottom: var(--spacing-sm);">95%</h3>
+                        <p style="color: rgba(255,255,255,0.9);">Taxa de confirmação de pacientes</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- For Whom -->
+        <section class="section section-bg-alt">
+            <div class="container">
+                <h2 class="text-center mb-4">Para Quem é o AgendaClinic</h2>
+                <p class="text-center" style="color: var(--text-light); margin-bottom: var(--spacing-2xl); font-size: 1.05rem;">Qualquer profissional ou clínica que receba pacientes pode se beneficiar.</p>
+
+                <div class="grid grid-4">
+                    <div class="card">
+                        <h3 style="font-size: 1rem;">🏥 Clínicas Médicas</h3>
+                        <p style="font-size: 0.9rem;">Cardiologia, oftalmologia, dermatologia e qualquer especialidade.</p>
+                    </div>
+                    <div class="card">
+                        <h3 style="font-size: 1rem;">🦷 Consultórios Odontológicos</h3>
+                        <p style="font-size: 0.9rem;">Reduz faltas e organiza a agenda de múltiplos dentistas.</p>
+                    </div>
+                    <div class="card">
+                        <h3 style="font-size: 1rem;">💄 Clínicas de Estética</h3>
+                        <p style="font-size: 0.9rem;">Controla disponibilidade de profissionais e serviços.</p>
+                    </div>
+                    <div class="card">
+                        <h3 style="font-size: 1rem;">🧠 Psicólogos</h3>
+                        <p style="font-size: 0.9rem;">Lembretes automáticos aumentam confirmação de sessões.</p>
+                    </div>
+                    <div class="card">
+                        <h3 style="font-size: 1rem;">🏃 Fisioterapeutas</h3>
+                        <p style="font-size: 0.9rem;">Gerencie múltiplos pacientes com suas sessões.</p>
+                    </div>
+                    <div class="card">
+                        <h3 style="font-size: 1rem;">💉 Vacinação</h3>
+                        <p style="font-size: 0.9rem;">Organiza fila de espera e confirma comparecimento.</p>
+                    </div>
+                    <div class="card">
+                        <h3 style="font-size: 1rem;">🏠 Home Care</h3>
+                        <p style="font-size: 0.9rem;">Controla visitas domiciliares e disponibilidade.</p>
+                    </div>
+                    <div class="card">
+                        <h3 style="font-size: 1rem;">👨‍⚕️ Consultórios Particulares</h3>
+                        <p style="font-size: 0.9rem;">Para qualquer profissional que atenda por agendamento.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Social Proof -->
+        <section id="depoimentos" class="section">
+            <div class="container">
+                <h2 class="text-center mb-4">O Que Dizem Sobre Nós</h2>
+                <p class="text-center" style="color: var(--text-light); margin-bottom: var(--spacing-2xl); font-size: 1.05rem;">Profissionais e clínicas já transformaram seu atendimento com AgendaClinic.</p>
+
+                <div class="grid grid-3">
+                    <div class="testimonial">
+                        <div class="testimonial-quote">
+                            "Antes eu recebia 15 ligações por dia só para confirmar consulta. Agora o sistema faz tudo e minha recepcionista tem tempo para outras tarefas. Já economizei a mensalidade em uma semana de trabalho ganho."
+                        </div>
+                        <div class="testimonial-author">
+                            <div class="testimonial-avatar">DR</div>
+                            <div class="testimonial-info">
+                                <h4>Dra. Roberta Silva</h4>
+                                <p>Clínica de Cardiologia</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="testimonial">
+                        <div class="testimonial-quote">
+                            "As faltas caíram em 70%. Meu consultório agora tem agenda muito mais previsível e os pacientes ficam mais satisfeitos. A confirmação automática é sensacional."
+                        </div>
+                        <div class="testimonial-author">
+                            <div class="testimonial-avatar">CV</div>
+                            <div class="testimonial-info">
+                                <h4>Carlos Ventura</h4>
+                                <p>Consultório Odontológico</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="testimonial">
+                        <div class="testimonial-quote">
+                            "Implementei em uma segunda-feira e já na quinta estava gerando resultado. Meu painel está limpo, os pacientes confirmam sozinhos e a equipe respira aliviada."
+                        </div>
+                        <div class="testimonial-author">
+                            <div class="testimonial-avatar">FO</div>
+                            <div class="testimonial-info">
+                                <h4>Fernanda Oliveira</h4>
+                                <p>Clínica de Estética</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Comparison -->
+        <section class="section section-bg-alt">
+            <div class="container">
+                <h2 class="text-center mb-4">Comparação: Antes vs. Depois</h2>
+                <p class="text-center" style="color: var(--text-light); margin-bottom: var(--spacing-2xl); font-size: 1.05rem;">Entenda a diferença de usar o AgendaClinic em relação ao método manual.</p>
+
+                <div class="comparison">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Processo</th>
+                                <th>Atendimento Manual</th>
+                                <th>Com AgendaClinic</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Confirmação de Consulta</strong></td>
+                                <td>Recepcionista liga ou envia mensagem (manual)</td>
+                                <td>Sistema envia automaticamente <span class="check">✓</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Taxa de Confirmação</strong></td>
+                                <td>50-60%</td>
+                                <td>95%+ <span class="check">✓</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Tempo na Recepção</strong></td>
+                                <td>5-8h por semana em confirmações</td>
+                                <td>Liberado para outras tarefas <span class="check">✓</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Agendamento pelo Paciente</strong></td>
+                                <td>Precisa de atendente disponível <span class="x">✗</span></td>
+                                <td>Disponível 24/7 <span class="check">✓</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Histórico do Paciente</strong></td>
+                                <td>Espalhado em várias anotações <span class="x">✗</span></td>
+                                <td>Centralizado e organizado <span class="check">✓</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Visão da Agenda</strong></td>
+                                <td>Múltiplos sistemas e papéis <span class="x">✗</span></td>
+                                <td>Um painel claro e simples <span class="check">✓</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Resposta a Dúvidas</strong></td>
+                                <td>Demora para atender <span class="x">✗</span></td>
+                                <td>Respostas automáticas imediatas <span class="check">✓</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Relatórios e Análise</strong></td>
+                                <td>Difícil de mensurar <span class="x">✗</span></td>
+                                <td>Relatórios automáticos <span class="check">✓</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Final CTA -->
+        <section id="demo-form" class="cta-section">
+            <div class="container">
+                <h2>Leve mais organização, agilidade e profissionalismo para sua clínica</h2>
+                <p>Veja como implementar o AgendaClinic de forma simples e rápida, sem complicações técnicas.</p>
+
+                <div class="form-container">
+                    <form onsubmit="handleFormSubmit(event)">
+                        <div class="form-group">
+                            <label for="name">Seu Nome *</label>
+                            <input type="text" id="name" name="name" required placeholder="João Silva">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="clinic">Nome da Clínica/Consultório *</label>
+                            <input type="text" id="clinic" name="clinic" required placeholder="Clínica de Cardiologia Silva">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="specialty">Especialidade *</label>
+                            <select id="specialty" name="specialty" required>
+                                <option value="">Selecione uma especialidade</option>
+                                <option value="medicina-geral">Medicina Geral</option>
+                                <option value="cardiologia">Cardiologia</option>
+                                <option value="odontologia">Odontologia</option>
+                                <option value="estetica">Estética</option>
+                                <option value="psicologia">Psicologia</option>
+                                <option value="fisioterapia">Fisioterapia</option>
+                                <option value="oftalmologia">Oftalmologia</option>
+                                <option value="dermatologia">Dermatologia</option>
+                                <option value="outra">Outra</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="whatsapp">WhatsApp para Contato *</label>
+                            <input type="tel" id="whatsapp" name="whatsapp" required placeholder="(11) 99999-9999">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="message">Como podemos ajudar? (Opcional)</label>
+                            <textarea id="message" name="message" placeholder="Conte-nos mais sobre os desafios da sua clínica..."></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" style="width: 100%;">
+                            Solicitar Demonstração Gratuita
+                        </button>
+
+                        <p style="margin-top: var(--spacing-md); font-size: 0.85rem; color: var(--text-lighter); text-align: center;">
+                            Entraremos em contato em até 2 horas via WhatsApp
+                        </p>
+                    </form>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>AgendaClinic</h4>
+                    <p style="font-size: 0.9rem; color: var(--text-light); margin: 0;">
+                        A plataforma mais inteligente para gerenciar agendamentos de clínicas e consultórios.
+                    </p>
+                </div>
+
+                <div class="footer-section">
+                    <h4>Produto</h4>
+                    <ul>
+                        <li><a href="#solucao">Como Funciona</a></li>
+                        <li><a href="#beneficios">Benefícios</a></li>
+                        <li><a href="#depoimentos">Depoimentos</a></li>
+                    </ul>
+                </div>
+
+                <div class="footer-section">
+                    <h4>Suporte</h4>
+                    <ul>
+                        <li><a href="https://wa.me/5511999999999">WhatsApp</a></li>
+                        <li><a href="mailto:hello@agendaclinic.com">Email</a></li>
+                        <li><a href="#">Central de Ajuda</a></li>
+                    </ul>
+                </div>
+
+                <div class="footer-section">
+                    <h4>Legal</h4>
+                    <ul>
+                        <li><a href="#">Termos de Uso</a></li>
+                        <li><a href="#">Política de Privacidade</a></li>
+                        <li><a href="#">LGPD</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="footer-bottom">
+                <div>
+                    © 2024 AgendaClinic. Todos os direitos reservados.
+                </div>
+                <div>
+                    Feito para clínicas que buscam organização e profissionalismo
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Theme Toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        const htmlElement = document.documentElement;
+        const body = document.body;
+
+        function initializeTheme() {
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const currentMode = prefersDark ? 'dark-mode' : 'light-mode';
+
+            body.classList.add(currentMode);
+            updateThemeIcon(currentMode);
+        }
+
+        function toggleTheme() {
+            const isDarkMode = body.classList.contains('dark-mode');
+
+            if (isDarkMode) {
+                body.classList.remove('dark-mode');
+                body.classList.add('light-mode');
+                updateThemeIcon('light-mode');
+            } else {
+                body.classList.remove('light-mode');
+                body.classList.add('dark-mode');
+                updateThemeIcon('dark-mode');
+            }
+        }
+
+        function updateThemeIcon(mode) {
+            themeIcon.textContent = mode === 'dark-mode' ? '☀️' : '🌙';
+        }
+
+        themeToggle.addEventListener('click', toggleTheme);
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', initializeTheme);
+
+        // Form submission
+        function handleFormSubmit(event) {
+            event.preventDefault();
+
+            const name = document.getElementById('name').value;
+            const clinic = document.getElementById('clinic').value;
+            const whatsapp = document.getElementById('whatsapp').value;
+            const specialty = document.getElementById('specialty').value;
+            const message = document.getElementById('message').value;
+
+            const whatsappMessage = `Olá! Sou ${name}, da clínica "${clinic}" (${specialty}). Gostaria de agendar uma demonstração do AgendaClinic. ${message ? `Mensagem adicional: ${message}` : ''}`;
+
+            const whatsappUrl = `https://wa.me/5511999999999?text=${encodeURIComponent(whatsappMessage)}`;
+            window.open(whatsappUrl, '_blank');
+
+            // Reset form
+            event.target.reset();
+        }
+
+        // Smooth scroll behavior for navigation
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                const href = this.getAttribute('href');
+                if (href !== '#' && document.querySelector(href)) {
+                    e.preventDefault();
+                    document.querySelector(href).scrollIntoView({
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+
+        // Add fade-in animation on scroll
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver(function(entries) {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('fade-in-up');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, observerOptions);
+
+        // Observe cards and sections
+        document.querySelectorAll('.card, .testimonial, .step, .problem-item').forEach(el => {
+            observer.observe(el);
+        });
+
+        // Mobile menu could be added here if needed
+    </script>
+</body>
+</html>
