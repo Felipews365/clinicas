@@ -20,7 +20,7 @@ function CadastroFallback() {
 export default async function CadastroPage() {
   const { user, hasClinic } = await getAuthLanding();
   if (user && hasClinic) {
-    redirect("/");
+    redirect("/painel");
   }
 
   return (

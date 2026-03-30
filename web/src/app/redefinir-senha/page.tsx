@@ -52,7 +52,7 @@ export default function RedefinirSenhaPage() {
       setError(friendlyAuthError(upErr.message));
       return;
     }
-    router.push("/");
+    router.push("/login");
     router.refresh();
   }
 

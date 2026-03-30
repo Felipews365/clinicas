@@ -86,7 +86,7 @@ export function ClinicRegisterForm() {
       if (cancelled) return;
       if (bErr) return;
       clearPendingClinicSetup();
-      router.push("/");
+      router.push("/painel");
       router.refresh();
     })();
     return () => {
@@ -144,7 +144,7 @@ export function ClinicRegisterForm() {
         return;
       }
       setNotice("Conta configurada. A abrir o painel…");
-      router.push("/");
+      router.push("/painel");
       router.refresh();
       return;
     }
@@ -193,7 +193,7 @@ export function ClinicRegisterForm() {
         setBusy(false);
         return;
       }
-      router.push("/");
+      router.push("/painel");
       router.refresh();
     } else {
       savePendingClinicSetup(payload);

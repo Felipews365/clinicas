@@ -12,7 +12,7 @@ import { getPublicSupabaseConfig } from "@/lib/supabase/env";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/";
+  const next = searchParams.get("next") ?? "/painel";
 
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=auth_missing_code`);

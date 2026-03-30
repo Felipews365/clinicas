@@ -78,7 +78,7 @@ export function ClinicLoginForm() {
       setError(friendlyAuthError(signErr.message));
       return;
     }
-    router.push("/");
+    router.push("/painel");
     router.refresh();
   }
 

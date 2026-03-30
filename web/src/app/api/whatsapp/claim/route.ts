@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: upErr.message }, { status: 500 });
     }
 
-    revalidatePath("/", "layout");
+    revalidatePath("/painel", "layout");
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro";

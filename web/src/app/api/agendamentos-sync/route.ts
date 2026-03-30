@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
-  revalidatePath("/", "layout");
+    revalidatePath("/painel", "layout");
 
   return NextResponse.json({
     ok: true,

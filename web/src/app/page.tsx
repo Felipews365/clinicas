@@ -1,9 +1,6 @@
-import { AgendaPortal } from "@/components/agenda-portal";
+import LandingPage from "./landing/page";
 
+/** Entrada do site: landing. O painel fica em `/painel`. */
 export default function Home() {
-  return (
-    <div className="min-h-full flex-1 bg-[var(--bg)] transition-colors duration-300">
-      <AgendaPortal />
-    </div>
-  );
+  return <LandingPage />;
 }

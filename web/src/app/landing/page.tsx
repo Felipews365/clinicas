@@ -939,7 +939,7 @@ export default function LandingPage() {
                 {isDarkMode ? '☀️' : '🌙'}
               </motion.button>
               <motion.a
-                href="http://localhost:3000/login"
+                href="/login"
                 className="btn btn-secondary btn-sm"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}

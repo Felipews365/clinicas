@@ -20,7 +20,7 @@ function LoginFallback() {
 export default async function LoginPage() {
   const { user, hasClinic } = await getAuthLanding();
   if (user) {
-    redirect(hasClinic ? "/" : "/cadastro");
+    redirect(hasClinic ? "/painel" : "/cadastro");
   }
 
   return (
