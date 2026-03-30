@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { safePostLoginNext } from "@/lib/auth-redirect";
 import { getPublicSupabaseConfig } from "@/lib/supabase/env";
 
 /**
@@ -37,7 +38,18 @@ export async function updateSession(request: NextRequest) {
 
   // Não coloque lógica pesada entre createServerClient e getUser().
   // getUser() valida o JWT com as chaves do projeto.
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const pathname = request.nextUrl.pathname;
+  if (pathname.startsWith("/painel") && !user) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/login";
+    redirectUrl.search = "";
+    redirectUrl.searchParams.set("next", safePostLoginNext(pathname));
+    return NextResponse.redirect(redirectUrl);
+  }
 
   return supabaseResponse;
 }

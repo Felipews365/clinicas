@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useMemo, useState } from "react";
 import { friendlyAuthError } from "@/lib/auth-errors";
+import { safePostLoginNext } from "@/lib/auth-redirect";
 import { createClient } from "@/lib/supabase/client";
 import { AuthVisualShell } from "./auth-visual-shell";
 import { IconGoogle, IconLock, IconMail } from "./auth-icons";
@@ -20,6 +21,10 @@ const btnGoogle =
 export function ClinicLoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const afterLoginPath = useMemo(
+    () => safePostLoginNext(searchParams.get("next")),
+    [searchParams]
+  );
   const supabase = useMemo(() => createClient(), []);
   const formErrorId = useId();
   const forgotErrId = useId();
@@ -39,8 +44,11 @@ export function ClinicLoginForm() {
   useEffect(() => {
     if (!urlError) return;
     setError(decodeURIComponent(urlError.replace(/\+/g, " ")));
-    router.replace("/login", { scroll: false });
-  }, [urlError, router]);
+    const q = new URLSearchParams(searchParams.toString());
+    q.delete("error");
+    const qs = q.toString();
+    router.replace(qs ? `/login?${qs}` : "/login", { scroll: false });
+  }, [urlError, router, searchParams]);
 
   async function signInWithGoogle() {
     if (!supabase) return;
@@ -48,10 +56,11 @@ export function ClinicLoginForm() {
     setBusy(true);
     const origin =
       typeof window !== "undefined" ? window.location.origin : "";
+    const nextQ = encodeURIComponent(afterLoginPath);
     const { error: oErr } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${origin}/auth/callback?next=/`,
+        redirectTo: `${origin}/auth/callback?next=${nextQ}`,
         queryParams: { prompt: "select_account" },
       },
     });
@@ -78,7 +87,7 @@ export function ClinicLoginForm() {
       setError(friendlyAuthError(signErr.message));
       return;
     }
-    router.push("/painel");
+    router.push(afterLoginPath);
     router.refresh();
   }
 
