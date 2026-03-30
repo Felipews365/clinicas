@@ -8,6 +8,7 @@ import { AppointmentsCalendar } from "@/components/appointments-calendar";
 import { ProceduresManagerModal } from "@/components/procedures-manager-modal";
 import { ProfessionalsManagerModal } from "@/components/professionals-manager-modal";
 import { ScheduleAppointmentModal } from "@/components/schedule-appointment-modal";
+import { ClinicAgendaHoursModal } from "@/components/clinic-agenda-hours-modal";
 import { SlotsManagerModal } from "@/components/slots-manager-modal";
 import { WhatsappHumanModal } from "@/components/whatsapp-human-modal";
 import { ReportModal } from "@/components/report-modal";
@@ -19,6 +20,10 @@ import {
   matchesLocalDayKey,
   parseLocalYmd,
 } from "@/lib/local-day";
+import {
+  calendarSlotBoundsFromVisibleHours,
+  normalizeAgendaVisibleHours,
+} from "@/lib/clinic-agenda-hours";
 import { createClient } from "@/lib/supabase/client";
 import {
   awaitsConfirmation,
@@ -233,6 +238,14 @@ export function AgendaPortal() {
   const [proceduresOpen, setProceduresOpen] = useState(false);
   const [whatsappHumanOpen, setWhatsappHumanOpen] = useState(false);
   const [slotsManagerOpen, setSlotsManagerOpen] = useState(false);
+  const [clinicAgendaHoursModalOpen, setClinicAgendaHoursModalOpen] =
+    useState(false);
+  const [clinicAgendaHours, setClinicAgendaHours] = useState<number[]>(() =>
+    normalizeAgendaVisibleHours(null)
+  );
+  const [clinicSlotsExpediente, setClinicSlotsExpediente] = useState<unknown>(
+    null
+  );
   const [reportOpen, setReportOpen] = useState(false);
   const [agentConfigOpen, setAgentConfigOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -245,6 +258,30 @@ export function AgendaPortal() {
   /** Vazio até ao mount no cliente — evita hidratação (data UTC vs fuso local). */
   const [dayKey, setDayKey] = useState("");
   const [todayLabel, setTodayLabel] = useState("");
+  /** Evita ghost click: fechar menu e abrir modal no mesmo toque disparava o backdrop (fechar). */
+  const mobileModalOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+
+  const openModalAfterMobileMenuClose = useCallback((openFn: () => void) => {
+    if (mobileModalOpenTimerRef.current != null) {
+      clearTimeout(mobileModalOpenTimerRef.current);
+      mobileModalOpenTimerRef.current = null;
+    }
+    setMobileMenuOpen(false);
+    mobileModalOpenTimerRef.current = setTimeout(() => {
+      mobileModalOpenTimerRef.current = null;
+      openFn();
+    }, 60);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (mobileModalOpenTimerRef.current != null) {
+        clearTimeout(mobileModalOpenTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const now = new Date();
@@ -335,6 +372,33 @@ export function AgendaPortal() {
     prevRowsRef.current = merged;
     setListLoading(false);
   }, [supabase, access]);
+
+  const loadClinicAgendaSettings = useCallback(async () => {
+    if (!supabase || access?.kind !== "clinic") return;
+    const { data, error } = await supabase
+      .from("clinics")
+      .select("agenda_visible_hours, slots_expediente")
+      .eq("id", access.clinicId)
+      .maybeSingle();
+    if (error) return;
+    const row = data as {
+      agenda_visible_hours?: unknown;
+      slots_expediente?: unknown;
+    } | null;
+    if (row) {
+      setClinicAgendaHours(normalizeAgendaVisibleHours(row.agenda_visible_hours));
+      setClinicSlotsExpediente(row.slots_expediente ?? null);
+    }
+  }, [supabase, access]);
+
+  useEffect(() => {
+    void loadClinicAgendaSettings();
+  }, [loadClinicAgendaSettings]);
+
+  const calendarSlotBounds = useMemo(
+    () => calendarSlotBoundsFromVisibleHours(clinicAgendaHours),
+    [clinicAgendaHours]
+  );
 
   const tabFilteredRows = useMemo(() => {
     const base = rows.filter((r) => r.status !== "cancelled");
@@ -709,6 +773,16 @@ export function AgendaPortal() {
             onSuccess={() => void loadAppointments()}
             supabase={supabase}
             clinicId={access.clinicId}
+            clinicVisibleHours={clinicAgendaHours}
+          />
+          <ClinicAgendaHoursModal
+            open={clinicAgendaHoursModalOpen}
+            onClose={() => setClinicAgendaHoursModalOpen(false)}
+            supabase={supabase}
+            clinicId={access.clinicId}
+            onSaved={(hours) => {
+              setClinicAgendaHours(hours);
+            }}
           />
           <ProfessionalsManagerModal
             open={professionalsOpen}
@@ -738,6 +812,8 @@ export function AgendaPortal() {
             dayKey={dayKey}
             onAutoAdvanceDay={setDayKey}
             onDayKeyChange={setDayKey}
+            clinicVisibleHours={clinicAgendaHours}
+            clinicSlotsExpediente={clinicSlotsExpediente}
           />
           <ReportModal
             open={reportOpen}
@@ -784,7 +860,11 @@ export function AgendaPortal() {
           </button>
           <button type="button" onClick={() => setSlotsManagerOpen(true)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#4a7a76] transition-colors hover:bg-[#f0faf8] hover:text-[#0f766e]">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-            Horários (vagas)
+            Horários por médico (WhatsApp)
+          </button>
+          <button type="button" onClick={() => setClinicAgendaHoursModalOpen(true)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#4a7a76] transition-colors hover:bg-[#f0faf8] hover:text-[#0f766e]">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22v-6M12 2v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24"/></svg>
+            Configurar horários da clínica
           </button>
           <button type="button" onClick={() => setWhatsappHumanOpen(true)} className="relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#4a7a76] transition-colors hover:bg-[#f0faf8] hover:text-[#0f766e]">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -872,7 +952,9 @@ export function AgendaPortal() {
                 <button
                   type="button"
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-4 py-2.5 text-sm font-semibold text-white"
-                  onClick={() => { setMobileMenuOpen(false); setScheduleOpen(true); }}
+                  onClick={() =>
+                    openModalAfterMobileMenuClose(() => setScheduleOpen(true))
+                  }
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
                   Novo agendamento
@@ -880,24 +962,66 @@ export function AgendaPortal() {
               </div>
               {/* Nav */}
               <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5" aria-label="Ações do painel (mobile)">
-                <button type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]" onClick={() => { setMobileMenuOpen(false); setProfessionalsOpen(true); }}>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]"
+                  onClick={() =>
+                    openModalAfterMobileMenuClose(() => setProfessionalsOpen(true))
+                  }
+                >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
                   Profissionais
                 </button>
-                <button type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]" onClick={() => { setMobileMenuOpen(false); setSlotsManagerOpen(true); }}>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]"
+                  onClick={() =>
+                    openModalAfterMobileMenuClose(() => setSlotsManagerOpen(true))
+                  }
+                >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span>
-                  Horários (vagas)
+                  Horários por médico (WhatsApp)
                 </button>
-                <button type="button" className="relative flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]" onClick={() => { setMobileMenuOpen(false); setWhatsappHumanOpen(true); }}>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]"
+                  onClick={() =>
+                    openModalAfterMobileMenuClose(() =>
+                      setClinicAgendaHoursModalOpen(true)
+                    )
+                  }
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22v-6M12 2v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24"/></svg></span>
+                  Configurar horários da clínica
+                </button>
+                <button
+                  type="button"
+                  className="relative flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]"
+                  onClick={() =>
+                    openModalAfterMobileMenuClose(() => setWhatsappHumanOpen(true))
+                  }
+                >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
                   <span className="flex-1">WhatsApp humano</span>
                   {humanQueueCount > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c2410c] px-1 text-[10px] font-bold text-white">{humanQueueCount > 99 ? "99+" : humanQueueCount}</span>}
                 </button>
-                <button type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]" onClick={() => { setMobileMenuOpen(false); setAgentConfigOpen(true); }}>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]"
+                  onClick={() =>
+                    openModalAfterMobileMenuClose(() => setAgentConfigOpen(true))
+                  }
+                >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 15h.01M12 15h.01M16 15h.01"/></svg></span>
                   Agente IA
                 </button>
-                <button type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]" onClick={() => { setMobileMenuOpen(false); setReportOpen(true); }}>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]"
+                  onClick={() =>
+                    openModalAfterMobileMenuClose(() => setReportOpen(true))
+                  }
+                >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
                   Relatório
                 </button>
@@ -1117,6 +1241,8 @@ export function AgendaPortal() {
             rows={tabFilteredRows}
             loading={listLoading}
             focusDate={calendarFocusDate}
+            slotMinTime={calendarSlotBounds.slotMinTime}
+            slotMaxTime={calendarSlotBounds.slotMaxTime}
           />
         ) : listLoading && !rows.length ? (
           <AgendaListSkeleton />

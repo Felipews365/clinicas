@@ -1,7 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { expandAgentIdentityPlaceholders } from "@/lib/agent-placeholders";
 
 // ─── secções configuráveis ────────────────────────────────────────────────────
 
@@ -37,11 +45,24 @@ const SECTIONS: {
     emoji: "🪪",
     title: "Identidade do Agente",
     hint: "Nome, especialidade e como se apresenta ao paciente.",
-    placeholder: 'Ex: "Sou a Ana, assistente da Clínica Sorriso, especializada em Odontologia. Estou aqui para ajudar com agendamentos e dúvidas."',
+    placeholder:
+      "Ex: Sou {{name}}, atendente virtual da {{clinica}}, especializada em Odontologia. {{name}} e {{clinica}} vêm do nome do agente (acima) e do nome da clínica no cadastro.",
     templates: [
-      { label: "Odontologia", value: 'Você é a Ana, atendente virtual da Clínica Sorriso, especializada em Odontologia.\nApresente-se sempre de forma acolhedora, pois muitos pacientes têm ansiedade dentária.\nDiga: "Olá! Sou a Ana, atendente da Clínica Sorriso. Estou aqui para ajudar com agendamentos e dúvidas. Como posso te ajudar hoje?"' },
-      { label: "Clínica Geral", value: 'Você é a assistente virtual da clínica. Apresente-se pelo nome configurado no sistema.\nDiga: "Olá! Sou a assistente da clínica. Como posso te ajudar hoje?"' },
-      { label: "Estética", value: 'Você é a assistente virtual de um espaço de estética e beleza.\nUse tom leve, moderno e acolhedor.\nDiga: "Olá! Bem-vindo(a) ao nosso espaço. Posso ajudar com agendamentos e informações sobre nossos tratamentos."' },
+      {
+        label: "Odontologia",
+        value:
+          'Você é {{name}}, atendente virtual da {{clinica}}, especializada em Odontologia.\nApresente-se sempre de forma acolhedora, pois muitos pacientes têm ansiedade dentária.\nDiga: "Olá! Sou {{name}}, atendente da {{clinica}}. Estou aqui para ajudar com agendamentos e dúvidas. Como posso te ajudar hoje?"',
+      },
+      {
+        label: "Clínica Geral",
+        value:
+          'Você é {{name}}, atendente virtual da {{clinica}}.\nDiga: "Olá! Sou {{name}}, da {{clinica}}. Como posso te ajudar hoje?"',
+      },
+      {
+        label: "Estética",
+        value:
+          'Você é {{name}}, atendente virtual da {{clinica}} (estética e beleza).\nUse tom leve, moderno e acolhedor.\nDiga: "Olá! Bem-vindo(a) à {{clinica}}. Posso ajudar com agendamentos e informações sobre nossos tratamentos."',
+      },
     ],
   },
   {
@@ -97,7 +118,6 @@ const SECTIONS: {
     hint: "Qualquer outra regra, comportamento ou informação que o agente deva saber.",
     placeholder: "Ex: A clínica não atende convénios. O estacionamento é gratuito. Confirmar sempre o número de telefone do paciente antes de finalizar o agendamento...",
     templates: [
-      { label: "Lembretes Inteligentes", value: "Se o histórico mostrar que o paciente fez limpeza há mais de 6 meses, sugira agendar a próxima manutenção.\nSe o paciente usa aparelho ortodôntico e o último registro de manutenção for há mais de 35 dias, sugira agendar." },
       { label: "Informações da Clínica", value: "Endereço: [preencher]\nHorário: Segunda a Sexta 8h–20h | Sábado 8h–12h\nEstacionamento: [gratuito / pago / rua]\nConvénios aceites: [listar ou 'não aceitamos convénios']\nFormas de pagamento: dinheiro, cartão, Pix" },
     ],
   },
@@ -105,13 +125,25 @@ const SECTIONS: {
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
+/** JSON guardado pode ter secções a null; normalizar evita .trim() em null. */
+function normalizeAgentConfig(
+  partial: Partial<Record<SectionKey, unknown>>
+): AgentConfig {
+  const out = { ...EMPTY_CONFIG };
+  for (const key of Object.keys(EMPTY_CONFIG) as SectionKey[]) {
+    const v = partial[key];
+    out[key] = typeof v === "string" ? v : "";
+  }
+  return out;
+}
+
 function parseConfig(raw: string | null): AgentConfig {
   if (!raw) return { ...EMPTY_CONFIG };
   try {
     const parsed = JSON.parse(raw);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { procedimentos: _drop, ...rest } = parsed as Record<string, string>;
-    return { ...EMPTY_CONFIG, ...rest };
+    const { procedimentos: _drop, ...rest } = parsed as Record<string, unknown>;
+    return normalizeAgentConfig({ ...EMPTY_CONFIG, ...rest });
   } catch {
     return { ...EMPTY_CONFIG, outros: raw };
   }
@@ -124,11 +156,11 @@ function configToInstructions(cfg: AgentConfig): string {
     tom: "TOM E LINGUAGEM",
     orientacoes: "ORIENTAÇÕES AO PACIENTE",
     transferir: "QUANDO TRANSFERIR PARA HUMANO",
-    outros: "OUTRAS INSTRUÇÕES",
+    otros: "OUTRAS INSTRUÇÕES",
   };
   return (Object.keys(labels) as SectionKey[])
-    .filter((k) => cfg[k].trim())
-    .map((k) => `### ${labels[k]}\n${cfg[k].trim()}`)
+    .filter((k) => (cfg[k] ?? "").trim())
+    .map((k) => `### ${labels[k]}\n${(cfg[k] ?? "").trim()}`)
     .join("\n\n");
 }
 
@@ -519,6 +551,9 @@ function SectionCard({
   onChange,
   isOpen,
   onToggle,
+  beforeHint,
+  afterTextarea,
+  showConfiguredDot,
 }: {
   emoji: string;
   title: string;
@@ -529,6 +564,11 @@ function SectionCard({
   onChange: (v: string) => void;
   isOpen: boolean;
   onToggle: () => void;
+  /** Conteúdo no topo da área expandida (ex.: nome do agente em Identidade). */
+  beforeHint?: ReactNode;
+  afterTextarea?: ReactNode;
+  /** Mostrar ponto «configurado» mesmo sem texto na textarea (ex.: só nome do agente). */
+  showConfiguredDot?: boolean;
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-[#e4ddd3] bg-white">
@@ -539,7 +579,7 @@ function SectionCard({
       >
         <span className="text-base">{emoji}</span>
         <p className="flex-1 text-sm font-semibold text-[#1f1c1a]">{title}</p>
-        {value.trim() && (
+        {((value ?? "").trim() || showConfiguredDot) && (
           <span className="h-2 w-2 rounded-full bg-[#3d6b62]" aria-label="configurado" />
         )}
         <svg
@@ -553,6 +593,7 @@ function SectionCard({
 
       {isOpen && (
         <div className="space-y-2 border-t border-[#ebe6dd] px-4 pb-4 pt-3">
+          {beforeHint}
           <p className="text-xs text-[#8a8278]">{hint}</p>
 
           {templates.length > 0 && (
@@ -568,7 +609,7 @@ function SectionCard({
                   {t.label}
                 </button>
               ))}
-              {value.trim() && (
+              {(value ?? "").trim() && (
                 <button
                   type="button"
                   onClick={() => onChange("")}
@@ -581,13 +622,14 @@ function SectionCard({
           )}
 
           <textarea
-            value={value}
+            value={value ?? ""}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
             rows={4}
             className="w-full resize-y rounded-xl border border-[#ddd8d0] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#2c2825] placeholder-[#b8b0a6] shadow-inner outline-none transition-[border-color,box-shadow] focus:border-[#3d6b62] focus:shadow-[0_0_0_3px_rgba(61,107,98,0.12)]"
             spellCheck={false}
           />
+          {afterTextarea}
         </div>
       )}
     </div>
@@ -596,6 +638,9 @@ function SectionCard({
 
 const LEMBRETE_MENSAGEM_PADRAO =
   "Olá, {{nome}}! Lembramos que você tem uma consulta agendada para *{{data}}* às *{{hora}}*. Não se atrase! 😊 Caso precise remarcar, é só nos avisar.";
+
+const LEMBRETES_INTELIGENTES_PADRAO =
+  "Se o histórico mostrar que o paciente fez limpeza há mais de 6 meses, sugira agendar a próxima manutenção.\nSe o paciente usa aparelho ortodôntico e o último registro de manutenção for há mais de 35 dias, sugira agendar.";
 
 // ─── componente principal ─────────────────────────────────────────────────────
 
@@ -611,17 +656,28 @@ export function AgentConfigModal({
   clinicId: string;
 }) {
   const [config, setConfig] = useState<AgentConfig>({ ...EMPTY_CONFIG });
+  const [nomeAgente, setNomeAgente] = useState<string>("");
+  const [clinicName, setClinicName] = useState<string>("");
+  const [quemSomos, setQuemSomos] = useState<string>("");
+  const [enderecoClinica, setEnderecoClinica] = useState<string>("");
   const [lembreteMinutos, setLembreteMinutos] = useState<number | null>(null);
   const [lembreteMensagem, setLembreteMensagem] = useState<string>("");
+  /** Regras para o agente sugerir retornos / manutenção (vai para o system prompt). */
+  const [lembreteSugestoesInteligentes, setLembreteSugestoesInteligentes] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openSection, setOpenSection] = useState<string | null>(null);
 
-  function toggleSection(key: string) {
+  /** Acordeão: só uma secção aberta; clicar na aberta fecha. */
+  function toggleAccordionSection(key: string) {
     setOpenSection((prev) => (prev === key ? null : key));
   }
+
+  useEffect(() => {
+    if (open) setOpenSection(null);
+  }, [open]);
 
   useEffect(() => {
     if (!open || !supabase || !clinicId) return;
@@ -629,24 +685,47 @@ export function AgentConfigModal({
     setError(null);
     supabase
       .from("clinics")
-      .select("agent_instructions")
+      .select("name, agent_instructions")
       .eq("id", clinicId)
       .single()
       .then(({ data, error: e }) => {
         setLoading(false);
         if (e) { setError(e.message); return; }
+        setClinicName(typeof data?.name === "string" ? data.name : "");
         const raw = data?.agent_instructions ?? null;
         setConfig(parseConfig(raw));
         try {
           const parsed = raw ? JSON.parse(raw) : {};
+          setNomeAgente(parsed.nome_agente ?? "");
+          setQuemSomos(typeof parsed.quem_somos === "string" ? parsed.quem_somos : "");
+          setEnderecoClinica(typeof parsed.endereco === "string" ? parsed.endereco : "");
           setLembreteMinutos(parsed.lembrete_antecedencia_minutos ?? null);
           setLembreteMensagem(parsed.lembrete_mensagem ?? "");
+          setLembreteSugestoesInteligentes(
+            typeof parsed.lembrete_sugestoes_inteligentes === "string"
+              ? parsed.lembrete_sugestoes_inteligentes
+              : ""
+          );
         } catch {
           setLembreteMinutos(null);
           setLembreteMensagem("");
+          setLembreteSugestoesInteligentes("");
+          setQuemSomos("");
+          setEnderecoClinica("");
         }
       });
   }, [open, supabase, clinicId]);
+
+  const identidadePreview = useMemo(
+    () =>
+      expandAgentIdentityPlaceholders(config.identidade ?? "", {
+        nomeAgente,
+        nomeClinica: clinicName,
+        quemSomos,
+        endereco: enderecoClinica,
+      }),
+    [config.identidade, nomeAgente, clinicName, quemSomos, enderecoClinica]
+  );
 
   function updateSection(key: SectionKey, value: string) {
     setConfig((prev) => ({ ...prev, [key]: value }));
@@ -657,8 +736,22 @@ export function AgentConfigModal({
     if (!supabase) return;
     setSaving(true);
     setError(null);
-    const hasContent = Object.values(config).some((v) => v.trim()) || lembreteMinutos != null;
-    const fullConfig = { ...config, lembrete_antecedencia_minutos: lembreteMinutos, lembrete_mensagem: lembreteMensagem || null };
+    const hasContent =
+      Object.values(config).some((v) => (v ?? "").trim()) ||
+      !!nomeAgente.trim() ||
+      !!quemSomos.trim() ||
+      !!enderecoClinica.trim() ||
+      !!lembreteSugestoesInteligentes.trim() ||
+      lembreteMinutos != null;
+    const fullConfig = {
+      ...config,
+      nome_agente: nomeAgente.trim() || null,
+      quem_somos: quemSomos.trim() || null,
+      endereco: enderecoClinica.trim() || null,
+      lembrete_antecedencia_minutos: lembreteMinutos,
+      lembrete_mensagem: lembreteMensagem || null,
+      lembrete_sugestoes_inteligentes: lembreteSugestoesInteligentes.trim() || null,
+    };
     const { error: e } = await supabase
       .from("clinics")
       .update({ agent_instructions: hasContent ? JSON.stringify(fullConfig) : null })
@@ -669,7 +762,7 @@ export function AgentConfigModal({
     setTimeout(() => setSaved(false), 2500);
   }
 
-  const filledCount = Object.values(config).filter((v) => v.trim()).length;
+  const filledCount = Object.values(config).filter((v) => (v ?? "").trim()).length;
 
   if (!open) return null;
 
@@ -718,62 +811,142 @@ export function AgentConfigModal({
             </div>
           ) : (
             <div className="space-y-2">
-              {/* Lembrete de consulta */}
+              {/* Lembrete de consulta (acordeão) */}
               <div className="overflow-hidden rounded-xl border border-[#e4ddd3] bg-white">
-                <div className="flex flex-wrap items-center gap-3 px-4 py-3.5">
+                <button
+                  type="button"
+                  onClick={() => toggleAccordionSection("lembrete")}
+                  className="flex w-full items-center gap-2.5 px-4 py-3.5 text-left transition-colors hover:bg-[#faf7f2]"
+                >
                   <span className="text-base">⏰</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-[#1f1c1a]">Lembrete de Consulta</p>
-                    <p className="mt-0.5 text-xs text-[#8a8278]">Enviar mensagem ao cliente antes da consulta para não se atrasar.</p>
-                  </div>
-                  <select
-                    value={lembreteMinutos ?? ""}
-                    onChange={(e) => { setLembreteMinutos(e.target.value ? Number(e.target.value) : null); setSaved(false); }}
-                    className="rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-xs text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-1"
-                  >
-                    <option value="">Não enviar</option>
-                    <option value="30">30 min antes</option>
-                    <option value="60">1 hora antes</option>
-                    <option value="120">2 horas antes</option>
-                    <option value="180">3 horas antes</option>
-                    <option value="360">6 horas antes</option>
-                    <option value="720">12 horas antes</option>
-                    <option value="1440">24 horas antes</option>
-                    <option value="2880">48 horas antes</option>
-                  </select>
-                </div>
-                {lembreteMinutos != null && (
-                  <div className="border-t border-[#ebe6dd] px-4 pb-4 pt-3 space-y-2">
-                    <p className="text-xs text-[#8a8278]">
-                      Mensagem enviada ao cliente. Use <code className="rounded bg-[#f2ede6] px-1">{"{{nome}}"}</code>, <code className="rounded bg-[#f2ede6] px-1">{"{{data}}"}</code> e <code className="rounded bg-[#f2ede6] px-1">{"{{hora}}"}</code> como variáveis.
+                    <p className="mt-0.5 text-xs text-[#8a8278]">
+                      SMS antes da consulta, mensagem e lembretes inteligentes.
                     </p>
-                    <textarea
-                      value={lembreteMensagem || LEMBRETE_MENSAGEM_PADRAO}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setLembreteMensagem(v === LEMBRETE_MENSAGEM_PADRAO ? "" : v);
-                        setSaved(false);
-                      }}
-                      rows={4}
-                      className="w-full resize-y rounded-xl border border-[#ddd8d0] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#2c2825] placeholder-[#b8b0a6] shadow-inner outline-none transition-[border-color,box-shadow] focus:border-[#3d6b62] focus:shadow-[0_0_0_3px_rgba(61,107,98,0.12)]"
-                      spellCheck={false}
-                    />
-                    {lembreteMensagem && lembreteMensagem !== LEMBRETE_MENSAGEM_PADRAO && (
-                      <button
-                        type="button"
-                        onClick={() => { setLembreteMensagem(""); setSaved(false); }}
-                        className="rounded-lg border border-[#e8c8c8] bg-[#fdf4f4] px-2.5 py-1 text-xs font-medium text-[#7a2a2a] transition-colors hover:bg-[#fce8e8]"
+                  </div>
+                  {(lembreteMinutos != null ||
+                    lembreteSugestoesInteligentes.trim() ||
+                    lembreteMensagem.trim()) && (
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-[#3d6b62]" aria-label="configurado" />
+                  )}
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className={`h-4 w-4 shrink-0 text-[#8a8278] transition-transform duration-200 ${openSection === "lembrete" ? "rotate-180" : ""}`}
+                  >
+                    <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                {openSection === "lembrete" && (
+                  <div className="space-y-4 border-t border-[#ebe6dd] px-4 pb-4 pt-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <label className="text-xs font-medium text-[#5c5348]" htmlFor="agent-lembrete-antecedencia">
+                        Enviar SMS quanto tempo antes
+                      </label>
+                      <select
+                        id="agent-lembrete-antecedencia"
+                        value={lembreteMinutos ?? ""}
+                        onChange={(e) => {
+                          setLembreteMinutos(e.target.value ? Number(e.target.value) : null);
+                          setSaved(false);
+                        }}
+                        className="w-full max-w-[14rem] rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-xs text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-1 sm:w-auto"
                       >
-                        Restaurar mensagem padrão
-                      </button>
+                        <option value="">Não enviar</option>
+                        <option value="30">30 min antes</option>
+                        <option value="60">1 hora antes</option>
+                        <option value="120">2 horas antes</option>
+                        <option value="180">3 horas antes</option>
+                        <option value="360">6 horas antes</option>
+                        <option value="720">12 horas antes</option>
+                        <option value="1440">24 horas antes</option>
+                        <option value="2880">48 horas antes</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-[#1f1c1a]">Lembretes inteligentes</p>
+                      <p className="text-xs text-[#8a8278]">
+                        Instruções para o agente <strong className="font-medium text-[#5c5348]">sugerir</strong>{" "}
+                        consultas de manutenção ou retorno com base no histórico (independente do SMS automático).
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className="self-center text-xs text-[#8a8278]">Modelo:</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLembreteSugestoesInteligentes(LEMBRETES_INTELIGENTES_PADRAO);
+                            setSaved(false);
+                          }}
+                          className="rounded-lg border border-[#d8cfe8] bg-[#f8f6fc] px-2.5 py-1 text-xs font-medium text-[#5c4d7a] transition-colors hover:bg-[#f0ebf8]"
+                        >
+                          Lembretes Inteligentes
+                        </button>
+                        {lembreteSugestoesInteligentes.trim() ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLembreteSugestoesInteligentes("");
+                              setSaved(false);
+                            }}
+                            className="rounded-lg border border-[#e8c8c8] bg-[#fdf4f4] px-2.5 py-1 text-xs font-medium text-[#7a2a2a] transition-colors hover:bg-[#fce8e8]"
+                          >
+                            Limpar
+                          </button>
+                        ) : null}
+                      </div>
+                      <textarea
+                        value={lembreteSugestoesInteligentes}
+                        onChange={(e) => {
+                          setLembreteSugestoesInteligentes(e.target.value);
+                          setSaved(false);
+                        }}
+                        placeholder="Ex.: quando sugerir limpeza periódica, retorno pós-tratamento, manutenção de aparelho…"
+                        rows={4}
+                        className="w-full resize-y rounded-xl border border-[#ddd8d0] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#2c2825] placeholder-[#b8b0a6] shadow-inner outline-none transition-[border-color,box-shadow] focus:border-[#3d6b62] focus:shadow-[0_0_0_3px_rgba(61,107,98,0.12)]"
+                        spellCheck
+                      />
+                    </div>
+                    {lembreteMinutos != null && (
+                      <div className="space-y-2 border-t border-dashed border-[#e8e2d9] pt-4">
+                        <p className="text-xs text-[#8a8278]">
+                          Mensagem enviada ao cliente. Use{" "}
+                          <code className="rounded bg-[#f2ede6] px-1">{"{{nome}}"}</code>,{" "}
+                          <code className="rounded bg-[#f2ede6] px-1">{"{{data}}"}</code> e{" "}
+                          <code className="rounded bg-[#f2ede6] px-1">{"{{hora}}"}</code> como variáveis.
+                        </p>
+                        <textarea
+                          value={lembreteMensagem || LEMBRETE_MENSAGEM_PADRAO}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setLembreteMensagem(v === LEMBRETE_MENSAGEM_PADRAO ? "" : v);
+                            setSaved(false);
+                          }}
+                          rows={4}
+                          className="w-full resize-y rounded-xl border border-[#ddd8d0] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#2c2825] placeholder-[#b8b0a6] shadow-inner outline-none transition-[border-color,box-shadow] focus:border-[#3d6b62] focus:shadow-[0_0_0_3px_rgba(61,107,98,0.12)]"
+                          spellCheck={false}
+                        />
+                        {lembreteMensagem && lembreteMensagem !== LEMBRETE_MENSAGEM_PADRAO && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLembreteMensagem("");
+                              setSaved(false);
+                            }}
+                            className="rounded-lg border border-[#e8c8c8] bg-[#fdf4f4] px-2.5 py-1 text-xs font-medium text-[#7a2a2a] transition-colors hover:bg-[#fce8e8]"
+                          >
+                            Restaurar mensagem padrão
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
               </div>
 
               {SECTIONS.map((s, i) => (
-                <>
-                  <div key={s.key}>
+                <Fragment key={s.key}>
+                  <div>
                     <SectionCard
                       emoji={s.emoji}
                       title={s.title}
@@ -783,14 +956,132 @@ export function AgentConfigModal({
                       templates={s.templates}
                       onChange={(v) => updateSection(s.key, v)}
                       isOpen={openSection === s.key}
-                      onToggle={() => toggleSection(s.key)}
+                      onToggle={() => toggleAccordionSection(s.key)}
+                      showConfiguredDot={
+                        s.key === "identidade"
+                          ? Boolean(
+                              nomeAgente.trim() || quemSomos.trim() || enderecoClinica.trim()
+                            )
+                          : false
+                      }
+                      beforeHint={
+                        s.key === "identidade" ? (
+                          <div className="mb-1 space-y-4 rounded-xl border border-[#e8e4dc] bg-[#faf8f5] px-3 py-3">
+                            <div className="min-w-0">
+                              <label
+                                htmlFor="agent-config-nome-agente"
+                                className="text-xs font-semibold text-[#1f1c1a]"
+                              >
+                                Nome do Agente
+                              </label>
+                              <p className="mt-0.5 text-[11px] text-[#8a8278]">
+                                Como o agente se identifica para os pacientes no WhatsApp. Usado em{" "}
+                                <code className="rounded bg-[#f0ebe3] px-0.5">{"{{name}}"}</code> na
+                                identidade.
+                              </p>
+                              <input
+                                id="agent-config-nome-agente"
+                                type="text"
+                                value={nomeAgente}
+                                onChange={(e) => {
+                                  setNomeAgente(e.target.value);
+                                  setSaved(false);
+                                }}
+                                placeholder="Ex: Ana, Sofia, Carlos…"
+                                className="mt-2 w-full max-w-md rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <label
+                                htmlFor="agent-config-quem-somos"
+                                className="text-xs font-semibold text-[#1f1c1a]"
+                              >
+                                Quem somos
+                              </label>
+                              <p className="mt-0.5 text-[11px] text-[#8a8278]">
+                                Breve apresentação da clínica para o agente citar. Marcadores:{" "}
+                                <code className="rounded bg-[#f0ebe3] px-0.5">{"{{quem_somos}}"}</code>,{" "}
+                                <code className="rounded bg-[#f0ebe3] px-0.5">{"{{sobre}}"}</code>.
+                              </p>
+                              <textarea
+                                id="agent-config-quem-somos"
+                                value={quemSomos}
+                                onChange={(e) => {
+                                  setQuemSomos(e.target.value);
+                                  setSaved(false);
+                                }}
+                                placeholder="Ex.: Clínica familiar, 15 anos ao serviço da comunidade, equipa multidisciplinar…"
+                                rows={3}
+                                className="mt-2 w-full resize-y rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-2 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
+                                spellCheck
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <label
+                                htmlFor="agent-config-endereco"
+                                className="text-xs font-semibold text-[#1f1c1a]"
+                              >
+                                Endereço
+                              </label>
+                              <p className="mt-0.5 text-[11px] text-[#8a8278]">
+                                Morada para indicar ao paciente. Marcadores:{" "}
+                                <code className="rounded bg-[#f0ebe3] px-0.5">{"{{endereco}}"}</code>,{" "}
+                                <code className="rounded bg-[#f0ebe3] px-0.5">{"{{morada}}"}</code>.
+                              </p>
+                              <textarea
+                                id="agent-config-endereco"
+                                value={enderecoClinica}
+                                onChange={(e) => {
+                                  setEnderecoClinica(e.target.value);
+                                  setSaved(false);
+                                }}
+                                placeholder="Ex.: Rua das Flores, 123 — Centro — CEP 01234-567"
+                                rows={2}
+                                className="mt-2 w-full resize-y rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-2 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
+                                spellCheck
+                              />
+                            </div>
+                          </div>
+                        ) : undefined
+                      }
+                      afterTextarea={
+                        s.key === "identidade" ? (
+                          <div className="space-y-2 pt-1">
+                            <p className="text-xs leading-relaxed text-[#8a8278]">
+                              Marcadores:{" "}
+                              <code className="rounded bg-[#f2ede6] px-1">{"{{name}}"}</code> /{" "}
+                              <code className="rounded bg-[#f2ede6] px-1">{"{{nome_agente}}"}</code> (nome do
+                              agente),{" "}
+                              <code className="rounded bg-[#f2ede6] px-1">{"{{clinica}}"}</code> /{" "}
+                              <code className="rounded bg-[#f2ede6] px-1">{"{{nome_clinica}}"}</code> (nome da
+                              clínica no cadastro),{" "}
+                              <code className="rounded bg-[#f2ede6] px-1">{"{{quem_somos}}"}</code> /{" "}
+                              <code className="rounded bg-[#f2ede6] px-1">{"{{sobre}}"}</code> (texto «Quem
+                              somos»),{" "}
+                              <code className="rounded bg-[#f2ede6] px-1">{"{{endereco}}"}</code> /{" "}
+                              <code className="rounded bg-[#f2ede6] px-1">{"{{morada}}"}</code> («Endereço»). O
+                              texto guardado mantém os marcadores; o n8n substitui pelos valores.
+                            </p>
+                            {(config.identidade ?? "").trim() ? (
+                              <div className="rounded-xl border border-[#e6e1d8] bg-[#faf8f5] px-3 py-2.5">
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8a8278]">
+                                  Pré-visualização
+                                </p>
+                                <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-[#2c2825]">
+                                  {identidadePreview}
+                                </p>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : undefined
+                      }
                     />
                   </div>
                   {i === triagemIdx && (
-                    <div key="procedimentos-inline" className="overflow-hidden rounded-xl border border-[#e4ddd3] bg-white">
+                    <div className="overflow-hidden rounded-xl border border-[#e4ddd3] bg-white">
                       <button
                         type="button"
-                        onClick={() => toggleSection("procedimentos")}
+                        onClick={() => toggleAccordionSection("procedimentos")}
                         className="flex w-full items-center gap-2.5 px-4 py-3.5 text-left transition-colors hover:bg-[#faf7f2]"
                       >
                         <span className="text-base">📋</span>
@@ -814,7 +1105,7 @@ export function AgentConfigModal({
                       )}
                     </div>
                   )}
-                </>
+                </Fragment>
               ))}
             </div>
           )}

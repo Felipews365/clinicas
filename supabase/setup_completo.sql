@@ -19,8 +19,16 @@ create table if not exists public.clinics (
   timezone text not null default 'America/Sao_Paulo',
   owner_id uuid references auth.users (id),
   agent_instructions text, -- configuração do Agente IA em JSON
+  slots_expediente jsonb not null default '{"preset":"two_blocks"}'::jsonb,
   created_at timestamptz not null default now()
 );
+
+alter table public.clinics
+  add column if not exists slots_expediente jsonb not null default '{"preset":"two_blocks"}'::jsonb;
+
+alter table public.clinics
+  add column if not exists agenda_visible_hours integer[]
+  not null default array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[];
 
 -- 2. Pacientes
 create table if not exists public.patients (

@@ -35,6 +35,11 @@ export function awaitsConfirmation(r: AppointmentRow): boolean {
   return r.status === "scheduled" && !isClinicConfirmed(r);
 }
 
+/** Criado pelo fluxo cs/n8n (agente IA/WhatsApp). */
+export function isCsAgentBooking(r: AppointmentRow): boolean {
+  return r.id.startsWith("cs:");
+}
+
 export function one<T>(x: T | T[] | null | undefined): T | null {
   if (x == null) return null;
   return Array.isArray(x) ? (x[0] ?? null) : x;

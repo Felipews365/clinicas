@@ -3,6 +3,7 @@
 import {
   awaitsConfirmation,
   isClinicConfirmed,
+  isCsAgentBooking,
   one,
   statusLabel,
   type AppointmentRow,
@@ -230,6 +231,7 @@ export function AppointmentCardList({
         const profSpecialty = prof?.specialty?.trim() || null;
         const pending = r.status === "scheduled" && awaitsConfirmation(r);
         const confirmed = r.status === "scheduled" && isClinicConfirmed(r);
+        const fromAgentIa = isCsAgentBooking(r);
         const fromWhatsAppPending =
           pending && (r.source === "whatsapp" || r.id.startsWith("cs:"));
 
@@ -266,13 +268,15 @@ export function AppointmentCardList({
                       </h2>
                       {fromWhatsAppPending ? (
                         <p className="mt-1 text-xs font-medium text-[#7a7165]">
-                          Origem: WhatsApp · aguarda confirmação da clínica
+                          {fromAgentIa
+                            ? "Agendamento IA · aguarda confirmação da clínica"
+                            : "Origem: WhatsApp · aguarda confirmação da clínica"}
                         </p>
                       ) : r.status === "scheduled" &&
                         confirmed &&
                         (r.source === "whatsapp" || r.id.startsWith("cs:")) ? (
                         <p className="mt-1 text-xs font-medium text-[#7a7165]">
-                          Origem: agente WhatsApp
+                          {fromAgentIa ? "Agendamento IA" : "Origem: agente WhatsApp"}
                         </p>
                       ) : null}
                     </div>
@@ -331,6 +335,11 @@ export function AppointmentCardList({
                           Profissional e serviço
                         </dt>
                         <dd className="text-sm font-medium text-[#2c2825]">
+                          {fromAgentIa ? (
+                            <span className="mb-1 block text-xs font-semibold text-[#4D6D66]">
+                              Agendamento IA
+                            </span>
+                          ) : null}
                           {profName ?? "Profissional"}
                           {profSpecialty && (
                             <span className="mt-0.5 block text-xs font-normal text-[#6b635a]">

@@ -28,10 +28,20 @@ as $$
       h.horario as shour
     from cs_horarios_disponiveis h
     inner join cs_profissionais p on p.id = h.profissional_id
+    left join clinics cl on cl.id = p.clinic_id
     where h.disponivel = true
       and p.ativo = true
       and h.data >= current_date
       and h.data <= current_date + interval '30 days'
+      and (
+        cl.id is null
+        or extract(hour from h.horario)::integer = any (
+          coalesce(
+            cl.agenda_visible_hours,
+            array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[]
+          )
+        )
+      )
     order by h.data asc, h.horario asc
     limit 20
   ) j;
@@ -58,6 +68,7 @@ declare
   v_nome_prof text;
   v_nome_serv text;
   v_nome_cli text;
+  v_allowed boolean;
 begin
   v_nome_cli := trim(p_nome_cliente);
 
@@ -74,6 +85,30 @@ begin
   end if;
   if v_nome_serv is null then
     raise exception 'servico_id inválido: %', p_servico_id;
+  end if;
+
+  select
+    (
+      cl.id is null
+      or extract(hour from p_horario)::integer = any (
+        coalesce(
+          cl.agenda_visible_hours,
+          array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[]
+        )
+      )
+    )
+  into v_allowed
+  from cs_profissionais p
+  left join clinics cl on cl.id = p.clinic_id
+  where p.id = p_profissional_id;
+
+  if coalesce(v_allowed, false) is not true then
+    return jsonb_build_object(
+      'ok', false,
+      'error', 'hora_fora_da_agenda_clinica',
+      'message',
+      'Este horário não está habilitado na configuração global da clínica.'
+    );
   end if;
 
   update cs_horarios_disponiveis

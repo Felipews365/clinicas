@@ -1,16 +1,4 @@
--- Painel: gerir vagas do WhatsApp/n8n (cs_horarios_disponiveis.disponivel).
--- Opcional: associar profissionais cs_* à clínica do painel (multi-clínica).
---
--- Se só tiver uma clínica, execute após aplicar:
---   update public.cs_profissionais set clinic_id = '<uuid da sua clinics>' where clinic_id is null;
-
-alter table public.cs_profissionais
-  add column if not exists clinic_id uuid references public.clinics (id) on delete set null;
-
-create index if not exists idx_cs_profissionais_clinic_id
-  on public.cs_profissionais (clinic_id)
-  where clinic_id is not null;
-
+-- Substitui painel_cs_slots_dia: filtra por horas habilitadas pela clínica
 create or replace function public.painel_cs_slots_dia (p_clinic_id uuid, p_data date)
 returns jsonb
 language plpgsql
@@ -18,9 +6,20 @@ stable
 security definer
 set search_path = public
 as $$
+declare
+  v_hours int[];
 begin
   if not public.rls_is_clinic_owner (p_clinic_id) then
     raise exception 'forbidden' using errcode = '42501';
+  end if;
+
+  select coalesce(c.agenda_visible_hours, array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[])
+  into v_hours
+  from public.clinics c
+  where c.id = p_clinic_id;
+
+  if v_hours is null or cardinality(v_hours) = 0 then
+    v_hours := array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[];
   end if;
 
   return coalesce(
@@ -68,12 +67,14 @@ begin
       where h.data = p_data
         and p.ativo = true
         and (p.clinic_id is null or p.clinic_id = p_clinic_id)
+        and extract(hour from h.horario)::integer = any (v_hours)
     ),
     '[]'::jsonb
   );
 end;
 $$;
 
+-- Profissional só altera vagas em horas permitidas pela clínica dona do painel
 create or replace function public.painel_cs_set_slot_disponivel (
   p_clinic_id uuid,
   p_horario_id uuid,
@@ -86,9 +87,31 @@ set search_path = public
 as $$
 declare
   v_ok boolean;
+  v_hour int;
+  v_hours int[];
 begin
   if not public.rls_is_clinic_owner (p_clinic_id) then
     raise exception 'forbidden' using errcode = '42501';
+  end if;
+
+  select coalesce(c.agenda_visible_hours, array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[])
+  into v_hours
+  from public.clinics c
+  where c.id = p_clinic_id;
+
+  select extract(hour from h.horario)::integer
+  into v_hour
+  from public.cs_horarios_disponiveis h
+  where h.id = p_horario_id;
+
+  if v_hour is null or not (v_hour = any (v_hours)) then
+    return jsonb_build_object(
+      'ok', false,
+      'error',
+      'hour_not_in_clinic_agenda',
+      'message',
+      'Este horário não está habilitado na configuração global da clínica (6h–22h).'
+    );
   end if;
 
   select true
@@ -112,19 +135,11 @@ begin
 end;
 $$;
 
-revoke all on function public.painel_cs_slots_dia (uuid, date) from public;
-grant execute on function public.painel_cs_slots_dia (uuid, date) to authenticated;
-grant execute on function public.painel_cs_slots_dia (uuid, date) to service_role;
-
-revoke all on function public.painel_cs_set_slot_disponivel (uuid, uuid, boolean) from public;
-grant execute on function public.painel_cs_set_slot_disponivel (uuid, uuid, boolean) to authenticated;
-grant execute on function public.painel_cs_set_slot_disponivel (uuid, uuid, boolean) to service_role;
-
--- Grelha 8h–22h: ver supabase/migration_painel_cs_ensure_slots_grid.sql
+-- Grelha: só cria linhas para horas em clinics.agenda_visible_hours (6–22)
 create or replace function public.painel_cs_ensure_slots_grid (
   p_clinic_id uuid,
   p_data date,
-  p_hora_inicio int default 8,
+  p_hora_inicio int default 6,
   p_hora_fim int default 22
 )
 returns jsonb
@@ -134,13 +149,19 @@ set search_path = public
 as $$
 declare
   v_dow int;
+  v_hours int[];
 begin
   if not public.rls_is_clinic_owner (p_clinic_id) then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
-  if p_hora_inicio < 0 or p_hora_fim > 23 or p_hora_inicio > p_hora_fim then
-    raise exception 'invalid_hour_range' using errcode = '22003';
+  select coalesce(c.agenda_visible_hours, array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[])
+  into v_hours
+  from public.clinics c
+  where c.id = p_clinic_id;
+
+  if v_hours is null or cardinality(v_hours) = 0 then
+    v_hours := array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[];
   end if;
 
   v_dow := extract(dow from p_data)::int;
@@ -155,15 +176,60 @@ begin
       else s.h in (8, 9, 10, 11, 14, 15, 16, 17)
     end
   from public.cs_profissionais p
-  cross join lateral generate_series(p_hora_inicio, p_hora_fim) as s(h)
+  cross join lateral unnest(v_hours) as s(h)
   where p.ativo = true
     and (p.clinic_id is null or p.clinic_id = p_clinic_id)
+    and s.h between 6 and 22
   on conflict (profissional_id, data, horario) do nothing;
 
   return jsonb_build_object('ok', true);
 end;
 $$;
 
-revoke all on function public.painel_cs_ensure_slots_grid (uuid, date, int, int) from public;
-grant execute on function public.painel_cs_ensure_slots_grid (uuid, date, int, int) to authenticated;
-grant execute on function public.painel_cs_ensure_slots_grid (uuid, date, int, int) to service_role;
+create or replace function public.n8n_cs_consultar_vagas ()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    jsonb_agg(j.slot order by j.sdata, j.shour),
+    '[]'::jsonb
+  )
+  from (
+    select
+      jsonb_build_object(
+        'horario_id', h.id,
+        'data', to_char(h.data, 'DD/MM/YYYY'),
+        'dia_semana', trim(to_char(h.data, 'Day')),
+        'horario', to_char(h.horario, 'HH24:MI'),
+        'profissional_id', p.id,
+        'profissional', p.nome,
+        'especialidade', p.especialidade,
+        'disponivel', true
+      ) as slot,
+      h.data as sdata,
+      h.horario as shour
+    from cs_horarios_disponiveis h
+    inner join cs_profissionais p on p.id = h.profissional_id
+    left join clinics cl on cl.id = p.clinic_id
+    where h.disponivel = true
+      and p.ativo = true
+      and h.data >= current_date
+      and h.data <= current_date + interval '30 days'
+      and (
+        cl.id is null
+        or extract(hour from h.horario)::integer = any (
+          coalesce(
+            cl.agenda_visible_hours,
+            array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[]
+          )
+        )
+      )
+    order by h.data asc, h.horario asc
+    limit 20
+  ) j;
+$$;
+
+-- Também atualize no projeto: supabase/n8n_cs_agendar_respeita_disponivel.sql (função n8n_cs_agendar com o mesmo filtro de clínica).

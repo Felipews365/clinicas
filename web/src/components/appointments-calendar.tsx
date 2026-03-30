@@ -10,6 +10,7 @@ import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import {
   formatRange,
+  isCsAgentBooking,
   one,
   statusLabel,
   type AppointmentRow,
@@ -23,12 +24,18 @@ function rowsToEvents(rows: AppointmentRow[]): EventInput[] {
     const name = patient?.name?.trim() || "Paciente";
     const profNm = prof?.name?.trim() || "";
     const svc = r.service_name?.trim();
-    const title = profNm
+    const ia = isCsAgentBooking(r);
+    const svcPart = ia
       ? svc
-        ? `${name} · ${profNm} · ${svc}`
+        ? `Agendamento IA · ${svc}`
+        : "Agendamento IA"
+      : svc ?? "";
+    const title = profNm
+      ? svcPart
+        ? `${name} · ${profNm} · ${svcPart}`
         : `${name} · ${profNm}`
-      : svc
-        ? `${name} · ${svc}`
+      : svcPart
+        ? `${name} · ${svcPart}`
         : name;
 
     const palette =
@@ -54,6 +61,7 @@ function rowsToEvents(rows: AppointmentRow[]): EventInput[] {
         specialty: prof?.specialty,
         service: r.service_name,
         source: r.source,
+        agentIa: ia,
       },
     };
   });
@@ -64,6 +72,9 @@ type Props = {
   loading?: boolean;
   /** Sincroniza a data visível (ex.: seta dia anterior / seguinte no painel). */
   focusDate?: Date;
+  /** Limites do eixo de tempo (ex. a partir de `clinics.agenda_visible_hours`). */
+  slotMinTime?: string;
+  slotMaxTime?: string;
 };
 
 function dayHeaderGoogle(arg: {
@@ -94,7 +105,13 @@ function dayHeaderGoogle(arg: {
   );
 }
 
-export function AppointmentsCalendar({ rows, loading, focusDate }: Props) {
+export function AppointmentsCalendar({
+  rows,
+  loading,
+  focusDate,
+  slotMinTime = "06:00:00",
+  slotMaxTime = "23:00:00",
+}: Props) {
   const [selected, setSelected] = useState<EventClickArg["event"] | null>(
     null
   );
@@ -182,8 +199,8 @@ export function AppointmentsCalendar({ rows, loading, focusDate }: Props) {
               day: "Dia",
               list: "Lista",
             }}
-            slotMinTime="06:00:00"
-            slotMaxTime="22:00:00"
+            slotMinTime={slotMinTime}
+            slotMaxTime={slotMaxTime}
             slotDuration="00:30:00"
             slotLabelInterval="01:00:00"
             allDaySlot={false}
@@ -264,7 +281,13 @@ export function AppointmentsCalendar({ rows, loading, focusDate }: Props) {
             </div>
             <div>
               <dt className="text-xs font-medium text-[#70757a]">Serviço</dt>
-              <dd>{(selected.extendedProps.service as string) ?? "—"}</dd>
+              <dd>
+                {selected.extendedProps.agentIa
+                  ? selected.extendedProps.service
+                    ? `Agendamento IA · ${String(selected.extendedProps.service)}`
+                    : "Agendamento IA"
+                  : ((selected.extendedProps.service as string) ?? "—")}
+              </dd>
             </div>
           </dl>
         </div>

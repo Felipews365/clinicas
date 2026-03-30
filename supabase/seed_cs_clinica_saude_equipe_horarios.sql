@@ -1,7 +1,7 @@
 -- =============================================================================
 -- Cadastro: Dra. Maria Letícia + Dr. João Lucas + vagas (30 dias)
--- Horário: seg–sex 08h–12h e 14h–18h; sábado 08h–12h; domingo fechado
--- Slots: de hora em hora (08,09,10,11 / 14,15,16,17)
+-- Horário alvo no painel: seg–sex 08h–11h e 14h–17h; sábado 08h–11h; domingo fechado
+-- Slots extra (12,13,18–20 em dias úteis) inseridos com disponivel=false — liberáveis no modal
 -- Idempotente: profissionais por nome; vagas com ON CONFLICT DO NOTHING
 -- =============================================================================
 

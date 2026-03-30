@@ -11,22 +11,17 @@ const CONSULTATION_TYPES = [
 ] as const;
 
 const SLOT_MINUTES = 30;
-const WORK_START = 8;
-const WORK_END = 18;
 
 function digitsOnly(phone: string) {
   return phone.replace(/\D/g, "");
 }
 
-function buildTimeOptions(): string[] {
-  const out: string[] = [];
-  for (let h = WORK_START; h < WORK_END; h++) {
-    for (const m of [0, 30]) {
-      if (h === WORK_END - 1 && m === 30) break;
-      out.push(`${String(h).padStart(2, "0")}:${m === 0 ? "00" : "30"}`);
-    }
-  }
-  return out;
+/** Inícios à hora cheia, alinhados à configuração global da clínica (6h–22h). */
+function buildHourlyStarts(clinicVisibleHours: number[]): string[] {
+  const h = [...clinicVisibleHours]
+    .filter((x) => Number.isFinite(x) && x >= 6 && x <= 22)
+    .sort((a, b) => a - b);
+  return h.map((x) => `${String(x).padStart(2, "0")}:00`);
 }
 
 type Prof = { id: string; name: string; specialty: string | null };
@@ -37,6 +32,8 @@ type Props = {
   onSuccess: () => void;
   supabase: SupabaseClient;
   clinicId: string;
+  /** Horas habilitadas na agenda global (6–22). */
+  clinicVisibleHours: number[];
 };
 
 function profLabel(p: Prof) {
@@ -49,6 +46,7 @@ export function ScheduleAppointmentModal({
   onSuccess,
   supabase,
   clinicId,
+  clinicVisibleHours,
 }: Props) {
   const [professionals, setProfessionals] = useState<Prof[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -65,7 +63,10 @@ export function ScheduleAppointmentModal({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const timeOptions = useMemo(() => buildTimeOptions(), []);
+  const timeOptions = useMemo(
+    () => buildHourlyStarts(clinicVisibleHours),
+    [clinicVisibleHours]
+  );
 
   const resetForm = useCallback(() => {
     setFullName("");

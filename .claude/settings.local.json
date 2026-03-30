@@ -14,7 +14,12 @@
       "Bash(start \"c:\\\\Users\\\\felip\\\\OneDrive\\\\Ambiente de Trabalho\\\\consultorio\\\\landing-page.html\")",
       "Bash(npm install:*)",
       "Bash(/tmp/analise_copy.md:*)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "mcp__claude_ai_Supabase__list_projects",
+      "mcp__claude_ai_Supabase__list_tables",
+      "mcp__n8n__search_templates",
+      "Bash(xargs -I {} basename {})",
+      "mcp__claude_ai_Supabase__get_project_url"
     ]
   }
 }

@@ -32,3 +32,7 @@ coverage/
 
 # Cursor — pode conter API keys (MCP); não enviar para o remoto
 .cursor/
+
+# Claude Code — settings locais e preferências
+.claude/settings.json
+.claude/settings.local.json
