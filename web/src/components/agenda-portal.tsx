@@ -913,8 +913,11 @@ export function AgendaPortal() {
             Relatório
           </button>
         </nav>
+        <div className="flex shrink-0 justify-center border-b border-[var(--border)] px-3 py-2.5">
+          <ThemeToggle />
+        </div>
         {/* Footer */}
-        <div className="border-t border-[var(--border)] px-3 py-3 space-y-0.5">
+        <div className="px-3 py-3 space-y-0.5">
           <p className="truncate px-3 py-1 text-[11px] text-[var(--text-muted)]">{session.user.email}</p>
           <button type="button" onClick={() => void handleSignOut()} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--primary)]">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
@@ -924,9 +927,6 @@ export function AgendaPortal() {
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="z-[25] hidden shrink-0 items-center justify-end gap-3 border-b border-[var(--border)] bg-[var(--surface)]/95 px-5 py-2.5 backdrop-blur-md transition-colors duration-300 sm:flex">
-          <ThemeToggle />
-        </div>
       <header className={`sticky top-0 z-30 shrink-0 border-b border-[var(--border)] bg-[var(--surface)]/85 backdrop-blur-md sm:hidden ${mobileMenuOpen ? "z-[60]" : "z-30"}`}>
         <div className="flex items-center gap-2 px-4 py-3">
           <button
@@ -950,7 +950,6 @@ export function AgendaPortal() {
             <p className="truncate text-sm font-bold text-[var(--text)]">{headerClinicName}</p>
             <p className="text-[10px] text-[var(--text-muted)]">Painel de agendamentos</p>
           </button>
-          <ThemeToggle />
           <button
             type="button"
             onClick={() => setScheduleOpen(true)}
@@ -1074,8 +1073,11 @@ export function AgendaPortal() {
                   Relatório
                 </button>
               </nav>
+              <div className="flex shrink-0 justify-center border-b border-[var(--border)] px-3 py-2.5">
+                <ThemeToggle />
+              </div>
               {/* Footer */}
-              <div className="border-t border-[var(--border)] px-3 py-3 space-y-0.5">
+              <div className="px-3 py-3 space-y-0.5">
                 <p className="truncate px-3 py-1 text-[11px] text-[var(--text-muted)]">{session.user.email}</p>
                 <button type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[var(--text-muted)] hover:bg-[var(--surface-soft)]" onClick={() => { setMobileMenuOpen(false); void handleSignOut(); }}>
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-soft)] text-[var(--text-muted)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></span>

@@ -10,18 +10,21 @@ import {
 } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { expandAgentIdentityPlaceholders } from "@/lib/agent-placeholders";
+import { buildAgentInstructionsMarkdown } from "@/lib/agent-instructions-markdown";
+import {
+  type AgentSectionKey,
+  type AgentSectionsState,
+  CLINIC_MODEL_OPTIONS,
+  type ClinicModelId,
+  getDefaultLembreteInteligente,
+  getPresetForClinicModel,
+  getSuggestedProcedureIdeas,
+  normalizeClinicModelId,
+} from "@/lib/agent-clinic-model";
 
 // ─── secções configuráveis ────────────────────────────────────────────────────
 
-type SectionKey =
-  | "identidade"
-  | "triagem"
-  | "tom"
-  | "orientacoes"
-  | "transferir"
-  | "outros";
-
-type AgentConfig = Record<SectionKey, string>;
+type AgentConfig = AgentSectionsState;
 
 const EMPTY_CONFIG: AgentConfig = {
   identidade: "",
@@ -33,7 +36,7 @@ const EMPTY_CONFIG: AgentConfig = {
 };
 
 const SECTIONS: {
-  key: SectionKey;
+  key: AgentSectionKey;
   emoji: string;
   title: string;
   hint: string;
@@ -127,10 +130,10 @@ const SECTIONS: {
 
 /** JSON guardado pode ter secções a null; normalizar evita .trim() em null. */
 function normalizeAgentConfig(
-  partial: Partial<Record<SectionKey, unknown>>
+  partial: Partial<Record<AgentSectionKey, unknown>>
 ): AgentConfig {
   const out = { ...EMPTY_CONFIG };
-  for (const key of Object.keys(EMPTY_CONFIG) as SectionKey[]) {
+  for (const key of Object.keys(EMPTY_CONFIG) as AgentSectionKey[]) {
     const v = partial[key];
     out[key] = typeof v === "string" ? v : "";
   }
@@ -147,21 +150,6 @@ function parseConfig(raw: string | null): AgentConfig {
   } catch {
     return { ...EMPTY_CONFIG, outros: raw };
   }
-}
-
-function configToInstructions(cfg: AgentConfig): string {
-  const labels: Record<SectionKey, string> = {
-    identidade: "IDENTIDADE DO AGENTE",
-    triagem: "TRIAGEM E URGÊNCIAS",
-    tom: "TOM E LINGUAGEM",
-    orientacoes: "ORIENTAÇÕES AO PACIENTE",
-    transferir: "QUANDO TRANSFERIR PARA HUMANO",
-    outros: "OUTRAS INSTRUÇÕES",
-  };
-  return (Object.keys(labels) as SectionKey[])
-    .filter((k) => (cfg[k] ?? "").trim())
-    .map((k) => `### ${labels[k]}\n${(cfg[k] ?? "").trim()}`)
-    .join("\n\n");
 }
 
 // ─── tipos para procedimentos ─────────────────────────────────────────────────
@@ -258,10 +246,13 @@ function ProceduresSectionInline({
   supabase,
   clinicId,
   modalOpen,
+  procedureIdeas,
 }: {
   supabase: SupabaseClient | null;
   clinicId: string;
   modalOpen: boolean;
+  /** Sugestões de nomes conforme o modelo da clínica (só informativo). */
+  procedureIdeas?: string[];
 }) {
   const [rows, setRows] = useState<ProcRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -386,6 +377,19 @@ function ProceduresSectionInline({
   return (
     <div>
       <div className="space-y-4 bg-[#faf8f4] p-4">
+        {procedureIdeas && procedureIdeas.length > 0 ? (
+          <div className="rounded-xl border border-[#dfe8e6] bg-[#f0faf8] px-3 py-2.5">
+            <p className="text-[11px] font-semibold text-[#1f2a2a]">
+              Ideias de procedimentos / consultas para o modelo atual
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-[#5f7474]">
+              {procedureIdeas.join(" · ")}
+            </p>
+            <p className="mt-1.5 text-[10px] text-[#8a8278]">
+              Use como referência ao cadastrar — o agente só oferece o que estiver registado abaixo.
+            </p>
+          </div>
+        ) : null}
         {/* formulário de novo procedimento */}
         <form onSubmit={(e) => void addProcedure(e)} className="space-y-3 rounded-xl border border-[#e6e1d8] bg-white p-4">
           <p className="text-xs font-semibold text-[#2c2825]">Novo procedimento</p>
@@ -671,6 +675,7 @@ export function AgentConfigModal({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openSection, setOpenSection] = useState<string | null>(null);
+  const [clinicModel, setClinicModel] = useState<ClinicModelId>("clinica_geral");
 
   /** Acordeão: só uma secção aberta; clicar na aberta fecha. */
   function toggleAccordionSection(key: string) {
@@ -698,6 +703,7 @@ export function AgentConfigModal({
         setConfig(parseConfig(raw));
         try {
           const parsed = raw ? JSON.parse(raw) : {};
+          setClinicModel(normalizeClinicModelId(parsed.clinic_model));
           setNomeAgente(parsed.nome_agente ?? "");
           setQuemSomos(typeof parsed.quem_somos === "string" ? parsed.quem_somos : "");
           setEnderecoClinica(typeof parsed.endereco === "string" ? parsed.endereco : "");
@@ -709,6 +715,7 @@ export function AgentConfigModal({
               : ""
           );
         } catch {
+          setClinicModel("clinica_geral");
           setLembreteMinutos(null);
           setLembreteMensagem("");
           setLembreteSugestoesInteligentes("");
@@ -729,8 +736,16 @@ export function AgentConfigModal({
     [config.identidade, nomeAgente, clinicName, quemSomos, enderecoClinica]
   );
 
-  function updateSection(key: SectionKey, value: string) {
+  function updateSection(key: AgentSectionKey, value: string) {
     setConfig((prev) => ({ ...prev, [key]: value }));
+    setSaved(false);
+  }
+
+  function selectClinicModel(id: ClinicModelId) {
+    if (id === clinicModel) return;
+    setClinicModel(id);
+    setConfig(getPresetForClinicModel(id));
+    setLembreteSugestoesInteligentes(getDefaultLembreteInteligente(id));
     setSaved(false);
   }
 
@@ -744,9 +759,12 @@ export function AgentConfigModal({
       !!quemSomos.trim() ||
       !!enderecoClinica.trim() ||
       !!lembreteSugestoesInteligentes.trim() ||
-      lembreteMinutos != null;
+      lembreteMinutos != null ||
+      clinicModel !== "clinica_geral";
     const fullConfig = {
       ...config,
+      clinic_model: clinicModel,
+      instructions_markdown: buildAgentInstructionsMarkdown(config, clinicModel),
       nome_agente: nomeAgente.trim() || null,
       quem_somos: quemSomos.trim() || null,
       endereco: enderecoClinica.trim() || null,
@@ -791,9 +809,13 @@ export function AgentConfigModal({
               Agente IA
             </h2>
             <p className="mt-0.5 text-xs text-[#8a8278]">
-              {filledCount > 0
-                ? `${filledCount} de ${SECTIONS.length} secções configuradas`
-                : "Configure como o agente deve se comportar com os seus pacientes"}
+              {(() => {
+                const m = CLINIC_MODEL_OPTIONS.find((o) => o.id === clinicModel);
+                const prefix = m ? `${m.emoji} ${m.label} · ` : "";
+                return filledCount > 0
+                  ? `${prefix}${filledCount} de ${SECTIONS.length} secções configuradas`
+                  : `${prefix}${"Configure como o agente deve se comportar com os seus pacientes"}`;
+              })()}
             </p>
           </div>
           <button
@@ -816,6 +838,52 @@ export function AgentConfigModal({
             </div>
           ) : (
             <div className="space-y-2">
+              <section
+                className="clinic-model-section rounded-2xl border border-[#e4ddd3] bg-white px-4 py-4 shadow-[0_1px_2px_rgba(44,40,37,0.04)]"
+                aria-labelledby="clinic-model-heading"
+              >
+                <h3
+                  id="clinic-model-heading"
+                  className="font-display text-base font-semibold tracking-tight text-[#1f1c1a]"
+                >
+                  Modelo da clínica
+                </h3>
+                <p className="mt-1 text-xs leading-relaxed text-[#8a8278]">
+                  Escolha o tipo de atendimento para adaptar o comportamento do Agente IA.
+                </p>
+                <p className="mt-2 text-[11px] text-[#9a9288]">
+                  Ao mudar o modelo, os textos das secções abaixo são preenchidos com o perfil
+                  correspondente (pode editar antes de guardar). «Outro» inicia em branco para
+                  configuração totalmente manual.
+                </p>
+                <div
+                  className="clinic-model-grid mt-3 flex flex-wrap gap-2"
+                  role="radiogroup"
+                  aria-label="Modelo da clínica"
+                >
+                  {CLINIC_MODEL_OPTIONS.map((opt) => {
+                    const active = clinicModel === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => selectClinicModel(opt.id)}
+                        className={`model-chip inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border px-3 py-2 text-left text-sm font-medium transition-[background-color,border-color,box-shadow,color] duration-200 ${
+                          active
+                            ? "border-[#1f7a74] bg-[#1f7a74] text-white shadow-[0_2px_8px_rgba(31,122,116,0.35)] ring-2 ring-[#1f7a74]/25"
+                            : "border-[#ddd8cf] bg-[#faf8f5] text-[#2c2825] hover:border-[#1f7a74]/45 hover:bg-[#f3faf9]"
+                        }`}
+                      >
+                        <span aria-hidden>{opt.emoji}</span>
+                        <span>{opt.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
               {/* Lembrete de consulta (acordeão) */}
               <div className="overflow-hidden rounded-xl border border-[#e4ddd3] bg-white">
                 <button
@@ -1105,6 +1173,7 @@ export function AgentConfigModal({
                             supabase={supabase}
                             clinicId={clinicId}
                             modalOpen={open}
+                            procedureIdeas={getSuggestedProcedureIdeas(clinicModel)}
                           />
                         </div>
                       )}
