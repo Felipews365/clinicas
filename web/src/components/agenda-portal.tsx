@@ -18,19 +18,60 @@ import {
   addDaysToYmd,
   formatLocalYmd,
   isYmdToday,
+  localYmdFromIso,
   matchesLocalDayKey,
   parseLocalYmd,
 } from "@/lib/local-day";
 import {
+  NotificationAlertsPage,
+  NotificationToastStack,
+} from "@/components/notification-center";
+import { useAgendaNotifications } from "@/hooks/use-agenda-notifications";
+import {
   calendarSlotBoundsFromVisibleHours,
   normalizeAgendaVisibleHours,
 } from "@/lib/clinic-agenda-hours";
+import { resolveProfessionalCardStyle } from "@/lib/professional-palette";
 import { createClient } from "@/lib/supabase/client";
 import {
   awaitsConfirmation,
   isClinicConfirmed,
+  one,
   type AppointmentRow,
 } from "@/types/appointments";
+
+function rowProfessionalId(r: AppointmentRow): string | null {
+  const raw = one(r.professionals)?.id;
+  if (raw == null || raw === "") return null;
+  return String(raw);
+}
+
+/** Compara nomes exibidos (agendamentos CS podem vir só com nome, sem id de `professionals`). */
+function normalizeProfessionalName(s: string | null | undefined): string {
+  if (!s?.trim()) return "";
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function rowMatchesProfessionalFilter(
+  r: AppointmentRow,
+  profFilterId: string,
+  roster: readonly { id: string; name: string }[]
+): boolean {
+  if (rowProfessionalId(r) === profFilterId) return true;
+  const entry = roster.find((p) => p.id === profFilterId);
+  if (!entry) return false;
+  const embedName = one(r.professionals)?.name ?? "";
+  if (!embedName.trim()) return false;
+  return (
+    normalizeProfessionalName(embedName) ===
+    normalizeProfessionalName(entry.name)
+  );
+}
 
 function parseCsPainelRows(raw: unknown): AppointmentRow[] {
   if (raw == null) return [];
@@ -44,6 +85,64 @@ function parseCsPainelRows(raw: unknown): AppointmentRow[] {
   }
   if (!Array.isArray(v)) return [];
   return v as AppointmentRow[];
+}
+
+type AppointmentSnapshot = Map<
+  string,
+  { status: AppointmentRow["status"]; starts_at: string }
+>;
+
+function buildAppointmentSnapshot(rows: AppointmentRow[]): AppointmentSnapshot {
+  const m = new Map();
+  for (const r of rows) {
+    m.set(r.id, { status: r.status, starts_at: r.starts_at });
+  }
+  return m;
+}
+
+function formatNotifClock(iso: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
+
+function notificationFromRow(
+  r: AppointmentRow,
+  kind: "agendamento" | "cancelamento" | "reagendamento",
+  opts?: { prevStartsAt?: string }
+) {
+  const patient = one(r.patients)?.name?.trim() || "Cliente";
+  const prof = one(r.professionals)?.name?.trim() || "Profissional";
+  const t = formatNotifClock(r.starts_at);
+  if (kind === "agendamento") {
+    return {
+      tipo: "agendamento" as const,
+      titulo: "Novo agendamento",
+      mensagem: `${patient} às ${t} com ${prof}`,
+      horario: r.starts_at,
+      appointmentId: r.id,
+    };
+  }
+  if (kind === "cancelamento") {
+    return {
+      tipo: "cancelamento" as const,
+      titulo: "Cancelamento",
+      mensagem: `${patient} cancelou a consulta das ${t}`,
+      horario: r.starts_at,
+      appointmentId: r.id,
+    };
+  }
+  const pt = opts?.prevStartsAt
+    ? formatNotifClock(opts.prevStartsAt)
+    : "—";
+  return {
+    tipo: "reagendamento" as const,
+    titulo: "Reagendamento",
+    mensagem: `${patient} mudou de ${pt} para ${t}`,
+    horario: r.starts_at,
+    appointmentId: r.id,
+  };
 }
 
 type AccessState =
@@ -89,108 +188,6 @@ function IconClose({ className }: { className?: string }) {
 }
 
 
-function playNotificationSound() {
-  try {
-    const ctx = new AudioContext();
-    const playTone = (freq: number, start: number, dur: number) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
-      gain.gain.setValueAtTime(0, ctx.currentTime + start);
-      gain.gain.linearRampToValueAtTime(0.22, ctx.currentTime + start + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
-      osc.start(ctx.currentTime + start);
-      osc.stop(ctx.currentTime + start + dur);
-    };
-    playTone(880, 0, 0.18);
-    playTone(1100, 0.14, 0.22);
-    void ctx.resume();
-  } catch {
-    /* Web Audio not available */
-  }
-}
-
-type AppointmentNotif = {
-  uid: string;
-  type: "new" | "cancelled" | "rescheduled";
-  time?: string;
-};
-
-function NotifToast({
-  notif,
-  onClose,
-}: {
-  notif: AppointmentNotif;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const t = setTimeout(onClose, 7000);
-    return () => clearTimeout(t);
-  }, [onClose]);
-
-  const config = {
-    new: {
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
-          <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18M8 14h2v2H8z" />
-        </svg>
-      ),
-      bg: "bg-[var(--primary)]",
-      title: "Novo agendamento",
-      sub: notif.time ? `Marcado para as ${notif.time}` : "Recebido pelo WhatsApp",
-    },
-    cancelled: {
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
-          <circle cx="12" cy="12" r="9" /><path d="M15 9l-6 6M9 9l6 6" />
-        </svg>
-      ),
-      bg: "bg-[#dc2626]",
-      title: "Agendamento cancelado",
-      sub: notif.time ? `Horário das ${notif.time}` : "Cliente cancelou",
-    },
-    rescheduled: {
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
-          <path d="M23 4v6h-6M1 20v-6h6" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-        </svg>
-      ),
-      bg: "bg-[#d97706]",
-      title: "Reagendamento",
-      sub: notif.time ? `Novo horário: ${notif.time}` : "Cliente reagendou",
-    },
-  }[notif.type];
-
-  return (
-    <div
-      role="alert"
-      aria-live="assertive"
-      className="flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 pr-3 min-w-[280px] max-w-xs shadow-xl animate-in slide-in-from-right-4 fade-in duration-300"
-    >
-      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white ${config.bg}`}>
-        {config.icon}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-[var(--text)]">{config.title}</p>
-        <p className="mt-0.5 text-xs text-[var(--text-muted)]">{config.sub}</p>
-      </div>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Fechar notificação"
-        className="ml-1 shrink-0 rounded-lg p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--text)]"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
-          <path d="M18 6L6 18M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
-  );
-}
-
 function AgendaListSkeleton() {
   return (
     <div
@@ -233,6 +230,10 @@ export function AgendaPortal() {
   const [listFilter, setListFilter] = useState<"all" | "pending" | "confirmed">(
     "all"
   );
+  const [profFilterId, setProfFilterId] = useState<string | null>(null);
+  const [profRoster, setProfRoster] = useState<
+    { id: string; name: string; panel_color: string | null }[]
+  >([]);
   const [viewMode, setViewMode] = useState<"calendar" | "list">("list");
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [proceduresOpen, setProceduresOpen] = useState(false);
@@ -243,7 +244,8 @@ export function AgendaPortal() {
     | "clinic-hours"
     | "whatsapp-human"
     | "agent"
-    | "report";
+    | "report"
+    | "alerts";
   const [sidebarPage, setSidebarPage] = useState<SidebarPage>("dashboard");
   const [clinicAgendaHours, setClinicAgendaHours] = useState<number[]>(() =>
     normalizeAgendaVisibleHours(null)
@@ -255,9 +257,12 @@ export function AgendaPortal() {
   const [humanQueueCount, setHumanQueueCount] = useState(0);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [access, setAccess] = useState<AccessState | null>(null);
-  const [notifs, setNotifs] = useState<AppointmentNotif[]>([]);
   const locallyModified = useRef(new Set<string>());
   const prevRowsRef = useRef<AppointmentRow[]>([]);
+  /** 0 = ainda não houve um load completo; após 1º load finalizado só sincroniza; difs só a partir do 2º. */
+  const apptNotifSettledLoadsRef = useRef(0);
+  const apptSnapshotRef = useRef<AppointmentSnapshot>(new Map());
+  const agendaNotif = useAgendaNotifications();
   /** Vazio até ao mount no cliente — evita hidratação (data UTC vs fuso local). */
   const [dayKey, setDayKey] = useState("");
   const [todayLabel, setTodayLabel] = useState("");
@@ -348,10 +353,15 @@ export function AgendaPortal() {
     setListLoading(true);
     setListError(null);
 
-    const { data, error } = await supabase
-      .from("appointments")
-      .select(
-        `
+    const [
+      { data, error },
+      { data: csRaw, error: csErr },
+      { data: pros },
+    ] = await Promise.all([
+      supabase
+        .from("appointments")
+        .select(
+          `
         id,
         starts_at,
         ends_at,
@@ -360,15 +370,22 @@ export function AgendaPortal() {
         source,
         notes,
         patients ( name, phone ),
-        professionals ( name, specialty )
+        professionals ( id, name, specialty, panel_color, avatar_path, avatar_emoji )
       `
-      )
-      .eq("clinic_id", clinicId)
-      .order("starts_at", { ascending: true });
+        )
+        .eq("clinic_id", clinicId)
+        .order("starts_at", { ascending: true }),
+      supabase.rpc("painel_list_cs_agendamentos", { p_clinic_id: clinicId }),
+      supabase
+        .from("professionals")
+        .select("id, name, panel_color")
+        .eq("clinic_id", clinicId)
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true }),
+    ]);
 
-    const { data: csRaw, error: csErr } = await supabase.rpc(
-      "painel_list_cs_agendamentos",
-      { p_clinic_id: clinicId }
+    setProfRoster(
+      (pros ?? []) as { id: string; name: string; panel_color: string | null }[]
     );
 
     if (error) {
@@ -435,21 +452,32 @@ export function AgendaPortal() {
     );
   }, [rows, listFilter]);
 
+  const profFilteredRows = useMemo(() => {
+    if (!profFilterId) return tabFilteredRows;
+    return tabFilteredRows.filter((r) =>
+      rowMatchesProfessionalFilter(r, profFilterId, profRoster)
+    );
+  }, [tabFilteredRows, profFilterId, profRoster]);
+
   const listDisplayRows = useMemo(
     () =>
-      tabFilteredRows.filter((r) =>
+      profFilteredRows.filter((r) =>
         matchesLocalDayKey(r.starts_at, dayKey)
       ),
-    [tabFilteredRows, dayKey]
+    [profFilteredRows, dayKey]
   );
 
-  const statsDayRows = useMemo(
-    () =>
-      rows
-        .filter((r) => r.status !== "cancelled")
-        .filter((r) => matchesLocalDayKey(r.starts_at, dayKey)),
-    [rows, dayKey]
-  );
+  const statsDayRows = useMemo(() => {
+    let base = rows
+      .filter((r) => r.status !== "cancelled")
+      .filter((r) => matchesLocalDayKey(r.starts_at, dayKey));
+    if (profFilterId) {
+      base = base.filter((r) =>
+        rowMatchesProfessionalFilter(r, profFilterId, profRoster)
+      );
+    }
+    return base;
+  }, [rows, dayKey, profFilterId, profRoster]);
 
   const stats = useMemo(() => {
     const scheduled = statsDayRows.filter((r) => r.status === "scheduled");
@@ -462,6 +490,13 @@ export function AgendaPortal() {
       confirmedOnDay,
     };
   }, [statsDayRows]);
+
+  useEffect(() => {
+    if (!profFilterId || !profRoster.length) return;
+    if (!profRoster.some((p) => p.id === profFilterId)) {
+      setProfFilterId(null);
+    }
+  }, [profFilterId, profRoster]);
 
   const confirmAppointment = useCallback(
     async (id: string) => {
@@ -626,54 +661,133 @@ export function AgendaPortal() {
   }, [refreshHumanQueue, sidebarPage]);
 
   useEffect(() => {
+    if (access?.kind !== "clinic") {
+      apptNotifSettledLoadsRef.current = 0;
+      apptSnapshotRef.current = new Map();
+    }
+  }, [access?.kind, access?.kind === "clinic" ? access.clinicId : null]);
+
+  useEffect(() => {
+    if (!agendaNotif.hydrated) return;
+    if (listLoading) return;
+    if (access?.kind !== "clinic") return;
+
+    const snap = buildAppointmentSnapshot(rows);
+    if (apptNotifSettledLoadsRef.current === 0) {
+      apptSnapshotRef.current = snap;
+      apptNotifSettledLoadsRef.current = 1;
+      return;
+    }
+
+    const prev = apptSnapshotRef.current;
+    for (const [id, cur] of snap) {
+      if (locallyModified.current.has(id)) continue;
+      const old = prev.get(id);
+      const row = rows.find((x) => x.id === id);
+      if (!row) continue;
+      if (!old) {
+        agendaNotif.addNotification(notificationFromRow(row, "agendamento"));
+      } else {
+        if (old.status !== "cancelled" && cur.status === "cancelled") {
+          agendaNotif.addNotification(notificationFromRow(row, "cancelamento"));
+        } else if (
+          old.starts_at !== cur.starts_at &&
+          cur.status !== "cancelled" &&
+          old.status !== "cancelled"
+        ) {
+          agendaNotif.addNotification(
+            notificationFromRow(row, "reagendamento", {
+              prevStartsAt: old.starts_at,
+            })
+          );
+        }
+      }
+    }
+
+    apptSnapshotRef.current = snap;
+  }, [
+    rows,
+    listLoading,
+    access?.kind,
+    agendaNotif.hydrated,
+    agendaNotif.addNotification,
+  ]);
+
+  useEffect(() => {
     if (!supabase || access?.kind !== "clinic") return;
     const clinicId = access.clinicId;
-
-    const fmt = (iso: string) =>
-      new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
-
-    const pushNotif = (type: AppointmentNotif["type"], startsAt?: string) => {
-      playNotificationSound();
-      setNotifs((prev) => [
-        { uid: crypto.randomUUID(), type, time: startsAt ? fmt(startsAt) : undefined },
-        ...prev.slice(0, 4),
-      ]);
-    };
 
     const channel = supabase
       .channel(`appt-notif:${clinicId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "appointments", filter: `clinic_id=eq.${clinicId}` },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "appointments",
+          filter: `clinic_id=eq.${clinicId}`,
+        },
         (payload) => {
-          const row = payload.new as { id: string; source?: string | null; starts_at?: string };
+          const row = payload.new as { id: string; source?: string | null };
           if (locallyModified.current.has(row.id)) return;
           if (row.source === "painel") return;
-          pushNotif("new", row.starts_at);
           void loadAppointments();
         }
       )
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "appointments", filter: `clinic_id=eq.${clinicId}` },
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "appointments",
+          filter: `clinic_id=eq.${clinicId}`,
+        },
         (payload) => {
           const row = payload.new as { id: string; status?: string; starts_at?: string };
           if (locallyModified.current.has(row.id)) return;
           const prev = prevRowsRef.current.find((r) => r.id === row.id);
           if (row.status === "cancelled" && prev?.status !== "cancelled") {
-            pushNotif("cancelled", row.starts_at);
-          } else if (prev && row.starts_at && prev.starts_at !== row.starts_at) {
-            pushNotif("rescheduled", row.starts_at);
-          } else {
+            void loadAppointments();
             return;
           }
+          if (prev && row.starts_at && prev.starts_at !== row.starts_at) {
+            void loadAppointments();
+            return;
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "cs_agendamentos" },
+        (payload) => {
+          const row = payload.new as { id?: string };
+          if (row.id && locallyModified.current.has(`cs:${row.id}`)) return;
+          void loadAppointments();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "cs_agendamentos" },
+        (payload) => {
+          const row = payload.new as { id?: string };
+          if (row.id && locallyModified.current.has(`cs:${row.id}`)) return;
           void loadAppointments();
         }
       )
       .subscribe();
 
-    return () => { void supabase.removeChannel(channel); };
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, [supabase, access, loadAppointments]);
+
+  useEffect(() => {
+    if (!supabase || access?.kind !== "clinic") return;
+    const tick = window.setInterval(() => {
+      void loadAppointments();
+    }, 25000);
+    return () => clearInterval(tick);
+  }, [supabase, access?.kind, access?.kind === "clinic" ? access.clinicId : null, loadAppointments]);
 
   useEffect(() => {
     if (!session) {
@@ -703,6 +817,23 @@ export function AgendaPortal() {
       router.replace("/login");
     }
   }, [clientSynced, session?.user, supabase, router]);
+
+  const focusAppointmentFromNotif = useCallback(
+    (appointmentId: string, startsAtIso: string) => {
+      setSidebarPage("dashboard");
+      setMobileMenuOpen(false);
+      setViewMode("list");
+      setProfFilterId(null);
+      setListFilter("all");
+      setDayKey(localYmdFromIso(startsAtIso));
+      window.setTimeout(() => {
+        document
+          .getElementById(`appointment-card-${appointmentId}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 420);
+    },
+    []
+  );
 
   async function handleSignOut() {
     if (!supabase) return;
@@ -912,6 +1043,22 @@ export function AgendaPortal() {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
             Relatório
           </button>
+          <button
+            type="button"
+            onClick={() => setSidebarPage("alerts")}
+            className={`relative ${sidebarNavClass("alerts")}`}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            <span className="min-w-0 flex-1 text-left">Alertas</span>
+            {agendaNotif.unreadCount > 0 ? (
+              <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                {agendaNotif.unreadCount > 99 ? "99+" : agendaNotif.unreadCount}
+              </span>
+            ) : null}
+          </button>
         </nav>
         <div className="flex shrink-0 justify-center border-b border-[var(--border)] px-3 py-2.5">
           <ThemeToggle />
@@ -927,6 +1074,10 @@ export function AgendaPortal() {
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <NotificationToastStack
+        toasts={agendaNotif.toasts}
+        dismissToast={agendaNotif.dismissToast}
+      />
       <header className={`sticky top-0 z-30 shrink-0 border-b border-[var(--border)] bg-[var(--surface)]/85 backdrop-blur-md sm:hidden ${mobileMenuOpen ? "z-[60]" : "z-30"}`}>
         <div className="flex items-center gap-2 px-4 py-3">
           <button
@@ -1072,6 +1223,24 @@ export function AgendaPortal() {
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
                   Relatório
                 </button>
+                <button
+                  type="button"
+                  className={`relative ${mobileNavRowClass("alerts")}`}
+                  onClick={() => goToSidebarPageAfterMobileMenuClose("alerts")}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                    </svg>
+                  </span>
+                  <span className="flex-1 text-left">Alertas</span>
+                  {agendaNotif.unreadCount > 0 ? (
+                    <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                      {agendaNotif.unreadCount > 99 ? "99+" : agendaNotif.unreadCount}
+                    </span>
+                  ) : null}
+                </button>
               </nav>
               <div className="flex shrink-0 justify-center border-b border-[var(--border)] px-3 py-2.5">
                 <ThemeToggle />
@@ -1148,6 +1317,60 @@ export function AgendaPortal() {
                 ) : null}
               </button>
             ))}
+          </div>
+        </div>
+
+        <div
+          className="agenda-animate-in mb-8 flex flex-col gap-2"
+          style={{ animationDelay: "28ms" }}
+        >
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            Profissional
+          </p>
+          <div
+            className="flex flex-wrap gap-2"
+            role="tablist"
+            aria-label="Filtrar por profissional"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={profFilterId === null}
+              onClick={() => setProfFilterId(null)}
+              className={
+                profFilterId === null
+                  ? "rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white shadow-sm"
+                  : "rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs font-medium text-[var(--text-muted)] shadow-sm transition-colors hover:bg-[var(--surface-soft)]"
+              }
+            >
+              Todos
+            </button>
+            {profRoster.map((p) => {
+              const accent = resolveProfessionalCardStyle(p.panel_color, p.id)
+                .accent;
+              const sel = profFilterId === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={sel}
+                  onClick={() => setProfFilterId(p.id)}
+                  className={
+                    sel
+                      ? "inline-flex items-center gap-2 rounded-full bg-[var(--primary)] pl-2 pr-4 py-2 text-xs font-semibold text-white shadow-sm"
+                      : "inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] pl-2 pr-4 py-2 text-xs font-medium text-[var(--text-muted)] shadow-sm transition-colors hover:bg-[var(--surface-soft)]"
+                  }
+                >
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full border border-[var(--text)]/15 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]"
+                    style={{ backgroundColor: accent }}
+                    aria-hidden
+                  />
+                  <span className="max-w-[200px] truncate">{p.name}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -1291,7 +1514,7 @@ export function AgendaPortal() {
 
         {viewMode === "calendar" ? (
           <AppointmentsCalendar
-            rows={tabFilteredRows}
+            rows={profFilteredRows}
             loading={listLoading}
             focusDate={calendarFocusDate}
             slotMinTime={calendarSlotBounds.slotMinTime}
@@ -1318,12 +1541,12 @@ export function AgendaPortal() {
               </svg>
             </div>
             <p className="font-display text-xl font-semibold text-[var(--text)]">
-              {tabFilteredRows.length === 0
+              {profFilteredRows.length === 0
                 ? "Nenhum agendamento neste filtro"
                 : "Nenhum agendamento neste dia"}
             </p>
             <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-[var(--text-muted)]">
-              {tabFilteredRows.length > 0 && listDisplayRows.length === 0 ? (
+              {profFilteredRows.length > 0 && listDisplayRows.length === 0 ? (
                 <>
                   Existem marcações em outros dias com este filtro. Use{" "}
                   <strong className="font-medium text-[var(--text)]">
@@ -1422,24 +1645,26 @@ export function AgendaPortal() {
                 rows={rows}
               />
             ) : null}
+            {sidebarPage === "alerts" ? (
+              <NotificationAlertsPage
+                onBack={() => setSidebarPage("dashboard")}
+                prefs={agendaNotif.prefs}
+                updatePrefs={agendaNotif.updatePrefs}
+                inbox={agendaNotif.inbox}
+                markAllRead={agendaNotif.markAllRead}
+                markOneRead={agendaNotif.markOneRead}
+                clearInbox={agendaNotif.clearInbox}
+                onNavigateAppointment={focusAppointmentFromNotif}
+                playTestSound={agendaNotif.playTestSound}
+                onFirstInteraction={agendaNotif.onFirstBellInteraction}
+              />
+            ) : null}
           </div>
         ) : null}
         </div>
       </main>
       </div>
 
-      {/* Notificações em tempo real */}
-      {notifs.length > 0 && (
-        <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2">
-          {notifs.map((n) => (
-            <NotifToast
-              key={n.uid}
-              notif={n}
-              onClose={() => setNotifs((prev) => prev.filter((x) => x.uid !== n.uid))}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

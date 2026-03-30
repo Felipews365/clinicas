@@ -9,6 +9,10 @@ import listPlugin from "@fullcalendar/list";
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import {
+  mixWithWhite,
+  resolveProfessionalCardStyle,
+} from "@/lib/professional-palette";
+import {
   formatRange,
   isCsAgentBooking,
   one,
@@ -39,11 +43,26 @@ function rowsToEvents(rows: AppointmentRow[]): EventInput[] {
         : name;
 
     const palette =
-      r.status === "scheduled"
-        ? { bg: "#e8f0fe", border: "#1a73e8", text: "#1967d2" }
-        : r.status === "cancelled"
-          ? { bg: "#f1f3f4", border: "#80868b", text: "#5f6368" }
-          : { bg: "#e6f4ea", border: "#188038", text: "#137333" };
+      r.status === "cancelled"
+        ? { bg: "#f1f3f4", border: "#80868b", text: "#5f6368" }
+        : (() => {
+            const s = resolveProfessionalCardStyle(
+              prof?.panel_color ?? null,
+              r.id
+            );
+            if (r.status === "completed") {
+              return {
+                bg: mixWithWhite(s.accent, 0.5),
+                border: s.calendarBorder,
+                text: s.calendarText,
+              };
+            }
+            return {
+              bg: s.calendarBg,
+              border: s.calendarBorder,
+              text: s.calendarText,
+            };
+          })();
 
     return {
       id: r.id,
@@ -153,18 +172,19 @@ export function AppointmentsCalendar({
           Legenda
         </span>
         <span className="inline-flex items-center gap-2">
-          <span
-            className="inline-block h-2 w-2 rounded-full border-2 border-[#1a73e8] bg-[#e8f0fe]"
-            aria-hidden
-          />
-          Agendado
+          <span className="inline-flex gap-0.5" aria-hidden>
+            <span className="inline-block h-2 w-2 rounded-full bg-[#DCEEFF]" />
+            <span className="inline-block h-2 w-2 rounded-full bg-[#E7F7EE]" />
+            <span className="inline-block h-2 w-2 rounded-full bg-[#F0E8FF]" />
+          </span>
+          Agendado · cor do profissional
         </span>
         <span className="inline-flex items-center gap-2">
           <span
-            className="inline-block h-2 w-2 rounded-full border-2 border-[#188038] bg-[#e6f4ea]"
+            className="inline-block h-2 w-2 rounded-full border border-[#80868b]/40 bg-[#eceff1]"
             aria-hidden
           />
-          Concluído
+          Concluído · mesma família de cor
         </span>
         <span className="inline-flex items-center gap-2">
           <span

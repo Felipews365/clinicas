@@ -1,5 +1,14 @@
 export type PersonEmbed = { name: string | null; phone: string };
-export type ProfessionalEmbed = { name: string; specialty: string | null };
+export type ProfessionalEmbed = {
+  id?: string | null;
+  name: string;
+  specialty: string | null;
+  /** Hex da paleta do painel (ex.: #E7F7EE); opcional em dados antigos. */
+  panel_color?: string | null;
+  /** Caminho no bucket `professional-avatars`. */
+  avatar_path?: string | null;
+  avatar_emoji?: string | null;
+};
 
 export type AppointmentRow = {
   id: string;

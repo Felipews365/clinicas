@@ -1,5 +1,8 @@
 "use client";
 
+import type { CSSProperties } from "react";
+import { professionalCardCssVars } from "@/lib/professional-palette";
+import { useDataTheme } from "@/lib/use-data-theme";
 import {
   awaitsConfirmation,
   isClinicConfirmed,
@@ -220,6 +223,8 @@ export function AppointmentCardList({
   onConfirm,
   onRemove,
 }: Props) {
+  const theme = useDataTheme();
+
   return (
     <ul className="flex flex-col gap-5" aria-label="Lista de agendamentos do dia">
       {rows.map((r, index) => {
@@ -245,12 +250,19 @@ export function AppointmentCardList({
                 : "bg-[var(--primary-strong)]";
 
         const staggerMs = Math.min(index, 14) * 52;
+        const profColor = prof?.panel_color ?? null;
+        const cardStyle = {
+          animationDelay: `${staggerMs}ms`,
+          ...professionalCardCssVars(profColor, r.id, theme),
+        } as CSSProperties;
 
         return (
           <li
+            id={`appointment-card-${r.id}`}
             key={r.id}
-            className="agenda-animate-in list-none rounded-[1.35rem] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[var(--shadow-card)] ring-1 ring-[var(--text)]/[0.06] transition-[box-shadow,transform] duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[var(--shadow-card)] focus-within:ring-2 focus-within:ring-[var(--primary)]/25"
-            style={{ animationDelay: `${staggerMs}ms` }}
+            data-professional-color={profColor ?? ""}
+            className="patient-card agenda-animate-in list-none p-6 shadow-[var(--shadow-card)] ring-1 ring-[var(--text)]/[0.06] transition-[box-shadow,transform] duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[var(--shadow-card)] focus-within:ring-2 focus-within:ring-[var(--primary)]/25"
+            style={cardStyle}
           >
             <article className="flex flex-col gap-5 lg:flex-row lg:items-stretch lg:justify-between lg:gap-6">
               <div className="flex min-w-0 flex-1 gap-5">
@@ -263,11 +275,11 @@ export function AppointmentCardList({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <h2 className="font-display text-[1.35rem] font-semibold leading-snug tracking-tight text-[#1f1c1a]">
+                      <h2 className="font-display text-[1.35rem] font-semibold leading-snug tracking-tight text-[var(--text)]">
                         {name}
                       </h2>
                       {fromWhatsAppPending ? (
-                        <p className="mt-1 text-xs font-medium text-[#7a7165]">
+                        <p className="mt-1 text-xs font-medium text-[var(--text-muted)]">
                           {fromAgentIa
                             ? "Agendamento IA · aguarda confirmação da clínica"
                             : "Origem: WhatsApp · aguarda confirmação da clínica"}
@@ -281,6 +293,12 @@ export function AppointmentCardList({
                       ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                      <span
+                        className="prof-card-badge truncate"
+                        title={profName ?? undefined}
+                      >
+                        {profName ?? "Sem profissional"}
+                      </span>
                       {r.status === "scheduled" && pending ? (
                         <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--warning-border)] bg-[var(--warning-soft)] px-3.5 py-1.5 text-xs font-semibold text-[var(--warning-text)]">
                           <IconHourglass className="text-[var(--warning-icon)]" />

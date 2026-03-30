@@ -111,6 +111,34 @@ body {
   border: 1px solid var(--border);
 }
 
+/* -----------------------------------------------------------------------------
+   Cards de paciente: variáveis --professional-* (cadastro do profissional)
+   ----------------------------------------------------------------------------- */
+
+.patient-card {
+  border-radius: 1.35rem;
+  border-width: 1px;
+  border-style: solid;
+  background: var(--professional-bg, var(--surface));
+  border-color: var(--professional-border, var(--border));
+}
+
+.patient-card .prof-card-badge {
+  display: inline-flex;
+  max-width: min(100%, 14rem);
+  align-items: center;
+  border-radius: 9999px;
+  border-width: 1px;
+  border-style: solid;
+  padding: 0.2rem 0.55rem;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--professional-badge-fg, var(--text-muted));
+  background: var(--professional-badge-bg, var(--surface-soft));
+  border-color: var(--professional-border, var(--border));
+}
+
 /* Painel de agendamentos: entrada suave e estados de carga */
 @keyframes agenda-fade-up {
   from {

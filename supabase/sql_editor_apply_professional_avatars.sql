@@ -1,11 +1,67 @@
--- Painel web: expor agendamentos gravados pelo n8n em cs_agendamentos (modelo paralelo a public.appointments).
--- Executar no SQL Editor do Supabase após existir cs_agendamentos.
+-- =============================================================================
+-- Corrige: "column professionals.avatar_path does not exist"
 --
--- Inclui: listagem JSON + confirmação/cancelamento pelo dono (clinic owner via rls_is_clinic_owner).
+-- No Supabase: Dashboard → SQL Editor → New query → colar este ficheiro → Run
+-- Idempotente: pode voltar a correr sem problema.
+-- Alternativa (CLI, na pasta do projeto): npx supabase db push
+-- =============================================================================
 
-alter table public.cs_agendamentos
-  add column if not exists painel_confirmado boolean not null default false;
+alter table public.professionals
+  add column if not exists avatar_path text,
+  add column if not exists avatar_emoji text;
 
+comment on column public.professionals.avatar_path is
+  'Caminho no bucket professional-avatars: {clinic_id}/{professional_id}.ext';
+comment on column public.professionals.avatar_emoji is
+  'Emoji exibido quando não há foto (opcional).';
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'professional-avatars',
+  'professional-avatars',
+  true,
+  5242880,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "professional_avatars_public_read" on storage.objects;
+create policy "professional_avatars_public_read"
+  on storage.objects for select
+  using (bucket_id = 'professional-avatars');
+
+drop policy if exists "professional_avatars_owner_insert" on storage.objects;
+create policy "professional_avatars_owner_insert"
+  on storage.objects for insert to authenticated
+  with check (
+    bucket_id = 'professional-avatars'
+    and public.rls_is_clinic_owner((split_part(name, '/', 1))::uuid)
+  );
+
+drop policy if exists "professional_avatars_owner_update" on storage.objects;
+create policy "professional_avatars_owner_update"
+  on storage.objects for update to authenticated
+  using (
+    bucket_id = 'professional-avatars'
+    and public.rls_is_clinic_owner((split_part(name, '/', 1))::uuid)
+  )
+  with check (
+    bucket_id = 'professional-avatars'
+    and public.rls_is_clinic_owner((split_part(name, '/', 1))::uuid)
+  );
+
+drop policy if exists "professional_avatars_owner_delete" on storage.objects;
+create policy "professional_avatars_owner_delete"
+  on storage.objects for delete to authenticated
+  using (
+    bucket_id = 'professional-avatars'
+    and public.rls_is_clinic_owner((split_part(name, '/', 1))::uuid)
+  );
+
+-- Só necessário se usar agendamentos cs_agendamentos no painel (RPC).
 create or replace function public.painel_list_cs_agendamentos (p_clinic_id uuid)
 returns jsonb
 language plpgsql
@@ -86,99 +142,6 @@ begin
 end;
 $$;
 
-create or replace function public.painel_confirm_cs_agendamento (
-  p_clinic_id uuid,
-  p_cs_agendamento_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_n int;
-begin
-  if not public.rls_is_clinic_owner (p_clinic_id) then
-    raise exception 'forbidden' using errcode = '42501';
-  end if;
-
-  update public.cs_agendamentos
-  set painel_confirmado = true
-  where id = p_cs_agendamento_id
-    and status not in ('cancelado', 'concluido');
-
-  get diagnostics v_n = row_count;
-  if v_n = 0 then
-    return jsonb_build_object('ok', false, 'error', 'not_found_or_final');
-  end if;
-
-  return jsonb_build_object('ok', true);
-end;
-$$;
-
-create or replace function public.painel_cancel_cs_agendamento (
-  p_clinic_id uuid,
-  p_cs_agendamento_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v record;
-  v_slot uuid;
-begin
-  if not public.rls_is_clinic_owner (p_clinic_id) then
-    raise exception 'forbidden' using errcode = '42501';
-  end if;
-
-  select id, profissional_id, data_agendamento, horario, status
-  into v
-  from public.cs_agendamentos
-  where id = p_cs_agendamento_id
-  for update;
-
-  if not found then
-    return jsonb_build_object('ok', false, 'error', 'not_found');
-  end if;
-
-  if v.status = 'cancelado' then
-    return jsonb_build_object('ok', false, 'error', 'already_cancelled');
-  end if;
-
-  select h.id into v_slot
-  from public.cs_horarios_disponiveis h
-  where h.profissional_id = v.profissional_id
-    and h.data = v.data_agendamento
-    and h.horario = v.horario
-  for update;
-
-  if found then
-    update public.cs_horarios_disponiveis
-    set disponivel = true
-    where id = v_slot;
-  end if;
-
-  update public.cs_agendamentos
-  set
-    status = 'cancelado',
-    motivo_cancelamento = coalesce(motivo_cancelamento, 'Cancelado pelo painel'),
-    atualizado_em = now()
-  where id = v.id;
-
-  return jsonb_build_object('ok', true);
-end;
-$$;
-
 revoke all on function public.painel_list_cs_agendamentos (uuid) from public;
 grant execute on function public.painel_list_cs_agendamentos (uuid) to authenticated;
 grant execute on function public.painel_list_cs_agendamentos (uuid) to service_role;
-
-revoke all on function public.painel_confirm_cs_agendamento (uuid, uuid) from public;
-grant execute on function public.painel_confirm_cs_agendamento (uuid, uuid) to authenticated;
-grant execute on function public.painel_confirm_cs_agendamento (uuid, uuid) to service_role;
-
-revoke all on function public.painel_cancel_cs_agendamento (uuid, uuid) from public;
-grant execute on function public.painel_cancel_cs_agendamento (uuid, uuid) to authenticated;
-grant execute on function public.painel_cancel_cs_agendamento (uuid, uuid) to service_role;
