@@ -8,7 +8,7 @@ import {
   isYmdToday,
   parseLocalYmd,
 } from "@/lib/local-day";
-import { isStandardExpedienteHour, parseSlotHour } from "@/lib/slots-expediente";
+import { parseSlotHour } from "@/lib/slots-expediente";
 
 export type CsSlotRow = {
   horario_id: string;
@@ -35,10 +35,10 @@ type Props = {
   onAutoAdvanceDay?: (ymd: string) => void;
   /** Atualiza o dia do painel quando o utilizador muda a data dentro deste modal. */
   onDayKeyChange?: (ymd: string) => void;
-  /** Horas 6–22 habilitadas globalmente pela clínica (`clinics.agenda_visible_hours`). */
+  /** Horas 6–22 habilitadas globalmente pela clínica (`clinics.agenda_visible_hours`) — única grade oficial desta tela. */
   clinicVisibleHours: number[];
-  /** `clinics.slots_expediente` — blocos «habituais» vs «extra». */
-  clinicSlotsExpediente: unknown;
+  /** Reservado (ex.: compatibilidade); rótulos e grelha usam só `clinicVisibleHours`. */
+  clinicSlotsExpediente?: unknown;
   presentation?: "modal" | "panel";
 };
 
@@ -97,21 +97,6 @@ function uniqueProceduresFromSlots(slots: CsSlotRow[]): string[] {
   return out;
 }
 
-/** Fora do expediente habitual e bloqueado (não é ocupação por cliente) — não exibimos na grelha. */
-function isExtraNaoListadoSlot(
-  s: CsSlotRow,
-  dayKey: string,
-  clinicSlotsExpediente: unknown
-): boolean {
-  const h = parseSlotHour(s.horario);
-  if (h < 0) return false;
-  const inTemplate = isStandardExpedienteHour(dayKey, h, clinicSlotsExpediente);
-  const livre = s.disponivel;
-  const porCliente = !livre && s.indisponivel_por === "cliente";
-  const bloqueioPainel = !livre && !porCliente;
-  return !inTemplate && bloqueioPainel;
-}
-
 export function SlotsManagerModal({
   open,
   onClose,
@@ -121,9 +106,10 @@ export function SlotsManagerModal({
   onAutoAdvanceDay,
   onDayKeyChange,
   clinicVisibleHours,
-  clinicSlotsExpediente,
+  clinicSlotsExpediente: _clinicSlotsExpediente,
   presentation = "modal",
 }: Props) {
+  void _clinicSlotsExpediente;
   const [rows, setRows] = useState<CsSlotRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -315,34 +301,24 @@ export function SlotsManagerModal({
     }
   }, [rows, mobileProfId]);
 
-  function renderSlotButton(
-    s: CsSlotRow,
-    compact: boolean,
-    inTemplate: boolean
-  ): ReactNode {
+  /** Só horários em `clinicVisibleHours`; livre ⇒ sempre DISPONÍVEL (nunca «extra listado»). */
+  function renderSlotButton(s: CsSlotRow, compact: boolean): ReactNode {
     const livre = s.disponivel;
     const porCliente = !livre && s.indisponivel_por === "cliente";
-    const bloqueioPainel = !livre && !porCliente;
-    const extraNaoListado = !inTemplate && bloqueioPainel;
     const busy = busyId === s.horario_id;
     const procLabel = s.nome_procedimento?.trim() ?? null;
 
     let estadoLabel: string;
     let chipLabel: string;
     if (livre) {
-      estadoLabel = inTemplate
-        ? "disponível para o agente (horário habitual)"
-        : "disponível para o agente (horário extra, fora do expediente padrão)";
-      chipLabel = inTemplate ? "Disponível" : "Extra · listado";
+      estadoLabel = "disponível para o agente — horário habilitado em Configurar horários da clínica";
+      chipLabel = "DISPONÍVEL";
     } else if (porCliente) {
       estadoLabel = "indisponível — ocupado por agendamento";
-      chipLabel = "Com cliente";
-    } else if (extraNaoListado) {
-      estadoLabel = "não listado ao agente — fora do expediente habitual";
-      chipLabel = "Não listado";
+      chipLabel = "COM CLIENTE";
     } else {
-      estadoLabel = "indisponível — bloqueio manual no horário habitual";
-      chipLabel = "Bloqueado";
+      estadoLabel = "indisponível — bloqueio manual no painel";
+      chipLabel = "BLOQUEADO";
     }
 
     const pad = compact ? "px-2 py-1.5 min-w-[4.25rem]" : "px-3 py-2 min-w-[5.5rem]";
@@ -352,43 +328,29 @@ export function SlotsManagerModal({
     const ariaProc = procLabel ? ` Procedimento: ${procLabel}.` : "";
 
     const title = livre
-      ? inTemplate
-        ? "Marcar como indisponível (o agente deixa de listar esta vaga habitual)"
-        : "Ocultar horário extra (o agente deixa de listar)"
+      ? "Marcar como indisponível (bloqueio manual — o agente deixa de listar esta vaga)"
       : porCliente
         ? (procLabel ? `${procLabel} — ` : "") +
           "Tornar disponível (confirme se quer libertar a vaga com agendamento)"
-        : extraNaoListado
-          ? "Fora do bloco habitual. Toque para o agente do WhatsApp poder oferecer esta vaga."
-          : "Marcar como disponível de novo";
+        : "Marcar como disponível de novo";
 
     const chipTone = livre
-      ? inTemplate
-        ? "text-[#3d6b62]/90"
-        : "text-[#2d6b5c]/90"
+      ? "text-[#3d6b62]/90"
       : porCliente
         ? "text-[#4a5f8a]"
-        : extraNaoListado
-          ? "text-[#6b635a]"
-          : "text-[#b91c1c]";
+        : "text-[#b91c1c]";
 
     const procTone = porCliente
       ? "text-[#2c3d6b]/95"
       : livre
         ? "text-[#3d6b62]/85"
-        : extraNaoListado
-          ? "text-[#5c5348]/90"
-          : "text-[#7f1d1d]/90";
+        : "text-[#7f1d1d]/90";
 
     const shell = livre
-      ? inTemplate
-        ? "border border-[#c5ddd4] bg-[#f0faf6] text-[#1e4d40] shadow-sm hover:-translate-y-px focus-visible:outline-[#3d6b62]"
-        : "border border-[#8ebdae] bg-[#e6f5ef] text-[#1e4d40] shadow-sm ring-1 ring-amber-700/25 hover:-translate-y-px focus-visible:outline-[#3d6b62]"
+      ? "border border-[#c5ddd4] bg-[#f0faf6] text-[#1e4d40] shadow-sm hover:-translate-y-px focus-visible:outline-[#3d6b62]"
       : porCliente
         ? "border border-[#b8c5e0] bg-[#eef2fb] text-[#2c3d6b] line-through decoration-[#7d8ab0] hover:no-underline focus-visible:outline-[#4a5f8a]"
-        : extraNaoListado
-          ? "border border-dashed border-[#a39e94] bg-[#f0ece4] text-[#57534a] line-through decoration-[#78726a] decoration-2 hover:no-underline focus-visible:outline-[#78716b]"
-          : "border border-[#e8b4b4] bg-[#fef2f2] text-[#7f1d1d] line-through decoration-[#b91c1c]/55 hover:no-underline focus-visible:outline-[#b91c1c]";
+        : "border border-[#e8b4b4] bg-[#fef2f2] text-[#7f1d1d] line-through decoration-[#b91c1c]/55 hover:no-underline focus-visible:outline-[#b91c1c]";
 
     return (
       <button
@@ -482,24 +444,12 @@ export function SlotsManagerModal({
     }
     const allowed = new Set(clinicGridHours);
     if (!dk) {
-      const fallbackDk = activeDayKey || formatLocalYmd(new Date());
       const fallback = [...slots]
         .filter((s) => allowed.has(parseSlotHour(s.horario)))
-        .filter((s) => !isExtraNaoListadoSlot(s, fallbackDk, clinicSlotsExpediente))
         .sort((a, b) => parseSlotHour(a.horario) - parseSlotHour(b.horario));
       return (
         <div className={`flex flex-wrap gap-2 ${compact ? "" : ""}`}>
-          {fallback.map((s) =>
-            renderSlotButton(
-              s,
-              compact,
-              isStandardExpedienteHour(
-                fallbackDk,
-                parseSlotHour(s.horario),
-                clinicSlotsExpediente
-              )
-            )
-          )}
+          {fallback.map((s) => renderSlotButton(s, compact))}
         </div>
       );
     }
@@ -507,11 +457,11 @@ export function SlotsManagerModal({
       <p
         className={`text-[11px] leading-snug text-[#6b635a] ${compact ? "col-span-3 mb-2 sm:col-span-4" : "mb-2"}`}
       >
-        <strong className="font-medium text-[#3d3d3a]">Horários da clínica.</strong> A grelha mostra apenas os
-        blocos definidos em <strong className="font-medium">Configurar horários da clínica</strong>. Aqui aparecem
-        apenas <strong className="font-medium">disponível</strong>, <strong className="font-medium">com cliente</strong>{" "}
-        ou <strong className="font-medium">bloqueado</strong> no habitual, e <strong className="font-medium">extra</strong>{" "}
-        quando a vaga está aberta ao agente — não mostramos o estado «não listado» (extra fechado).
+        <strong className="font-medium text-[#3d3d3a]">Grade oficial.</strong> Só entram blocos marcados em{" "}
+        <strong className="font-medium">Configurar horários da clínica</strong>. Por defeito cada bloco é{" "}
+        <strong className="font-medium">DISPONÍVEL</strong> para o agente; com reserva real mostramos{" "}
+        <strong className="font-medium">COM CLIENTE</strong> e com bloqueio manual{" "}
+        <strong className="font-medium">BLOQUEADO</strong>.
       </p>
     );
     const missingCell = (hour: number) => {
@@ -519,28 +469,25 @@ export function SlotsManagerModal({
       return (
         <div
           key={`missing-${hour}`}
-          className={`flex flex-col items-stretch gap-0.5 rounded-xl border border-dashed border-[#d4cfc4] bg-[#faf9f7] px-2 py-2 text-center opacity-80 ${compact ? "min-w-[4.25rem] px-2 py-1.5" : "min-w-[5.5rem] px-3 py-2"}`}
+          className={`flex flex-col items-stretch gap-0.5 rounded-xl border border-dashed border-[#c5ddd4] bg-[#f4fbf8] px-2 py-2 text-center ${compact ? "min-w-[4.25rem] px-2 py-1.5" : "min-w-[5.5rem] px-3 py-2"}`}
+          title="Bloco da clínica sem linha sincronizada — estado esperado: disponível após grelha."
         >
-          <span className={compact ? "text-xs tabular-nums text-[#a8a29e]" : "text-sm tabular-nums text-[#a8a29e]"}>
+          <span
+            className={
+              compact ? "text-xs font-semibold tabular-nums text-[#1e4d40]" : "text-sm font-semibold tabular-nums text-[#1e4d40]"
+            }
+          >
             {label}
           </span>
-          <span className="text-[8px] font-medium uppercase text-[#a8a29e]">—</span>
+          <span className="text-[8px] font-semibold uppercase tracking-wide text-[#3d6b62]/85">DISPONÍVEL</span>
         </div>
       );
     };
-    const visibleGridHours = clinicGridHours.filter((h) => {
-      const s = byHour.get(h);
-      if (!s) return true;
-      return !isExtraNaoListadoSlot(s, dk, clinicSlotsExpediente);
-    });
+    const visibleGridHours = clinicGridHours;
     const cells = visibleGridHours.map((h) => {
       const s = byHour.get(h);
       if (!s) return missingCell(h);
-      return renderSlotButton(
-        s,
-        compact,
-        isStandardExpedienteHour(dk, h, clinicSlotsExpediente)
-      );
+      return renderSlotButton(s, compact);
     });
     if (compact) {
       return (
@@ -721,21 +668,21 @@ export function SlotsManagerModal({
                         className="mr-1 inline-block h-2.5 w-4 rounded border border-[#c5ddd4] bg-[#f0faf6] align-middle"
                         aria-hidden
                       />
-                      Disponível
+                      DISPONÍVEL
                     </span>
                     <span className="mr-2 inline-block">
                       <span
                         className="mr-1 inline-block h-2.5 w-4 rounded border border-[#b8c5e0] bg-[#eef2fb] align-middle"
                         aria-hidden
                       />
-                      Cliente
+                      COM CLIENTE
                     </span>
                     <span className="inline-block">
                       <span
                         className="mr-1 inline-block h-2.5 w-4 rounded border border-[#e8b4b4] bg-[#fef2f2] align-middle"
                         aria-hidden
                       />
-                      Bloqueio
+                      BLOQUEADO
                     </span>
                   </p>
                   <ul className="flex flex-col gap-5" role="list">
@@ -779,21 +726,21 @@ export function SlotsManagerModal({
                           className="h-4 w-6 shrink-0 rounded-md border border-[#c5ddd4] bg-[#f0faf6]"
                           aria-hidden
                         />
-                        Habitual — disponível ao agente
+                        DISPONÍVEL — grade da clínica, vaga aberta ao agente
                       </span>
                       <span className="inline-flex items-center gap-2">
                         <span
                           className="h-4 w-6 shrink-0 rounded-md border border-[#b8c5e0] bg-[#eef2fb]"
                           aria-hidden
                         />
-                        Com cliente
+                        COM CLIENTE — reserva ativa
                       </span>
                       <span className="inline-flex items-center gap-2">
                         <span
                           className="h-4 w-6 shrink-0 rounded-md border border-[#e8b4b4] bg-[#fef2f2]"
                           aria-hidden
                         />
-                        Bloqueado (habitual)
+                        BLOQUEADO — bloqueio manual no painel
                       </span>
                     </div>
                   </li>
