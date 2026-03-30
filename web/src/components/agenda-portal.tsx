@@ -234,20 +234,22 @@ export function AgendaPortal() {
   );
   const [viewMode, setViewMode] = useState<"calendar" | "list">("list");
   const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [professionalsOpen, setProfessionalsOpen] = useState(false);
   const [proceduresOpen, setProceduresOpen] = useState(false);
-  const [whatsappHumanOpen, setWhatsappHumanOpen] = useState(false);
-  const [slotsManagerOpen, setSlotsManagerOpen] = useState(false);
-  const [clinicAgendaHoursModalOpen, setClinicAgendaHoursModalOpen] =
-    useState(false);
+  type SidebarPage =
+    | "dashboard"
+    | "professionals"
+    | "slots"
+    | "clinic-hours"
+    | "whatsapp-human"
+    | "agent"
+    | "report";
+  const [sidebarPage, setSidebarPage] = useState<SidebarPage>("dashboard");
   const [clinicAgendaHours, setClinicAgendaHours] = useState<number[]>(() =>
     normalizeAgendaVisibleHours(null)
   );
   const [clinicSlotsExpediente, setClinicSlotsExpediente] = useState<unknown>(
     null
   );
-  const [reportOpen, setReportOpen] = useState(false);
-  const [agentConfigOpen, setAgentConfigOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [humanQueueCount, setHumanQueueCount] = useState(0);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
@@ -282,6 +284,25 @@ export function AgendaPortal() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [sidebarPage]);
+
+  const goToSidebarPageAfterMobileMenuClose = useCallback(
+    (page: SidebarPage) => {
+      if (mobileModalOpenTimerRef.current != null) {
+        clearTimeout(mobileModalOpenTimerRef.current);
+        mobileModalOpenTimerRef.current = null;
+      }
+      setMobileMenuOpen(false);
+      mobileModalOpenTimerRef.current = setTimeout(() => {
+        mobileModalOpenTimerRef.current = null;
+        setSidebarPage(page);
+      }, 60);
+    },
+    []
+  );
 
   useEffect(() => {
     const now = new Date();
@@ -601,7 +622,7 @@ export function AgendaPortal() {
 
   useEffect(() => {
     void refreshHumanQueue();
-  }, [refreshHumanQueue, whatsappHumanOpen]);
+  }, [refreshHumanQueue, sidebarPage]);
 
   useEffect(() => {
     if (!supabase || access?.kind !== "clinic") return;
@@ -762,9 +783,23 @@ export function AgendaPortal() {
     "rounded-lg bg-[#0f766e] px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors";
   const viewToggleIdle =
     "rounded-lg px-3.5 py-2 text-xs font-medium text-[#64748b] transition-colors hover:bg-[#f8fafc]";
+  const sidebarNavActive =
+    "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[#0f766e] bg-[#e8f5f2] shadow-sm transition-colors";
+  const sidebarNavIdle =
+    "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#4a7a76] transition-colors hover:bg-[#f0faf8] hover:text-[#0f766e]";
+  function sidebarNavClass(page: SidebarPage) {
+    return sidebarPage === page ? sidebarNavActive : sidebarNavIdle;
+  }
+  function mobileNavRowClass(page: SidebarPage) {
+    return `flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm transition-colors ${
+      sidebarPage === page
+        ? "bg-[#e8f5f2] font-semibold text-[#0f766e]"
+        : "font-medium text-[#4a7a76] hover:bg-[#f0faf8]"
+    }`;
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#e5f3f0] to-[#ebebf5] text-[#1e293b]">
+    <div className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-[#e5f3f0] to-[#ebebf5] text-[#1e293b] sm:flex-row">
       {supabase ? (
         <>
           <ScheduleAppointmentModal
@@ -775,64 +810,23 @@ export function AgendaPortal() {
             clinicId={access.clinicId}
             clinicVisibleHours={clinicAgendaHours}
           />
-          <ClinicAgendaHoursModal
-            open={clinicAgendaHoursModalOpen}
-            onClose={() => setClinicAgendaHoursModalOpen(false)}
-            supabase={supabase}
-            clinicId={access.clinicId}
-            onSaved={(hours) => {
-              setClinicAgendaHours(hours);
-            }}
-          />
-          <ProfessionalsManagerModal
-            open={professionalsOpen}
-            onClose={() => setProfessionalsOpen(false)}
-            supabase={supabase}
-            clinicId={access.clinicId}
-            onChanged={() => void loadAppointments()}
-          />
           <ProceduresManagerModal
             open={proceduresOpen}
             onClose={() => setProceduresOpen(false)}
             supabase={supabase}
             clinicId={access.clinicId}
           />
-          <WhatsappHumanModal
-            open={whatsappHumanOpen}
-            onClose={() => setWhatsappHumanOpen(false)}
-            supabase={supabase}
-            clinicId={access.clinicId}
-            onClaimed={() => void refreshHumanQueue()}
-          />
-          <SlotsManagerModal
-            open={slotsManagerOpen}
-            onClose={() => setSlotsManagerOpen(false)}
-            supabase={supabase}
-            clinicId={access.clinicId}
-            dayKey={dayKey}
-            onAutoAdvanceDay={setDayKey}
-            onDayKeyChange={setDayKey}
-            clinicVisibleHours={clinicAgendaHours}
-            clinicSlotsExpediente={clinicSlotsExpediente}
-          />
-          <ReportModal
-            open={reportOpen}
-            onClose={() => setReportOpen(false)}
-            rows={rows}
-          />
-          <AgentConfigModal
-            open={agentConfigOpen}
-            onClose={() => setAgentConfigOpen(false)}
-            supabase={supabase}
-            clinicId={access.clinicId}
-          />
         </>
       ) : null}
 
-      {/* Sidebar desktop */}
-      <aside className="hidden sm:flex fixed inset-y-0 left-0 z-20 w-[220px] flex-col bg-white shadow-[2px_0_24px_rgba(0,0,0,0.06)]">
+      {/* Sidebar desktop: largura fixa, altura viewport, scroll só no nav */}
+      <aside className="z-20 hidden h-full w-[260px] shrink-0 flex-col overflow-hidden border-r border-[#e8efed] bg-white shadow-[2px_0_24px_rgba(0,0,0,0.04)] sm:flex sm:flex-col">
         {/* Logo */}
-        <div className="flex items-center gap-2.5 border-b border-[#f0f4f3] px-5 py-5">
+        <button
+          type="button"
+          onClick={() => setSidebarPage("dashboard")}
+          className="flex w-full items-center gap-2.5 border-b border-[#f0f4f3] px-5 py-5 text-left transition-colors hover:bg-[#f7fcfb]"
+        >
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0f766e]">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h2v2H8z"/></svg>
           </div>
@@ -840,7 +834,7 @@ export function AgendaPortal() {
             <p className="truncate text-sm font-bold leading-tight text-[#0f4c44]">{headerClinicName}</p>
             <p className="text-[10px] text-[#6b9e97]">Painel</p>
           </div>
-        </div>
+        </button>
         {/* New appointment button */}
         <div className="px-3 pt-4 pb-2">
           <button
@@ -853,20 +847,40 @@ export function AgendaPortal() {
           </button>
         </div>
         {/* Nav items */}
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
-          <button type="button" onClick={() => setProfessionalsOpen(true)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#4a7a76] transition-colors hover:bg-[#f0faf8] hover:text-[#0f766e]">
+        <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 py-2" aria-label="Navegação principal">
+          <button
+            type="button"
+            onClick={() => setSidebarPage("dashboard")}
+            className={sidebarNavClass("dashboard")}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            Dashboard
+          </button>
+          <button
+            type="button"
+            onClick={() => setSidebarPage("professionals")}
+            className={sidebarNavClass("professionals")}
+          >
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             Profissionais
           </button>
-          <button type="button" onClick={() => setSlotsManagerOpen(true)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#4a7a76] transition-colors hover:bg-[#f0faf8] hover:text-[#0f766e]">
+          <button type="button" onClick={() => setSidebarPage("slots")} className={sidebarNavClass("slots")}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
             Horários por médico (WhatsApp)
           </button>
-          <button type="button" onClick={() => setClinicAgendaHoursModalOpen(true)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#4a7a76] transition-colors hover:bg-[#f0faf8] hover:text-[#0f766e]">
+          <button
+            type="button"
+            onClick={() => setSidebarPage("clinic-hours")}
+            className={sidebarNavClass("clinic-hours")}
+          >
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22v-6M12 2v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24"/></svg>
             Configurar horários da clínica
           </button>
-          <button type="button" onClick={() => setWhatsappHumanOpen(true)} className="relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#4a7a76] transition-colors hover:bg-[#f0faf8] hover:text-[#0f766e]">
+          <button
+            type="button"
+            onClick={() => setSidebarPage("whatsapp-human")}
+            className={`relative ${sidebarNavClass("whatsapp-human")}`}
+          >
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             WhatsApp humano
             {humanQueueCount > 0 && (
@@ -875,11 +889,11 @@ export function AgendaPortal() {
               </span>
             )}
           </button>
-          <button type="button" onClick={() => setAgentConfigOpen(true)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#4a7a76] transition-colors hover:bg-[#f0faf8] hover:text-[#0f766e]">
+          <button type="button" onClick={() => setSidebarPage("agent")} className={sidebarNavClass("agent")}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 15h.01M12 15h.01M16 15h.01"/></svg>
             Agente IA
           </button>
-          <button type="button" onClick={() => setReportOpen(true)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#4a7a76] transition-colors hover:bg-[#f0faf8] hover:text-[#0f766e]">
+          <button type="button" onClick={() => setSidebarPage("report")} className={sidebarNavClass("report")}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
             Relatório
           </button>
@@ -894,7 +908,8 @@ export function AgendaPortal() {
         </div>
       </aside>
 
-      <header className={`sticky top-0 z-30 border-b border-white/60 bg-white/70 backdrop-blur-md sm:hidden ${mobileMenuOpen ? "z-[60]" : "z-30"}`}>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <header className={`sticky top-0 z-30 shrink-0 border-b border-white/60 bg-white/70 backdrop-blur-md sm:hidden ${mobileMenuOpen ? "z-[60]" : "z-30"}`}>
         <div className="flex items-center gap-3 px-4 py-3">
           <button
             type="button"
@@ -906,10 +921,17 @@ export function AgendaPortal() {
             <span className="sr-only">{mobileMenuOpen ? "Fechar menu" : "Abrir menu"}</span>
             {mobileMenuOpen ? <IconClose className="shrink-0" /> : <IconMenu className="shrink-0" />}
           </button>
-          <div className="flex-1 min-w-0">
+          <button
+            type="button"
+            className="flex-1 min-w-0 text-left"
+            onClick={() => {
+              setSidebarPage("dashboard");
+              setMobileMenuOpen(false);
+            }}
+          >
             <p className="truncate text-sm font-bold text-[#0f4c44]">{headerClinicName}</p>
             <p className="text-[10px] text-[#6b9e97]">Painel de agendamentos</p>
-          </div>
+          </button>
           <button
             type="button"
             onClick={() => setScheduleOpen(true)}
@@ -937,16 +959,19 @@ export function AgendaPortal() {
             aria-labelledby="painel-menu-mobile-title"
           >
             <div className="flex h-full flex-col overflow-hidden bg-white shadow-[4px_0_32px_rgba(0,0,0,0.1)]">
-              {/* header */}
-              <div className="flex items-center gap-2.5 border-b border-[#f0f4f3] px-5 py-5">
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 border-b border-[#f0f4f3] px-5 py-5 text-left hover:bg-[#f7fcfb]"
+                onClick={() => goToSidebarPageAfterMobileMenuClose("dashboard")}
+              >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0f766e]">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h2v2H8z"/></svg>
                 </div>
                 <div className="min-w-0">
                   <p id="painel-menu-mobile-title" className="truncate text-sm font-bold text-[#0f4c44]">{headerClinicName}</p>
-                  <p className="text-[10px] text-[#6b9e97]">Painel</p>
+                  <p className="text-[10px] text-[#6b9e97]">Painel · toque para o Dashboard</p>
                 </div>
-              </div>
+              </button>
               {/* New appointment */}
               <div className="px-4 pt-4 pb-2">
                 <button
@@ -961,66 +986,60 @@ export function AgendaPortal() {
                 </button>
               </div>
               {/* Nav */}
-              <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5" aria-label="Ações do painel (mobile)">
+              <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2" aria-label="Ações do painel (mobile)">
                 <button
                   type="button"
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]"
-                  onClick={() =>
-                    openModalAfterMobileMenuClose(() => setProfessionalsOpen(true))
-                  }
+                  className={mobileNavRowClass("dashboard")}
+                  onClick={() => goToSidebarPageAfterMobileMenuClose("dashboard")}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
+                  Dashboard
+                </button>
+                <button
+                  type="button"
+                  className={mobileNavRowClass("professionals")}
+                  onClick={() => goToSidebarPageAfterMobileMenuClose("professionals")}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
                   Profissionais
                 </button>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]"
-                  onClick={() =>
-                    openModalAfterMobileMenuClose(() => setSlotsManagerOpen(true))
-                  }
+                  className={mobileNavRowClass("slots")}
+                  onClick={() => goToSidebarPageAfterMobileMenuClose("slots")}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span>
                   Horários por médico (WhatsApp)
                 </button>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]"
-                  onClick={() =>
-                    openModalAfterMobileMenuClose(() =>
-                      setClinicAgendaHoursModalOpen(true)
-                    )
-                  }
+                  className={mobileNavRowClass("clinic-hours")}
+                  onClick={() => goToSidebarPageAfterMobileMenuClose("clinic-hours")}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22v-6M12 2v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24"/></svg></span>
                   Configurar horários da clínica
                 </button>
                 <button
                   type="button"
-                  className="relative flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]"
-                  onClick={() =>
-                    openModalAfterMobileMenuClose(() => setWhatsappHumanOpen(true))
-                  }
+                  className={`relative ${mobileNavRowClass("whatsapp-human")}`}
+                  onClick={() => goToSidebarPageAfterMobileMenuClose("whatsapp-human")}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
-                  <span className="flex-1">WhatsApp humano</span>
+                  <span className="flex-1 text-left">WhatsApp humano</span>
                   {humanQueueCount > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c2410c] px-1 text-[10px] font-bold text-white">{humanQueueCount > 99 ? "99+" : humanQueueCount}</span>}
                 </button>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]"
-                  onClick={() =>
-                    openModalAfterMobileMenuClose(() => setAgentConfigOpen(true))
-                  }
+                  className={mobileNavRowClass("agent")}
+                  onClick={() => goToSidebarPageAfterMobileMenuClose("agent")}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 15h.01M12 15h.01M16 15h.01"/></svg></span>
                   Agente IA
                 </button>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[#4a7a76] hover:bg-[#f0faf8]"
-                  onClick={() =>
-                    openModalAfterMobileMenuClose(() => setReportOpen(true))
-                  }
+                  className={mobileNavRowClass("report")}
+                  onClick={() => goToSidebarPageAfterMobileMenuClose("report")}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
                   Relatório
@@ -1041,8 +1060,11 @@ export function AgendaPortal() {
 
       <main
         id="conteudo-principal"
-        className="sm:ml-[220px] px-4 py-8 sm:px-8 max-w-full"
+        className="painel-main-area flex-1 min-h-0 w-full min-w-0 overflow-y-auto overscroll-contain px-4 py-6 sm:px-7 sm:py-6"
       >
+        <div className="painel-page-shell w-full max-w-none">
+        {sidebarPage === "dashboard" ? (
+        <>
         <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div className="agenda-animate-in max-w-xl" style={{ animationDelay: "0ms" }}>
             <p className="text-xs font-semibold uppercase tracking-widest text-[#0f766e]">
@@ -1305,7 +1327,75 @@ export function AgendaPortal() {
             onRemove={(id) => void removeAppointment(id)}
           />
         )}
+        </>
+        ) : supabase ? (
+          <div className="w-full min-w-0">
+            {sidebarPage === "professionals" ? (
+              <ProfessionalsManagerModal
+                presentation="panel"
+                open
+                onClose={() => setSidebarPage("dashboard")}
+                supabase={supabase}
+                clinicId={access.clinicId}
+                onChanged={() => void loadAppointments()}
+              />
+            ) : null}
+            {sidebarPage === "slots" ? (
+              <SlotsManagerModal
+                presentation="panel"
+                open
+                onClose={() => setSidebarPage("dashboard")}
+                supabase={supabase}
+                clinicId={access.clinicId}
+                dayKey={dayKey}
+                onAutoAdvanceDay={setDayKey}
+                onDayKeyChange={setDayKey}
+                clinicVisibleHours={clinicAgendaHours}
+                clinicSlotsExpediente={clinicSlotsExpediente}
+              />
+            ) : null}
+            {sidebarPage === "clinic-hours" ? (
+              <ClinicAgendaHoursModal
+                presentation="panel"
+                open
+                onClose={() => setSidebarPage("dashboard")}
+                supabase={supabase}
+                clinicId={access.clinicId}
+                onSaved={(hours) => setClinicAgendaHours(hours)}
+              />
+            ) : null}
+            {sidebarPage === "whatsapp-human" ? (
+              <WhatsappHumanModal
+                presentation="panel"
+                open
+                onClose={() => setSidebarPage("dashboard")}
+                supabase={supabase}
+                clinicId={access.clinicId}
+                onClaimed={() => void refreshHumanQueue()}
+              />
+            ) : null}
+            {sidebarPage === "agent" ? (
+              <AgentConfigModal
+                presentation="panel"
+                open
+                onClose={() => setSidebarPage("dashboard")}
+                supabase={supabase}
+                clinicId={access.clinicId}
+              />
+            ) : null}
+            {sidebarPage === "report" ? (
+              <ReportModal
+                presentation="panel"
+                open
+                onClose={() => setSidebarPage("dashboard")}
+                rows={rows}
+              />
+            ) : null}
+          </div>
+        ) : null}
+        </div>
       </main>
+      </div>
 
       {/* Notificações em tempo real */}
       {notifs.length > 0 && (

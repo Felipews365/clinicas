@@ -223,10 +223,12 @@ export function ReportModal({
   open,
   onClose,
   rows,
+  presentation = "modal",
 }: {
   open: boolean;
   onClose: () => void;
   rows: AppointmentRow[];
+  presentation?: "modal" | "panel";
 }) {
   const [period, setPeriod] = useState<Period>("month");
   const [view, setView] = useState<View>("all");
@@ -257,21 +259,18 @@ export function ReportModal({
 
   if (!open) return null;
 
-  return (
-    <>
-      {/* backdrop */}
-      <div
-        className="fixed inset-0 z-40 bg-[#1c1917]/45 backdrop-blur-[3px]"
-        onClick={onClose}
-        aria-hidden
-      />
+  const isPanel = presentation === "panel";
 
-      {/* painel */}
+  const shell = (
       <div
-        role="dialog"
-        aria-modal="true"
+        role={isPanel ? "region" : "dialog"}
+        aria-modal={isPanel ? undefined : true}
         aria-label="Relatório de agendamentos"
-        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-3xl border border-[#e4ddd3] bg-[linear-gradient(180deg,#fffdf9_0%,#f8f4ec_100%)] shadow-[0_-8px_48px_-8px_rgba(44,40,37,0.25)] sm:inset-0 sm:m-auto sm:max-h-[90dvh] sm:w-full sm:max-w-2xl sm:rounded-3xl"
+        className={
+          isPanel
+            ? "relative flex min-h-0 w-full min-w-0 max-w-none flex-col rounded-2xl border border-[#e4ddd3] bg-[linear-gradient(180deg,#fffdf9_0%,#f8f4ec_100%)] shadow-sm"
+            : "fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-3xl border border-[#e4ddd3] bg-[linear-gradient(180deg,#fffdf9_0%,#f8f4ec_100%)] shadow-[0_-8px_48px_-8px_rgba(44,40,37,0.25)] sm:inset-0 sm:m-auto sm:max-h-[90dvh] sm:w-full sm:max-w-2xl sm:rounded-3xl"
+        }
       >
         {/* cabeçalho */}
         <div className="flex shrink-0 items-center justify-between border-b border-[#ebe6dd] px-6 py-4">
@@ -366,6 +365,24 @@ export function ReportModal({
           )}
         </div>
       </div>
+  );
+
+  if (isPanel) {
+    return (
+      <div className="w-full min-w-0 pb-2" role="region" aria-label="Relatório">
+        {shell}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-40 bg-[#1c1917]/45 backdrop-blur-[3px]"
+        onClick={onClose}
+        aria-hidden
+      />
+      {shell}
     </>
   );
 }

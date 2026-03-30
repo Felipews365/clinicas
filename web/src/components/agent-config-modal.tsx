@@ -156,7 +156,7 @@ function configToInstructions(cfg: AgentConfig): string {
     tom: "TOM E LINGUAGEM",
     orientacoes: "ORIENTAÇÕES AO PACIENTE",
     transferir: "QUANDO TRANSFERIR PARA HUMANO",
-    otros: "OUTRAS INSTRUÇÕES",
+    outros: "OUTRAS INSTRUÇÕES",
   };
   return (Object.keys(labels) as SectionKey[])
     .filter((k) => (cfg[k] ?? "").trim())
@@ -649,11 +649,13 @@ export function AgentConfigModal({
   onClose,
   supabase,
   clinicId,
+  presentation = "modal",
 }: {
   open: boolean;
   onClose: () => void;
   supabase: SupabaseClient | null;
   clinicId: string;
+  presentation?: "modal" | "panel";
 }) {
   const [config, setConfig] = useState<AgentConfig>({ ...EMPTY_CONFIG });
   const [nomeAgente, setNomeAgente] = useState<string>("");
@@ -766,18 +768,21 @@ export function AgentConfigModal({
 
   if (!open) return null;
 
+  const isPanel = presentation === "panel";
+
   // índice da secção "triagem" para inserir procedimentos a seguir
   const triagemIdx = SECTIONS.findIndex((s) => s.key === "triagem");
 
-  return (
-    <>
-      <div className="fixed inset-0 z-40 bg-[#1c1917]/45 backdrop-blur-[3px]" onClick={onClose} aria-hidden />
-
+  const shell = (
       <div
-        role="dialog"
-        aria-modal="true"
+        role={isPanel ? "region" : "dialog"}
+        aria-modal={isPanel ? undefined : true}
         aria-label="Configuração do Agente IA"
-        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-3xl border border-[#e4ddd3] bg-[linear-gradient(180deg,#fffdf9_0%,#f8f4ec_100%)] shadow-[0_-8px_48px_-8px_rgba(44,40,37,0.25)] sm:inset-0 sm:m-auto sm:max-h-[90dvh] sm:w-full sm:max-w-2xl sm:rounded-3xl"
+        className={
+          isPanel
+            ? "relative flex min-h-0 w-full min-w-0 max-w-none flex-col rounded-2xl border border-[#e4ddd3] bg-[linear-gradient(180deg,#fffdf9_0%,#f8f4ec_100%)] shadow-sm"
+            : "fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-3xl border border-[#e4ddd3] bg-[linear-gradient(180deg,#fffdf9_0%,#f8f4ec_100%)] shadow-[0_-8px_48px_-8px_rgba(44,40,37,0.25)] sm:inset-0 sm:m-auto sm:max-h-[90dvh] sm:w-full sm:max-w-2xl sm:rounded-3xl"
+        }
       >
         {/* cabeçalho */}
         <div className="flex shrink-0 items-center justify-between border-b border-[#ebe6dd] px-6 py-4">
@@ -1137,6 +1142,20 @@ export function AgentConfigModal({
           </div>
         </div>
       </div>
+  );
+
+  if (isPanel) {
+    return (
+      <div className="w-full min-w-0 pb-2" role="region" aria-label="Agente IA">
+        {shell}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-[#1c1917]/45 backdrop-blur-[3px]" onClick={onClose} aria-hidden />
+      {shell}
     </>
   );
 }

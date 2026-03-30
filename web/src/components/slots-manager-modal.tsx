@@ -39,6 +39,7 @@ type Props = {
   clinicVisibleHours: number[];
   /** `clinics.slots_expediente` — blocos «habituais» vs «extra». */
   clinicSlotsExpediente: unknown;
+  presentation?: "modal" | "panel";
 };
 
 function parseSlots(raw: unknown): CsSlotRow[] {
@@ -121,6 +122,7 @@ export function SlotsManagerModal({
   onDayKeyChange,
   clinicVisibleHours,
   clinicSlotsExpediente,
+  presentation = "modal",
 }: Props) {
   const [rows, setRows] = useState<CsSlotRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -558,21 +560,19 @@ export function SlotsManagerModal({
 
   if (!open) return null;
 
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="slots-modal-title"
-      aria-describedby="slots-modal-desc"
-    >
-      <button
-        type="button"
-        className="absolute inset-0 bg-[#1c1917]/40 backdrop-blur-[2px] transition-opacity"
-        aria-label="Fechar"
-        onClick={onClose}
-      />
-      <div className="relative flex max-h-[94dvh] w-full max-w-2xl flex-col overflow-y-auto overscroll-contain rounded-t-3xl border border-[#e8e2d9] bg-[#fffdf9] shadow-[0_-8px_40px_-12px_rgba(44,40,37,0.2)] sm:max-h-[min(94dvh,56rem)] sm:rounded-3xl sm:shadow-[0_20px_60px_-20px_rgba(44,40,37,0.28)]">
+  const isPanel = presentation === "panel";
+
+  const shell = (
+      <div
+        className={`relative flex w-full min-w-0 flex-col overflow-y-auto overscroll-contain border bg-[#fffdf9] ${
+          isPanel
+            ? "max-h-none rounded-[18px] border-[#dfe8e5] shadow-sm"
+            : "max-h-[94dvh] max-w-2xl rounded-t-3xl border-[#e8e2d9] shadow-[0_-8px_40px_-12px_rgba(44,40,37,0.2)] sm:max-h-[min(94dvh,56rem)] sm:rounded-3xl sm:shadow-[0_20px_60px_-20px_rgba(44,40,37,0.28)]"
+        }`}
+        role={isPanel ? "region" : undefined}
+        aria-labelledby="slots-modal-title"
+        aria-describedby="slots-modal-desc"
+      >
         <div className="sticky top-0 z-[2] bg-[#fffdf9] shadow-[0_4px_12px_-8px_rgba(44,40,37,0.15)]">
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[#ebe6dd] px-6 py-5">
           <div>
@@ -839,6 +839,31 @@ export function SlotsManagerModal({
           </p>
         </footer>
       </div>
+  );
+
+  if (isPanel) {
+    return (
+      <div className="w-full min-w-0 max-w-none text-left" role="region" aria-label="Horários por médico">
+        {shell}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="slots-modal-title"
+      aria-describedby="slots-modal-desc"
+    >
+      <button
+        type="button"
+        className="absolute inset-0 bg-[#1c1917]/40 backdrop-blur-[2px] transition-opacity"
+        aria-label="Fechar"
+        onClick={onClose}
+      />
+      {shell}
     </div>
   );
 }

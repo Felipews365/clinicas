@@ -20,6 +20,7 @@ type Props = {
   supabase: SupabaseClient;
   clinicId: string;
   onClaimed?: () => void;
+  presentation?: "modal" | "panel";
 };
 
 export function WhatsappHumanModal({
@@ -28,6 +29,7 @@ export function WhatsappHumanModal({
   supabase,
   clinicId,
   onClaimed,
+  presentation = "modal",
 }: Props) {
   const [rows, setRows] = useState<WhatsappSessionRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -107,17 +109,16 @@ export function WhatsappHumanModal({
 
   if (!open) return null;
 
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="whatsapp-human-title"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="max-h-[85vh] w-full max-w-lg overflow-hidden rounded-2xl border border-[#e6e1d8] bg-[#F9F7F2] shadow-xl">
+  const isPanel = presentation === "panel";
+
+  const shell = (
+      <div
+        className={`w-full min-w-0 overflow-hidden rounded-2xl border border-[#e6e1d8] bg-[#F9F7F2] ${
+          isPanel ? "max-h-none shadow-sm" : "max-h-[85vh] max-w-lg shadow-xl"
+        }`}
+        role={isPanel ? "region" : undefined}
+        aria-labelledby="whatsapp-human-title"
+      >
         <div className="flex items-center justify-between border-b border-[#e6e1d8] bg-white px-5 py-4">
           <h2
             id="whatsapp-human-title"
@@ -213,6 +214,27 @@ export function WhatsappHumanModal({
           ) : null}
         </div>
       </div>
+  );
+
+  if (isPanel) {
+    return (
+      <div className="w-full min-w-0 pb-2" role="region" aria-label="WhatsApp humano">
+        {shell}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="whatsapp-human-title"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      {shell}
     </div>
   );
 }
