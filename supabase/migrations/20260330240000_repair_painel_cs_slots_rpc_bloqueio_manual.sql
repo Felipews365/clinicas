@@ -1,26 +1,9 @@
--- Horários globalmente visíveis na agenda (6h–22h, blocos de 1h).
--- A clínica define quais horas existem no sistema; médicos/agente só usam esse subconjunto.
--- Executar no SQL Editor do Supabase após existir public.clinics.
--- Com Supabase CLI / historial: ver supabase/migrations/20260330164048_*, 20260330164351_* e 20260330203000_cs_slots_bloqueio_manual_e_estado.sql.
-
-alter table public.clinics
-  add column if not exists agenda_visible_hours integer[]
-  not null default array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[];
-
-comment on column public.clinics.agenda_visible_hours is
-  'Horas cheias (6–22) que a clínica permite mostrar na agenda e nas grelhas; fora disto = não listado.';
-
--- Garante array não vazio em linhas antigas
-update public.clinics
-set agenda_visible_hours = array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[]
-where agenda_visible_hours is null
-   or cardinality(agenda_visible_hours) = 0;
+-- Corrige deploys que ainda usam painel_cs_slots_dia antigo (else 'medico' quando
+-- h.disponivel=false sem agendamento). O front só deixa de mostrar BLOQUEADO após esta RPC.
+-- Idempotente: pode correr várias vezes.
 
 alter table public.cs_horarios_disponiveis
   add column if not exists bloqueio_manual boolean not null default false;
-
-comment on column public.cs_horarios_disponiveis.bloqueio_manual is
-  'Bloqueio explícito no painel «Horários que aparecem na agenda». Reservas n8n usam só disponivel=false com bloqueio_manual=false.';
 
 update public.cs_horarios_disponiveis h
 set
@@ -37,7 +20,6 @@ where coalesce(h.bloqueio_manual, false) = false
       and a.status not in ('cancelado', 'concluido')
   );
 
--- Substitui painel_cs_slots_dia: filtra por horas habilitadas pela clínica
 create or replace function public.painel_cs_slots_dia (p_clinic_id uuid, p_data date)
 returns jsonb
 language plpgsql
@@ -125,7 +107,6 @@ begin
 end;
 $$;
 
--- Profissional só altera vagas em horas permitidas pela clínica dona do painel
 create or replace function public.painel_cs_set_slot_disponivel (
   p_clinic_id uuid,
   p_horario_id uuid,
@@ -188,7 +169,6 @@ begin
 end;
 $$;
 
--- Grelha: só cria linhas para horas em clinics.agenda_visible_hours (6–22)
 create or replace function public.painel_cs_ensure_slots_grid (
   p_clinic_id uuid,
   p_data date,
@@ -233,52 +213,3 @@ begin
   return jsonb_build_object('ok', true);
 end;
 $$;
-
-create or replace function public.n8n_cs_consultar_vagas ()
-returns jsonb
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select coalesce(
-    jsonb_agg(j.slot order by j.sdata, j.shour),
-    '[]'::jsonb
-  )
-  from (
-    select
-      jsonb_build_object(
-        'horario_id', h.id,
-        'data', to_char(h.data, 'DD/MM/YYYY'),
-        'dia_semana', trim(to_char(h.data, 'Day')),
-        'horario', to_char(h.horario, 'HH24:MI'),
-        'profissional_id', p.id,
-        'profissional', p.nome,
-        'especialidade', p.especialidade,
-        'disponivel', true
-      ) as slot,
-      h.data as sdata,
-      h.horario as shour
-    from cs_horarios_disponiveis h
-    inner join cs_profissionais p on p.id = h.profissional_id
-    left join clinics cl on cl.id = p.clinic_id
-    where h.disponivel = true
-      and coalesce(h.bloqueio_manual, false) = false
-      and p.ativo = true
-      and h.data >= current_date
-      and h.data <= current_date + interval '30 days'
-      and (
-        cl.id is null
-        or extract(hour from h.horario)::integer = any (
-          coalesce(
-            cl.agenda_visible_hours,
-            array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[]
-          )
-        )
-      )
-    order by h.data asc, h.horario asc
-    limit 20
-  ) j;
-$$;
-
--- Também atualize no projeto: supabase/n8n_cs_agendar_respeita_disponivel.sql (função n8n_cs_agendar com o mesmo filtro de clínica).

@@ -1,7 +1,7 @@
 -- =============================================================================
 -- Cadastro: Dra. Maria Letícia + Dr. João Lucas + vagas (30 dias)
 -- Horário alvo no painel: seg–sex 08h–11h e 14h–17h; sábado 08h–11h; domingo fechado
--- Slots extra (12,13,18–20 em dias úteis) inseridos com disponivel=false — liberáveis no modal
+-- Toda a grelha do seed nasce disponivel=true (bloqueio só via painel / bloqueio_manual).
 -- Idempotente: profissionais por nome; vagas com ON CONFLICT DO NOTHING
 -- =============================================================================
 
@@ -20,18 +20,14 @@ where not exists (
 
 -- Vagas: próximos 30 dias, regras por dia da semana
 -- seg–sex: 08h–20h; sáb: 08h–12h; dom: fechado
--- Bloqueados por defeito: 12h, 13h (almoço), 18h, 19h, 20h (fim do dia)
+-- Pausa almoço e fim de tarde entram na grelha como livres; expediente visual = slots_expediente no app.
 -- dow: 0=domingo … 6=sábado (PostgreSQL)
 insert into public.cs_horarios_disponiveis (profissional_id, data, horario, disponivel)
 select
   p.id,
   d.day_date,
   slot.t,
-  -- bloqueado por defeito nas horas de almoço e fim do dia
-  case
-    when extract(hour from slot.t) in (12, 13, 18, 19, 20) then false
-    else true
-  end
+  true
 from public.cs_profissionais p
 cross join lateral (
   select (g.gs)::date as day_date, extract(dow from (g.gs)::date)::int as dow

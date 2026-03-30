@@ -864,17 +864,33 @@ export function AgendaPortal() {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             Profissionais
           </button>
-          <button type="button" onClick={() => setSidebarPage("slots")} className={sidebarNavClass("slots")}>
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-            Horários por médico (WhatsApp)
-          </button>
           <button
             type="button"
             onClick={() => setSidebarPage("clinic-hours")}
-            className={sidebarNavClass("clinic-hours")}
+            className={`${sidebarNavClass("clinic-hours")} !items-start py-3`}
+            aria-label="Horários da clínica"
           >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22v-6M12 2v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24"/></svg>
-            Configurar horários da clínica
+            <span className="mt-0.5 shrink-0 text-[1.05rem] leading-none" aria-hidden>
+              📅
+            </span>
+            <span className="min-w-0 flex-1 text-left leading-snug">
+              <span className="block">Horários da</span>
+              <span className="block">clínica</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSidebarPage("slots")}
+            className={`${sidebarNavClass("slots")} !items-start py-3`}
+            aria-label="Horários por Dr ou Dra."
+          >
+            <span className="mt-0.5 shrink-0 text-[1.05rem] leading-none" aria-hidden>
+              🩺
+            </span>
+            <span className="min-w-0 flex-1 text-left leading-snug">
+              <span className="block">Horários por</span>
+              <span className="block">Dr ou Dra.</span>
+            </span>
           </button>
           <button
             type="button"
@@ -1005,19 +1021,31 @@ export function AgendaPortal() {
                 </button>
                 <button
                   type="button"
-                  className={mobileNavRowClass("slots")}
-                  onClick={() => goToSidebarPageAfterMobileMenuClose("slots")}
+                  className={`${mobileNavRowClass("clinic-hours")} !items-start py-3`}
+                  aria-label="Horários da clínica"
+                  onClick={() => goToSidebarPageAfterMobileMenuClose("clinic-hours")}
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span>
-                  Horários por médico (WhatsApp)
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-lg leading-none">
+                    📅
+                  </span>
+                  <span className="min-w-0 flex-1 text-left leading-snug">
+                    <span className="block">Horários da</span>
+                    <span className="block">clínica</span>
+                  </span>
                 </button>
                 <button
                   type="button"
-                  className={mobileNavRowClass("clinic-hours")}
-                  onClick={() => goToSidebarPageAfterMobileMenuClose("clinic-hours")}
+                  className={`${mobileNavRowClass("slots")} !items-start py-3`}
+                  aria-label="Horários por Dr ou Dra."
+                  onClick={() => goToSidebarPageAfterMobileMenuClose("slots")}
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-[#0f766e]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22v-6M12 2v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24"/></svg></span>
-                  Configurar horários da clínica
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-lg leading-none">
+                    🩺
+                  </span>
+                  <span className="min-w-0 flex-1 text-left leading-snug">
+                    <span className="block">Horários por</span>
+                    <span className="block">Dr ou Dra.</span>
+                  </span>
                 </button>
                 <button
                   type="button"

@@ -1,5 +1,5 @@
--- Agendamento via n8n: só prossegue se cs_horarios_disponiveis.disponivel = true.
--- Alinha com o painel (marcar ocupado) e com n8n_cs_consultar_vagas (só lista disponíveis).
+-- n8n: listar e reservar só vagas livres (não bloqueadas manualmente no painel).
+-- Igual a supabase/n8n_cs_agendar_respeita_disponivel.sql
 
 create or replace function public.n8n_cs_consultar_vagas ()
 returns jsonb

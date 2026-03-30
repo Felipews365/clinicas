@@ -1,27 +1,17 @@
--- Horários globalmente visíveis na agenda (6h–22h, blocos de 1h).
--- A clínica define quais horas existem no sistema; médicos/agente só usam esse subconjunto.
--- Executar no SQL Editor do Supabase após existir public.clinics.
--- Com Supabase CLI / historial: ver supabase/migrations/20260330164048_*, 20260330164351_* e 20260330203000_cs_slots_bloqueio_manual_e_estado.sql.
-
-alter table public.clinics
-  add column if not exists agenda_visible_hours integer[]
-  not null default array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[];
-
-comment on column public.clinics.agenda_visible_hours is
-  'Horas cheias (6–22) que a clínica permite mostrar na agenda e nas grelhas; fora disto = não listado.';
-
--- Garante array não vazio em linhas antigas
-update public.clinics
-set agenda_visible_hours = array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[]
-where agenda_visible_hours is null
-   or cardinality(agenda_visible_hours) = 0;
+-- Estado dos slots na grade da clínica (ag agenda_visible_hours):
+--   • DISPONÍVEL por defeito (disponivel=true, bloqueio_manual=false)
+--   • COM CLIENTE só com agendamento activo em cs_agendamentos
+--   • BLOQUEADO só quando o painel marca bloqueio manual (bloqueio_manual=true)
+--
+-- Corrige dados legados onde disponivel=false existia sem agendamento nem bloqueio real.
 
 alter table public.cs_horarios_disponiveis
   add column if not exists bloqueio_manual boolean not null default false;
 
 comment on column public.cs_horarios_disponiveis.bloqueio_manual is
-  'Bloqueio explícito no painel «Horários que aparecem na agenda». Reservas n8n usam só disponivel=false com bloqueio_manual=false.';
+  'True = médico bloqueou explicitamente no painel «Horários que aparecem na agenda». Reservas do agente usam disponivel=false mas deixam bloqueio_manual=false.';
 
+-- Limpar «bloqueio fantasma»: indisponível na BD sem agendamento e sem flag de bloqueio manual.
 update public.cs_horarios_disponiveis h
 set
   disponivel = true,
@@ -37,7 +27,6 @@ where coalesce(h.bloqueio_manual, false) = false
       and a.status not in ('cancelado', 'concluido')
   );
 
--- Substitui painel_cs_slots_dia: filtra por horas habilitadas pela clínica
 create or replace function public.painel_cs_slots_dia (p_clinic_id uuid, p_data date)
 returns jsonb
 language plpgsql
@@ -125,7 +114,6 @@ begin
 end;
 $$;
 
--- Profissional só altera vagas em horas permitidas pela clínica dona do painel
 create or replace function public.painel_cs_set_slot_disponivel (
   p_clinic_id uuid,
   p_horario_id uuid,
@@ -188,7 +176,6 @@ begin
 end;
 $$;
 
--- Grelha: só cria linhas para horas em clinics.agenda_visible_hours (6–22)
 create or replace function public.painel_cs_ensure_slots_grid (
   p_clinic_id uuid,
   p_data date,
@@ -231,6 +218,95 @@ begin
   on conflict (profissional_id, data, horario) do nothing;
 
   return jsonb_build_object('ok', true);
+end;
+$$;
+
+-- Libertar vaga: disponível de novo para o agente e tirar bloqueio manual desta célula.
+create or replace function public.appointments_cancel_release_cs_slot ()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  tz text;
+  v_cs uuid;
+  v_date date;
+  v_time time;
+  local_ts timestamp;
+begin
+  if new.status::text is distinct from 'cancelled' then
+    return new;
+  end if;
+
+  if old.status::text is not distinct from 'cancelled' then
+    return new;
+  end if;
+
+  select coalesce(nullif(trim(c.timezone), ''), 'America/Sao_Paulo')
+  into tz
+  from public.clinics c
+  where c.id = new.clinic_id;
+
+  tz := coalesce(tz, 'America/Sao_Paulo');
+
+  local_ts := new.starts_at at time zone tz;
+  v_date := local_ts::date;
+  v_time := (date_trunc('minute', local_ts))::time;
+
+  v_cs := public.painel_resolve_cs_profissional_id(new.clinic_id, new.professional_id);
+
+  if v_cs is null then
+    return new;
+  end if;
+
+  if exists (
+    select 1
+    from public.cs_agendamentos a
+    where a.profissional_id = v_cs
+      and a.data_agendamento = v_date
+      and a.horario = v_time
+      and a.status not in ('cancelado', 'concluido')
+  ) then
+    return new;
+  end if;
+
+  update public.cs_horarios_disponiveis h
+  set
+    disponivel = true,
+    bloqueio_manual = false
+  where h.profissional_id = v_cs
+    and h.data = v_date
+    and h.horario = v_time;
+
+  return new;
+end;
+$$;
+
+create or replace function public.cs_agendamentos_cancel_release_cs_slot ()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.status is distinct from 'cancelado' then
+    return new;
+  end if;
+
+  if old.status is not distinct from 'cancelado' then
+    return new;
+  end if;
+
+  update public.cs_horarios_disponiveis h
+  set
+    disponivel = true,
+    bloqueio_manual = false
+  where h.profissional_id = new.profissional_id
+    and h.data = new.data_agendamento
+    and h.horario = new.horario;
+
+  return new;
 end;
 $$;
 
@@ -280,5 +356,3 @@ as $$
     limit 20
   ) j;
 $$;
-
--- Também atualize no projeto: supabase/n8n_cs_agendar_respeita_disponivel.sql (função n8n_cs_agendar com o mesmo filtro de clínica).

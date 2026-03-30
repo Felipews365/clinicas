@@ -42,6 +42,21 @@ type Props = {
   presentation?: "modal" | "panel";
 };
 
+function parseIndisponivelPorApi(o: Record<string, unknown>): "cliente" | "medico" | null {
+  const p = o.indisponivel_por;
+  if (p === "cliente") return "cliente";
+  if (p === "medico") return "medico";
+  return null;
+}
+
+/**
+ * Monta o estado de UI alinhado à regra de negócio:
+ * - DISPONÍVEL por defeito na grade da clínica.
+ * - COM CLIENTE só com motivo explícito (indisponivel_por ou nome de procedimento / reserva).
+ * - BLOQUEADO só com `bloqueio_manual` explícito verdadeiro (ou, sem essa chave, indisponivel_por === "medico").
+ * Fora COM CLIENTE e BLOQUEADO manual, a célula é sempre DISPONÍVEL — não usar a coluna `disponivel`
+ *   (seed/expediente legado punha false sem ser bloqueio do médico).
+ */
 function parseSlots(raw: unknown): CsSlotRow[] {
   if (raw == null) return [];
   let v: unknown = raw;
@@ -55,12 +70,40 @@ function parseSlots(raw: unknown): CsSlotRow[] {
   if (!Array.isArray(v)) return [];
   return v.map((item) => {
     const o = item as Record<string, unknown>;
-    const disponivel = Boolean(o.disponivel);
-    let indisponivel_por: CsSlotRow["indisponivel_por"] = null;
-    if (!disponivel) {
-      const por = o.indisponivel_por;
-      indisponivel_por = por === "cliente" ? "cliente" : "medico";
+    const nomeProcedimento =
+      o.nome_procedimento == null ||
+      o.nome_procedimento === "" ||
+      String(o.nome_procedimento).trim() === ""
+        ? null
+        : String(o.nome_procedimento).trim();
+
+    const por = parseIndisponivelPorApi(o);
+    const comCliente = por === "cliente" || Boolean(nomeProcedimento);
+    /**
+     * BLOQUEADO só com flag explícita na BD. Sem chave `bloqueio_manual` (RPC velho), cai no fallback
+     * indisponivel_por === "medico". Ignorar `disponivel` na coluna quando não há cliente nem bloqueio
+     * manual — o seed e dados legados usam disponivel=false para «fora do expediente» sem ser bloqueio.
+     */
+    const hasBmKey = "bloqueio_manual" in o && o.bloqueio_manual != null;
+    const bloqueioManual = hasBmKey
+      ? o.bloqueio_manual === true ||
+        o.bloqueio_manual === 1 ||
+        String(o.bloqueio_manual).toLowerCase() === "true"
+      : por === "medico";
+
+    let disponivel: boolean;
+    let indisponivel_por: CsSlotRow["indisponivel_por"];
+    if (comCliente) {
+      disponivel = false;
+      indisponivel_por = "cliente";
+    } else if (bloqueioManual) {
+      disponivel = false;
+      indisponivel_por = "medico";
+    } else {
+      disponivel = true;
+      indisponivel_por = null;
     }
+
     return {
       horario_id: String(o.horario_id ?? ""),
       profissional_id: String(o.profissional_id ?? ""),
@@ -69,12 +112,7 @@ function parseSlots(raw: unknown): CsSlotRow[] {
         o.especialidade == null || o.especialidade === ""
           ? null
           : String(o.especialidade),
-      nome_procedimento:
-        o.nome_procedimento == null ||
-        o.nome_procedimento === "" ||
-        String(o.nome_procedimento).trim() === ""
-          ? null
-          : String(o.nome_procedimento).trim(),
+      nome_procedimento: nomeProcedimento,
       data: String(o.data ?? ""),
       horario: String(o.horario ?? ""),
       disponivel,

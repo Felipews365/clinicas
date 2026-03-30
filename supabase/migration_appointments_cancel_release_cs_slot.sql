@@ -120,7 +120,9 @@ begin
   end if;
 
   update public.cs_horarios_disponiveis h
-  set disponivel = true
+  set
+    disponivel = true,
+    bloqueio_manual = false
   where h.profissional_id = v_cs
     and h.data = v_date
     and h.horario = v_time;
@@ -153,7 +155,9 @@ begin
   end if;
 
   update public.cs_horarios_disponiveis h
-  set disponivel = true
+  set
+    disponivel = true,
+    bloqueio_manual = false
   where h.profissional_id = new.profissional_id
     and h.data = new.data_agendamento
     and h.horario = new.horario;
