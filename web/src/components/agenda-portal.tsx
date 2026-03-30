@@ -820,7 +820,7 @@ export function AgendaPortal() {
       ) : null}
 
       {/* Sidebar desktop: largura fixa, altura viewport, scroll só no nav */}
-      <aside className="z-20 hidden h-full w-[260px] shrink-0 flex-col overflow-hidden border-r border-[#e8efed] bg-white shadow-[2px_0_24px_rgba(0,0,0,0.04)] sm:flex sm:flex-col">
+      <aside className="z-20 hidden h-full w-[280px] shrink-0 flex-col overflow-hidden border-r border-[#e8efed] bg-white shadow-[2px_0_24px_rgba(0,0,0,0.04)] sm:flex sm:flex-col">
         {/* Logo */}
         <button
           type="button"
@@ -867,29 +867,27 @@ export function AgendaPortal() {
           <button
             type="button"
             onClick={() => setSidebarPage("clinic-hours")}
-            className={`${sidebarNavClass("clinic-hours")} !items-start py-3`}
+            className={sidebarNavClass("clinic-hours")}
             aria-label="Horários da clínica"
           >
-            <span className="mt-0.5 shrink-0 text-[1.05rem] leading-none" aria-hidden>
+            <span className="shrink-0 text-[1.05rem] leading-none" aria-hidden>
               📅
             </span>
-            <span className="min-w-0 flex-1 text-left leading-snug">
-              <span className="block">Horários da</span>
-              <span className="block">clínica</span>
+            <span className="min-w-0 flex-1 whitespace-nowrap text-left">
+              Horários da clínica
             </span>
           </button>
           <button
             type="button"
             onClick={() => setSidebarPage("slots")}
-            className={`${sidebarNavClass("slots")} !items-start py-3`}
+            className={sidebarNavClass("slots")}
             aria-label="Horários por Dr ou Dra."
           >
-            <span className="mt-0.5 shrink-0 text-[1.05rem] leading-none" aria-hidden>
+            <span className="shrink-0 text-[1.05rem] leading-none" aria-hidden>
               🩺
             </span>
-            <span className="min-w-0 flex-1 text-left leading-snug">
-              <span className="block">Horários por</span>
-              <span className="block">Dr ou Dra.</span>
+            <span className="min-w-0 flex-1 whitespace-nowrap text-left">
+              Horários por Dr ou Dra.
             </span>
           </button>
           <button
@@ -1021,30 +1019,28 @@ export function AgendaPortal() {
                 </button>
                 <button
                   type="button"
-                  className={`${mobileNavRowClass("clinic-hours")} !items-start py-3`}
+                  className={mobileNavRowClass("clinic-hours")}
                   aria-label="Horários da clínica"
                   onClick={() => goToSidebarPageAfterMobileMenuClose("clinic-hours")}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-lg leading-none">
                     📅
                   </span>
-                  <span className="min-w-0 flex-1 text-left leading-snug">
-                    <span className="block">Horários da</span>
-                    <span className="block">clínica</span>
+                  <span className="min-w-0 flex-1 whitespace-nowrap text-left">
+                    Horários da clínica
                   </span>
                 </button>
                 <button
                   type="button"
-                  className={`${mobileNavRowClass("slots")} !items-start py-3`}
+                  className={mobileNavRowClass("slots")}
                   aria-label="Horários por Dr ou Dra."
                   onClick={() => goToSidebarPageAfterMobileMenuClose("slots")}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f5f2] text-lg leading-none">
                     🩺
                   </span>
-                  <span className="min-w-0 flex-1 text-left leading-snug">
-                    <span className="block">Horários por</span>
-                    <span className="block">Dr ou Dra.</span>
+                  <span className="min-w-0 flex-1 whitespace-nowrap text-left">
+                    Horários por Dr ou Dra.
                   </span>
                 </button>
                 <button
