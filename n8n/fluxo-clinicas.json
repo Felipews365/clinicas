@@ -1,0 +1,472 @@
+{
+  "name": "Fluxo WhatsApp Multi-Tenant",
+  "description": "Processa mensagens WhatsApp de múltiplas clínicas, verifica acesso, consulta agente IA e envia resposta",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "/webhook/whatsapp",
+        "method": "POST",
+        "options": {}
+      },
+      "name": "Webhook WhatsApp",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        220,
+        360
+      ],
+      "webhookId": "whatsapp-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": [
+            {
+              "condition": "objectProperty",
+              "value1": "{{ $json.event }}",
+              "value2": "MESSAGES_UPSERT"
+            }
+          ]
+        }
+      },
+      "name": "Switch: Tipo de Evento",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        420,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "postgresqlDb": "{{ $secret.SUPABASE_CONNECTION }}",
+        "query": "SELECT * FROM clinicas_acesso WHERE instancia_evolution = @instance LIMIT 1",
+        "queryParams": "instance={{ $json.instance }}"
+      },
+      "name": "Buscar Clínica",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        620,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": [
+            {
+              "condition": "objectProperty",
+              "value1": "{{ $json[0].status_acesso }}",
+              "value2": "liberado"
+            }
+          ]
+        }
+      },
+      "name": "Verificar Acesso",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        820,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "postgresqlDb": "{{ $secret.SUPABASE_CONNECTION }}",
+        "query": "SELECT valor FROM dados_clinica WHERE clinica_id = @clinicaId AND chave = @chave",
+        "queryParams": "clinicaId={{ $json[0].id }}&chave={{ $regex.test($nodeExecutionData[0][0].json.body, 'chave_dados_customizados') }}"
+      },
+      "name": "Buscar Dados da Clínica",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "postgresqlDb": "{{ $secret.SUPABASE_CONNECTION }}",
+        "query": "SELECT historico FROM conversas WHERE clinica_id = @clinicaId AND paciente_telefone = @telefone",
+        "queryParams": "clinicaId={{ $json[0].id }}&telefone={{ $json.data.key }}"
+      },
+      "name": "Buscar Histórico",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1220,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Montar sistema prompt isolado para a clínica\nconst clinica = $json[0];\nconst mensagemPaciente = $json.body.messages[0].body;\nconst telefonePaciente = $json.data.key;\nconst historico = $json[0]?.historico || [];\n\n// Limitar últimas 20 mensagens\nconst historicoLimitado = historico.slice(-20);\n\n// Formatar histórico para contexto\nconst historicoFormatado = historicoLimitado\n  .map(msg => `${msg.role === 'user' ? 'Paciente' : 'Agente'}: ${msg.content}`)\n  .join('\\n');\n\n// System prompt isolado por clínica\nconst systemPrompt = `${clinica.prompt_agente}\n\n## Contexto da Clínica\nClínica: ${clinica.nome}\nTelefone do Paciente: ${telefonePaciente}\nData/Hora: ${new Date().toLocaleString('pt-BR')}\n\n## Histórico da Conversa\n${historicoFormatado}\n\n## Instruções Críticas\n- Responda sempre como agente de IA da clínica\n- Mantenha tom profissional mas acolhedor\n- Se não souber responder, ofereça contato direto com a clínica\n- Não inente dados do paciente\n- Respeite privacidade e confidencialidade`;\n\nreturn {\n  systemPrompt,\n  mensagemPaciente,\n  telefonePaciente,\n  historicoLimitado,\n  clinicaId: clinica.id,\n  nomeInstancia: clinica.instancia_evolution,\n  promptAgente: clinica.prompt_agente\n};"
+      },
+      "name": "Code: Montar Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1420,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "model": "claude-opus-4-6",
+        "apiKey": "{{ $secret.ANTHROPIC_API_KEY }}",
+        "messages": {
+          "values": [
+            {
+              "content": "{{ $json.systemPrompt }}",
+              "role": "system"
+            },
+            {
+              "content": "{{ $json.mensagemPaciente }}",
+              "role": "user"
+            }
+          ]
+        }
+      },
+      "name": "Claude API",
+      "type": "n8n-nodes-base.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1620,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{ $env.EVOLUTION_API_URL }}/message/sendText/{{ $json.nomeInstancia }}",
+        "authentication": "genericCredentialType",
+        "genericCredentials": "{{ $secret.EVOLUTION_API_KEY }}",
+        "body": "{\n  \"number\": \"{{ $json.telefonePaciente }}\",\n  \"text\": \"{{ $json.message.content }}\"\n}"
+      },
+      "name": "Enviar Mensagem Evolution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1820,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar dados para salvar no histórico\nconst novoHistorico = $json.historicoLimitado || [];\n\n// Adicionar nova mensagem do paciente\nnovoHistorico.push({\n  role: 'user',\n  content: $json.mensagemPaciente,\n  timestamp: new Date().toISOString()\n});\n\n// Adicionar resposta do agente\nnovoHistorico.push({\n  role: 'assistant',\n  content: $json.message.content,\n  timestamp: new Date().toISOString()\n});\n\n// Limitar a 20 mensagens\nconst historicoFinal = novoHistorico.slice(-20);\n\nreturn {\n  clinicaId: $json.clinicaId,\n  telefonePaciente: $json.telefonePaciente,\n  historico: JSON.stringify(historicoFinal)\n};"
+      },
+      "name": "Code: Preparar Histórico",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2020,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "postgresqlDb": "{{ $secret.SUPABASE_CONNECTION }}",
+        "query": "INSERT INTO conversas (clinica_id, paciente_telefone, historico) VALUES (@clinicaId, @telefone, @historico) ON CONFLICT (clinica_id, paciente_telefone) DO UPDATE SET historico = @historico, updated_at = NOW()",
+        "queryParams": "clinicaId={{ $json.clinicaId }}&telefone={{ $json.telefonePaciente }}&historico={{ $json.historico }}"
+      },
+      "name": "Salvar Histórico",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        2220,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "bodyParameters": {
+          "values": [
+            {
+              "name": "sucesso",
+              "value": "true"
+            }
+          ]
+        }
+      },
+      "name": "Resposta Sucesso",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2420,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrair estado e instância do payload CONNECTION_UPDATE da Evolution API\n// O estado vem em data.state (pode ser 'open', 'connecting', 'close')\nconst state = $json.data?.state ?? $json.state ?? '';\nconst instance = $json.instance ?? $json.data?.instance ?? '';\n\nconst statusWhatsapp = state === 'open' ? 'conectado' : 'desconectado';\n\nconsole.log(`[CONNECTION_UPDATE] instance=${instance} state=${state} → ${statusWhatsapp}`);\n\nreturn { statusWhatsapp, instance };"
+      },
+      "name": "Code: Extrair Estado Conexão",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "postgresqlDb": "{{ $secret.SUPABASE_CONNECTION }}",
+        "query": "UPDATE clinic_whatsapp_integrations SET status = $1, last_connection_at = CASE WHEN $1 = 'connected' THEN NOW() ELSE last_connection_at END, updated_at = NOW() WHERE instance_name = $2",
+        "additionalFields": {
+          "queryParams": "={{ [$json.statusWhatsapp, $json.instance] }}"
+        }
+      },
+      "name": "Atualizar Status Conexão",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        820,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "bodyParameters": {
+          "values": [
+            {
+              "name": "mensagem",
+              "value": "Status atualizado"
+            }
+          ]
+        }
+      },
+      "name": "Resposta Connection",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1020,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "bodyParameters": {
+          "values": [
+            {
+              "name": "erro",
+              "value": "Clínica bloqueada ou acesso expirado"
+            }
+          ]
+        }
+      },
+      "name": "Resposta Bloqueio",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1020,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{ $env.EVOLUTION_API_URL }}/message/sendText/{{ $json[0].instancia_evolution }}",
+        "authentication": "genericCredentialType",
+        "genericCredentials": "{{ $secret.EVOLUTION_API_KEY }}",
+        "body": "{\n  \"number\": \"{{ $json.data.key }}\",\n  \"text\": \"Desculpe, sua clínica não está ativa. Entre em contato com o suporte.\"\n}"
+      },
+      "name": "Enviar Msg Bloqueio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1020,
+        550
+      ]
+    },
+    {
+      "parameters": {
+        "bodyParameters": {
+          "values": [
+            {
+              "name": "erro",
+              "value": "Clínica não encontrada"
+            }
+          ]
+        }
+      },
+      "name": "Resposta Clínica Não Encontrada",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        820,
+        350
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Switch: Tipo de Evento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch: Tipo de Evento": {
+      "main": [
+        [
+          {
+            "node": "Buscar Clínica",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code: Extrair Estado Conexão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Clínica": {
+      "main": [
+        [
+          {
+            "node": "Verificar Acesso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Acesso": {
+      "main": [
+        [
+          {
+            "node": "Buscar Dados da Clínica",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enviar Msg Bloqueio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Dados da Clínica": {
+      "main": [
+        [
+          {
+            "node": "Buscar Histórico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Histórico": {
+      "main": [
+        [
+          {
+            "node": "Code: Montar Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Montar Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude API": {
+      "main": [
+        [
+          {
+            "node": "Enviar Mensagem Evolution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Mensagem Evolution": {
+      "main": [
+        [
+          {
+            "node": "Code: Preparar Histórico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Preparar Histórico": {
+      "main": [
+        [
+          {
+            "node": "Salvar Histórico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar Histórico": {
+      "main": [
+        [
+          {
+            "node": "Resposta Sucesso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Extrair Estado Conexão": {
+      "main": [
+        [
+          {
+            "node": "Atualizar Status Conexão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar Status Conexão": {
+      "main": [
+        [
+          {
+            "node": "Resposta Connection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Msg Bloqueio": {
+      "main": [
+        [
+          {
+            "node": "Resposta Bloqueio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

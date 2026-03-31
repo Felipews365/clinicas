@@ -1,11 +1,43 @@
 {
   "name": "consultorio",
   "private": true,
-  "description": "Raiz do projeto; a app Next.js está em /web",
+  "description": "Plataforma SaaS WhatsApp Multi-Tenant para Clínicas | Frontend em /web, Backend em /backend",
   "scripts": {
-    "dev": "npm run dev --prefix web",
+    "dev": "npm run dev:frontend",
+    "dev:frontend": "npm run dev --prefix web",
+    "dev:web": "npm run dev:frontend",
+    "dev:backend": "node --watch backend/server.js",
+    "dev:all": "concurrently -n web,api -c blue,green \"npm run dev:frontend\" \"npm run dev:backend\"",
     "build": "npm run build --prefix web",
     "start": "npm run start --prefix web",
-    "install:web": "npm install --prefix web"
+    "start:backend": "node backend/server.js",
+    "install:web": "npm install --prefix web",
+    "install:backend": "npm install",
+    "exemplo:1": "node backend/exemplo-uso.js 1",
+    "exemplo:2": "node backend/exemplo-uso.js 2",
+    "exemplo:3": "node backend/exemplo-uso.js 3",
+    "exemplo:4": "node backend/exemplo-uso.js 4",
+    "exemplo:5": "node backend/exemplo-uso.js 5",
+    "exemplo:6": "node backend/exemplo-uso.js 6",
+    "exemplo:7": "node backend/exemplo-uso.js 7",
+    "exemplo:8": "node backend/exemplo-uso.js 8",
+    "exemplo:9": "node backend/exemplo-uso.js 9",
+    "exemplo:10": "node backend/exemplo-uso.js 10"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "axios": "^1.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "helmet": "^7.1.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }

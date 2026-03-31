@@ -36,3 +36,23 @@ coverage/
 # Claude Code — settings locais e preferências
 .claude/settings.json
 .claude/settings.local.json
+
+# Backend — Logs e dados temporários
+backend/logs/
+backend/*.log
+/logs/
+
+# Backend — Variáveis de ambiente (usar .env.example para template)
+backend/.env
+backend/.env.local
+backend/.env.*.local
+
+# SQLite/Database temporários
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads temporários
+uploads/
+temp/
+tmp/
