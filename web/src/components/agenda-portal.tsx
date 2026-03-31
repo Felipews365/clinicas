@@ -33,6 +33,7 @@ import {
 } from "@/lib/clinic-agenda-hours";
 import { resolveProfessionalCardStyle } from "@/lib/professional-palette";
 import { createClient } from "@/lib/supabase/client";
+import { isClinicMembersUnavailableError } from "@/lib/supabase/clinic-members-compat";
 import {
   awaitsConfirmation,
   isClinicConfirmed,
@@ -346,6 +347,13 @@ export function AgendaPortal() {
     router.replace("/cadastro");
   }, [access?.kind, supabase, router]);
 
+  // Limpa notificações quando muda de clínica (evita vazamento de dados entre clínicas)
+  useEffect(() => {
+    if (access?.kind === "clinic" && access.clinicId) {
+      agendaNotif.clearInbox();
+    }
+  }, [access?.kind === "clinic" ? access.clinicId : null]);
+
   const loadAppointments = useCallback(async () => {
     if (!supabase) return;
     if (access?.kind !== "clinic") return;
@@ -608,6 +616,7 @@ export function AgendaPortal() {
         .from("clinics")
         .select("id, name")
         .eq("owner_id", uid)
+        .limit(1)
         .maybeSingle();
       if (cancelled) return;
       if (ec) {
@@ -619,6 +628,42 @@ export function AgendaPortal() {
           kind: "clinic",
           clinicId: clinic.id,
           clinicName: clinic.name,
+        });
+        return;
+      }
+      const { data: membership, error: em } = await supabase
+        .from("clinic_members")
+        .select("clinic_id")
+        .eq("user_id", uid)
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      if (em) {
+        if (isClinicMembersUnavailableError(em)) {
+          setAccess({ kind: "onboarding" });
+          return;
+        }
+        setAccess({ kind: "denied", message: em.message });
+        return;
+      }
+      if (membership?.clinic_id) {
+        const { data: c2, error: e2 } = await supabase
+          .from("clinics")
+          .select("id, name")
+          .eq("id", membership.clinic_id)
+          .maybeSingle();
+        if (cancelled) return;
+        if (e2 || !c2?.id) {
+          setAccess({
+            kind: "denied",
+            message: e2?.message ?? "Clínica não encontrada.",
+          });
+          return;
+        }
+        setAccess({
+          kind: "clinic",
+          clinicId: c2.id,
+          clinicName: c2.name,
         });
         return;
       }
@@ -838,6 +883,8 @@ export function AgendaPortal() {
   async function handleSignOut() {
     if (!supabase) return;
     await supabase.auth.signOut();
+    router.replace("/");
+    router.refresh();
   }
 
   if (!supabase) {

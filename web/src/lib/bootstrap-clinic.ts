@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isClinicMembersUnavailableError } from "@/lib/supabase/clinic-members-compat";
 
 /** Rascunho de profissional no cadastro inicial (login / onboarding). */
 export type ProfessionalDraft = {
@@ -90,13 +91,28 @@ export async function bootstrapClinicForUser(
     return { error: "Indique pelo menos um profissional com nome." };
   }
 
-  const { data: existing } = await supabase
+  const { data: existingOwner } = await supabase
     .from("clinics")
     .select("id")
     .eq("owner_id", userId)
+    .limit(1)
     .maybeSingle();
 
-  if (existing?.id) {
+  if (existingOwner?.id) {
+    return { error: null };
+  }
+
+  const { data: existingMember, error: memProbeErr } = await supabase
+    .from("clinic_members")
+    .select("clinic_id")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
+
+  if (memProbeErr && !isClinicMembersUnavailableError(memProbeErr)) {
+    return { error: memProbeErr.message };
+  }
+  if (existingMember?.clinic_id) {
     return { error: null };
   }
 
@@ -120,12 +136,50 @@ export async function bootstrapClinicForUser(
   }
 
   const clinicId = clinic.id as string;
+
+  const { error: mErr } = await supabase.from("clinic_members").upsert(
+    { clinic_id: clinicId, user_id: userId, role: "owner" },
+    { onConflict: "clinic_id,user_id" }
+  );
+  if (mErr && !isClinicMembersUnavailableError(mErr)) {
+    const msg = mErr.message;
+    const rls =
+      mErr.code === "42501" ||
+      msg.toLowerCase().includes("row-level security");
+    return {
+      error: rls
+        ? "Falha ao registar membro da clínica (clinic_members). Confirme a migração clinic_members e as políticas RLS."
+        : msg,
+    };
+  }
+
+  // 1. Criar cs_profissionais (necessário para o agente WhatsApp/n8n)
+  const csRows = pros.map((p) => ({
+    clinic_id: clinicId,
+    nome: p.name,
+    especialidade: p.specialty.length > 0 ? p.specialty : null,
+    ativo: true,
+  }));
+
+  const { data: csPros, error: csErr } = await supabase
+    .from("cs_profissionais")
+    .insert(csRows)
+    .select("id, nome");
+
+  // cs_profissionais pode não existir em projetos sem o módulo n8n — ignorar erro
+  const csMap = new Map<string, string>(
+    (csPros ?? []).map((cp: { id: string; nome: string }) => [cp.nome, cp.id])
+  );
+  void csErr; // não bloquear o cadastro se cs_profissionais não existir
+
+  // 2. Criar profissionais no painel, ligando ao cs_profissional correspondente
   const rows = pros.map((p, i) => ({
     clinic_id: clinicId,
     name: p.name,
     specialty: p.specialty.length > 0 ? p.specialty : null,
     is_active: true,
     sort_order: i,
+    cs_profissional_id: csMap.get(p.name) ?? null,
   }));
 
   const { error: pErr } = await supabase.from("professionals").insert(rows);

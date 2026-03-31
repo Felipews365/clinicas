@@ -233,14 +233,11 @@ create table if not exists public."Clientes" (
   unique ("IdEmpresa", "TelefoneWhatsapp")
 );
 
--- ========================  RLS (helpers anti-recursão clinics ↔ professionals)  ========================
+-- ========================  RLS (helpers multi-tenant)  ========================
 
+-- Verifica se o utilizador é dono (owner_id) da clínica
 create or replace function public.rls_is_clinic_owner(p_clinic_id uuid)
-returns boolean
-language sql
-security definer
-set search_path = public
-stable
+returns boolean language sql security definer set search_path = public stable
 as $$
   select exists (
     select 1 from public.clinics c
@@ -248,12 +245,23 @@ as $$
   );
 $$;
 
+-- Verifica se o utilizador é dono OU membro (clinic_members) da clínica
+-- Usar esta função em TODAS as políticas RLS de acesso a dados
+create or replace function public.rls_has_clinic_access(p_clinic_id uuid)
+returns boolean language sql security definer set search_path = public stable
+as $$
+  select
+    public.rls_is_clinic_owner(p_clinic_id)
+    or exists (
+      select 1 from public.clinic_members m
+      where m.clinic_id = p_clinic_id
+        and m.user_id = (select auth.uid())
+    );
+$$;
+
+-- Verifica se o utilizador é profissional da clínica (via auth_user_id)
 create or replace function public.rls_professional_at_clinic(p_clinic_id uuid)
-returns boolean
-language sql
-security definer
-set search_path = public
-stable
+returns boolean language sql security definer set search_path = public stable
 as $$
   select exists (
     select 1 from public.professionals p
@@ -261,110 +269,134 @@ as $$
   );
 $$;
 
-revoke all on function public.rls_is_clinic_owner(uuid) from public;
-grant execute on function public.rls_is_clinic_owner(uuid) to authenticated;
-grant execute on function public.rls_is_clinic_owner(uuid) to service_role;
-
+revoke all on function public.rls_is_clinic_owner(uuid)      from public;
+revoke all on function public.rls_has_clinic_access(uuid)    from public;
 revoke all on function public.rls_professional_at_clinic(uuid) from public;
-grant execute on function public.rls_professional_at_clinic(uuid) to authenticated;
-grant execute on function public.rls_professional_at_clinic(uuid) to service_role;
+grant execute on function public.rls_is_clinic_owner(uuid)      to authenticated, service_role;
+grant execute on function public.rls_has_clinic_access(uuid)    to authenticated, service_role;
+grant execute on function public.rls_professional_at_clinic(uuid) to authenticated, service_role;
 
--- ========================  RLS  ========================
+-- ========================  CLINIC_MEMBERS (tabela de membros)  ========================
 
-alter table public.clinics enable row level security;
-alter table public.professionals enable row level security;
-alter table public.patients enable row level security;
-alter table public.appointments enable row level security;
+create table if not exists public.clinic_members (
+  id         uuid primary key default gen_random_uuid(),
+  clinic_id  uuid not null references public.clinics(id) on delete cascade,
+  user_id    uuid not null references auth.users(id)     on delete cascade,
+  role       text not null default 'staff',
+  created_at timestamptz not null default now(),
+  constraint clinic_members_role_check        check (role in ('owner','admin','staff','viewer')),
+  constraint clinic_members_clinic_user_unique unique (clinic_id, user_id)
+);
+
+create index if not exists idx_clinic_members_user_id   on public.clinic_members(user_id);
+create index if not exists idx_clinic_members_clinic_id on public.clinic_members(clinic_id);
+
+-- Backfill: donos existentes → clinic_members
+insert into public.clinic_members(clinic_id, user_id, role)
+select id, owner_id, 'owner' from public.clinics where owner_id is not null
+on conflict (clinic_id, user_id) do nothing;
+
+-- Trigger: owner_id → clinic_members automaticamente
+create or replace function public.trg_clinics_owner_to_clinic_member()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+begin
+  if new.owner_id is not null then
+    insert into public.clinic_members(clinic_id, user_id, role)
+    values (new.id, new.owner_id, 'owner')
+    on conflict (clinic_id, user_id) do update set role = excluded.role;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_clinics_owner_member on public.clinics;
+create trigger trg_clinics_owner_member
+  after insert or update of owner_id on public.clinics
+  for each row when (new.owner_id is not null)
+  execute function public.trg_clinics_owner_to_clinic_member();
+
+alter table public.clinic_members enable row level security;
+drop policy if exists "clinic_members_select_own"   on public.clinic_members;
+drop policy if exists "clinic_members_owner_insert" on public.clinic_members;
+drop policy if exists "clinic_members_owner_update" on public.clinic_members;
+drop policy if exists "clinic_members_owner_delete" on public.clinic_members;
+create policy "clinic_members_select_own"   on public.clinic_members for select using (user_id = (select auth.uid()));
+create policy "clinic_members_owner_insert" on public.clinic_members for insert with check (public.rls_is_clinic_owner(clinic_id));
+create policy "clinic_members_owner_update" on public.clinic_members for update using (public.rls_is_clinic_owner(clinic_id)) with check (public.rls_is_clinic_owner(clinic_id));
+create policy "clinic_members_owner_delete" on public.clinic_members for delete using (public.rls_is_clinic_owner(clinic_id));
+
+-- ========================  RLS (todas as tabelas usam rls_has_clinic_access)  ========================
+
+alter table public.clinics        enable row level security;
+alter table public.professionals  enable row level security;
+alter table public.patients       enable row level security;
+alter table public.appointments   enable row level security;
 alter table public.whatsapp_sessions enable row level security;
 
 -- Clinics
-drop policy if exists "owners_read_own_clinic" on public.clinics;
-create policy "owners_read_own_clinic" on public.clinics for select using (auth.uid() = owner_id);
-
-drop policy if exists "owners_update_own_clinic" on public.clinics;
-create policy "owners_update_own_clinic" on public.clinics for update using (auth.uid() = owner_id);
-
-drop policy if exists "owners_insert_own_clinic" on public.clinics;
-create policy "owners_insert_own_clinic" on public.clinics for insert with check (auth.uid() = owner_id);
+drop policy if exists "owners_read_own_clinic"        on public.clinics;
+drop policy if exists "owners_update_own_clinic"      on public.clinics;
+drop policy if exists "owners_insert_own_clinic"      on public.clinics;
+drop policy if exists "professionals_read_own_clinic" on public.clinics;
+create policy "owners_read_own_clinic"        on public.clinics for select using (public.rls_has_clinic_access(id));
+create policy "owners_update_own_clinic"      on public.clinics for update using (public.rls_has_clinic_access(id)) with check (public.rls_has_clinic_access(id));
+create policy "owners_insert_own_clinic"      on public.clinics for insert with check (auth.uid() = owner_id);
+create policy "professionals_read_own_clinic" on public.clinics for select using (public.rls_professional_at_clinic(id));
 
 -- Professionals
 drop policy if exists "owners_manage_professionals" on public.professionals;
+drop policy if exists "professionals_read_self"     on public.professionals;
 create policy "owners_manage_professionals" on public.professionals for all
-  using (public.rls_is_clinic_owner(professionals.clinic_id))
-  with check (public.rls_is_clinic_owner(professionals.clinic_id));
-
-drop policy if exists "professionals_read_self" on public.professionals;
-create policy "professionals_read_self" on public.professionals for select using (auth_user_id = auth.uid());
-
-drop policy if exists "professionals_read_own_clinic" on public.clinics;
-create policy "professionals_read_own_clinic" on public.clinics for select
-  using (public.rls_professional_at_clinic(clinics.id));
+  using (public.rls_has_clinic_access(professionals.clinic_id))
+  with check (public.rls_has_clinic_access(professionals.clinic_id));
+create policy "professionals_read_self" on public.professionals for select using (auth_user_id = (select auth.uid()));
 
 -- Patients
-drop policy if exists "owners_read_patients" on public.patients;
-create policy "owners_read_patients" on public.patients for select
-  using (public.rls_is_clinic_owner(patients.clinic_id));
-
+drop policy if exists "owners_read_patients"   on public.patients;
 drop policy if exists "owners_insert_patients" on public.patients;
-create policy "owners_insert_patients" on public.patients for insert
-  with check (public.rls_is_clinic_owner(clinic_id));
-
 drop policy if exists "owners_update_patients" on public.patients;
-create policy "owners_update_patients" on public.patients for update
-  using (public.rls_is_clinic_owner(patients.clinic_id))
-  with check (public.rls_is_clinic_owner(patients.clinic_id));
-
+drop policy if exists "owners_delete_patients" on public.patients;
 drop policy if exists "professionals_read_patients_own_appointments" on public.patients;
+create policy "owners_read_patients"   on public.patients for select using (public.rls_has_clinic_access(patients.clinic_id));
+create policy "owners_insert_patients" on public.patients for insert with check (public.rls_has_clinic_access(clinic_id));
+create policy "owners_update_patients" on public.patients for update using (public.rls_has_clinic_access(patients.clinic_id)) with check (public.rls_has_clinic_access(patients.clinic_id));
+create policy "owners_delete_patients" on public.patients for delete using (public.rls_has_clinic_access(patients.clinic_id));
 create policy "professionals_read_patients_own_appointments" on public.patients for select
-  using (exists (select 1 from public.appointments a join public.professionals p on p.id = a.professional_id where a.patient_id = patients.id and p.auth_user_id = auth.uid()));
+  using (exists (select 1 from public.appointments a join public.professionals p on p.id = a.professional_id where a.patient_id = patients.id and p.auth_user_id = (select auth.uid())));
 
 -- Appointments
-drop policy if exists "owners_read_appointments" on public.appointments;
-create policy "owners_read_appointments" on public.appointments for select
-  using (public.rls_is_clinic_owner(appointments.clinic_id));
-
+drop policy if exists "owners_read_appointments"   on public.appointments;
 drop policy if exists "owners_insert_appointments" on public.appointments;
-create policy "owners_insert_appointments" on public.appointments for insert
-  with check (public.rls_is_clinic_owner(clinic_id));
-
 drop policy if exists "owners_update_appointments" on public.appointments;
-create policy "owners_update_appointments" on public.appointments for update
-  using (public.rls_is_clinic_owner(appointments.clinic_id))
-  with check (public.rls_is_clinic_owner(appointments.clinic_id));
-
+drop policy if exists "owners_delete_appointments" on public.appointments;
 drop policy if exists "professionals_read_own_appointments" on public.appointments;
+create policy "owners_read_appointments"   on public.appointments for select using (public.rls_has_clinic_access(appointments.clinic_id));
+create policy "owners_insert_appointments" on public.appointments for insert with check (public.rls_has_clinic_access(clinic_id));
+create policy "owners_update_appointments" on public.appointments for update using (public.rls_has_clinic_access(appointments.clinic_id)) with check (public.rls_has_clinic_access(appointments.clinic_id));
+create policy "owners_delete_appointments" on public.appointments for delete using (public.rls_has_clinic_access(appointments.clinic_id));
 create policy "professionals_read_own_appointments" on public.appointments for select
-  using (exists (select 1 from public.professionals p where p.id = appointments.professional_id and p.auth_user_id = auth.uid()));
+  using (exists (select 1 from public.professionals p where p.id = appointments.professional_id and p.auth_user_id = (select auth.uid())));
 
 -- WhatsApp sessions
-drop policy if exists "owners_read_whatsapp_sessions" on public.whatsapp_sessions;
-create policy "owners_read_whatsapp_sessions" on public.whatsapp_sessions for select
-  using (public.rls_is_clinic_owner(whatsapp_sessions.clinic_id));
-
-drop policy if exists "owners_update_whatsapp_sessions" on public.whatsapp_sessions;
-create policy "owners_update_whatsapp_sessions" on public.whatsapp_sessions for update
-  using (public.rls_is_clinic_owner(whatsapp_sessions.clinic_id))
-  with check (public.rls_is_clinic_owner(whatsapp_sessions.clinic_id));
-
+drop policy if exists "owners_read_whatsapp_sessions"   on public.whatsapp_sessions;
 drop policy if exists "owners_insert_whatsapp_sessions" on public.whatsapp_sessions;
-create policy "owners_insert_whatsapp_sessions" on public.whatsapp_sessions for insert
-  with check (public.rls_is_clinic_owner(clinic_id));
+drop policy if exists "owners_update_whatsapp_sessions" on public.whatsapp_sessions;
+drop policy if exists "owners_delete_whatsapp_sessions" on public.whatsapp_sessions;
+create policy "owners_read_whatsapp_sessions"   on public.whatsapp_sessions for select using (public.rls_has_clinic_access(whatsapp_sessions.clinic_id));
+create policy "owners_insert_whatsapp_sessions" on public.whatsapp_sessions for insert with check (public.rls_has_clinic_access(clinic_id));
+create policy "owners_update_whatsapp_sessions" on public.whatsapp_sessions for update using (public.rls_has_clinic_access(whatsapp_sessions.clinic_id)) with check (public.rls_has_clinic_access(whatsapp_sessions.clinic_id));
+create policy "owners_delete_whatsapp_sessions" on public.whatsapp_sessions for delete using (public.rls_has_clinic_access(whatsapp_sessions.clinic_id));
 
--- ========================  SEED (opcional)  ========================
-
-insert into public.clinics (name, slug, phone)
-select 'Consultório Demo', 'demo', '+5511999990000'
-where not exists (select 1 from public.clinics where slug = 'demo');
-
-insert into public.professionals (clinic_id, name, specialty)
-select c.id, v.name, v.specialty
-from public.clinics c
-cross join (values
-  ('Dra. Maria Letícia', 'Clínica geral'),
-  ('Dr. João Lucas', 'Clínica geral')
-) as v(name, specialty)
-where c.slug = 'demo'
-  and not exists (select 1 from public.professionals p where p.clinic_id = c.id);
+-- ========================  SEED (opcional — apenas para desenvolvimento local)  ========================
+-- ATENÇÃO: Não executar em produção. O seed cria uma clínica demo SEM owner_id,
+-- o que viola a constraint de isolamento multi-tenant.
+-- Para criar dados de teste, use o fluxo normal de cadastro (/cadastro).
+--
+-- Exemplo de seed para desenvolvimento:
+-- insert into public.clinics (name, slug, phone, owner_id)
+-- select 'Clínica Demo', 'demo', '+5511999990000', (select id from auth.users limit 1)
+-- where not exists (select 1 from public.clinics where slug = 'demo');
 
 -- ========================  COMMENTS  ========================
 

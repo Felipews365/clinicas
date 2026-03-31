@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Dono da clínica assume a conversa WhatsApp (marca staff_handling no painel).
+ * Utilizador com acesso à clínica (dono ou clinic_members) assume a conversa WhatsApp.
  */
 export async function POST(request: Request) {
   let body: { session_id?: string };
@@ -40,13 +40,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: clinic, error: clinicErr } = await supabase
-      .from("clinics")
-      .select("owner_id")
-      .eq("id", row.clinic_id)
-      .maybeSingle();
+    const { data: hasAccess, error: accessErr } = await supabase.rpc(
+      "rls_has_clinic_access",
+      { p_clinic_id: row.clinic_id }
+    );
 
-    if (clinicErr || !clinic || clinic.owner_id !== user.id) {
+    if (accessErr || !hasAccess) {
       return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
     }
 

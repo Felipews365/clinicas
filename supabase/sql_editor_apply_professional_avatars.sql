@@ -38,7 +38,7 @@ create policy "professional_avatars_owner_insert"
   on storage.objects for insert to authenticated
   with check (
     bucket_id = 'professional-avatars'
-    and public.rls_is_clinic_owner((split_part(name, '/', 1))::uuid)
+    and public.rls_has_clinic_access((split_part(name, '/', 1))::uuid)
   );
 
 drop policy if exists "professional_avatars_owner_update" on storage.objects;
@@ -46,11 +46,11 @@ create policy "professional_avatars_owner_update"
   on storage.objects for update to authenticated
   using (
     bucket_id = 'professional-avatars'
-    and public.rls_is_clinic_owner((split_part(name, '/', 1))::uuid)
+    and public.rls_has_clinic_access((split_part(name, '/', 1))::uuid)
   )
   with check (
     bucket_id = 'professional-avatars'
-    and public.rls_is_clinic_owner((split_part(name, '/', 1))::uuid)
+    and public.rls_has_clinic_access((split_part(name, '/', 1))::uuid)
   );
 
 drop policy if exists "professional_avatars_owner_delete" on storage.objects;
@@ -58,7 +58,7 @@ create policy "professional_avatars_owner_delete"
   on storage.objects for delete to authenticated
   using (
     bucket_id = 'professional-avatars'
-    and public.rls_is_clinic_owner((split_part(name, '/', 1))::uuid)
+    and public.rls_has_clinic_access((split_part(name, '/', 1))::uuid)
   );
 
 -- Só necessário se usar agendamentos cs_agendamentos no painel (RPC).
@@ -72,7 +72,7 @@ as $$
 declare
   tz text;
 begin
-  if not public.rls_is_clinic_owner (p_clinic_id) then
+  if not public.rls_has_clinic_access (p_clinic_id) then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
@@ -135,6 +135,9 @@ begin
             pr_panel.cs_profissional_id = p.id
             or pr_panel.id = p.id
           )
+        where
+          p.clinic_id = p_clinic_id
+          and coalesce (a.clinic_id, p.clinic_id) = p_clinic_id
       ) sub
     ),
     '[]'::jsonb

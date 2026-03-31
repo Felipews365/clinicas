@@ -5,9 +5,7 @@
 --   • BLOQUEADO   → bloqueio_manual = true (ação manual no painel)
 --
 -- Ver também: migrations/20260330270000_fix_slots_disponivel_por_grade.sql (migração definitiva)
--- Se só tiver uma clínica, após criar clinics:
---   update public.cs_profissionais set clinic_id = '<uuid>' where clinic_id is null;
---
+-- Espelho tenant-estrito: migrations/20260403120000_cs_tenant_isolation.sql
 -- Se só tiver uma clínica, após criar clinics:
 --   update public.cs_profissionais set clinic_id = '<uuid>' where clinic_id is null;
 
@@ -49,16 +47,23 @@ as $$
 declare
   v_hours int[];
 begin
-  if not public.rls_is_clinic_owner (p_clinic_id) then
+  if not public.rls_has_clinic_access (p_clinic_id) then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
-  select coalesce(c.agenda_visible_hours, array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[])
-  into v_hours
-  from public.clinics c
-  where c.id = p_clinic_id;
+  select
+    coalesce(
+      c.agenda_visible_hours,
+      array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[]
+    )
+  into
+    v_hours
+  from
+    public.clinics c
+  where
+    c.id = p_clinic_id;
 
-  if v_hours is null or cardinality(v_hours) = 0 then
+  if v_hours is null or cardinality (v_hours) = 0 then
     v_hours := array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[];
   end if;
 
@@ -71,57 +76,69 @@ begin
             'profissional_id', p.id,
             'profissional_nome', p.nome,
             'especialidade', p.especialidade,
-            'nome_procedimento',
-              (
-                select coalesce(nullif(trim(a.nome_procedimento), ''), s.nome)::text
-                from public.cs_agendamentos a
-                inner join public.cs_servicos s on s.id = a.servico_id
-                where a.profissional_id = h.profissional_id
+            'nome_procedimento', (
+              select
+                coalesce(nullif(trim (a.nome_procedimento), ''), sv.nome)::text
+              from
+                public.cs_agendamentos a
+                inner join public.cs_servicos sv on sv.id = a.servico_id
+              where
+                a.profissional_id = h.profissional_id
+                and a.data_agendamento = h.data
+                and a.horario = h.horario
+                and a.status not in ('cancelado', 'concluido')
+                and coalesce (a.clinic_id, p.clinic_id) = p_clinic_id
+              limit
+                1
+            ),
+            'data', h.data,
+            'horario', to_char (h.horario, 'HH24:MI'),
+            'disponivel', case
+              when coalesce (h.bloqueio_manual, false) then false
+              when exists (
+                select
+                  1
+                from
+                  public.cs_agendamentos a
+                where
+                  a.profissional_id = h.profissional_id
                   and a.data_agendamento = h.data
                   and a.horario = h.horario
                   and a.status not in ('cancelado', 'concluido')
-                limit 1
-              ),
-            'data', h.data,
-            'horario', to_char(h.horario, 'HH24:MI'),
-            -- disponivel: calculado dinamicamente — nunca usa h.disponivel como proxy
-            'disponivel',
-              case
-                when coalesce(h.bloqueio_manual, false) then false
-                when exists (
-                  select 1
-                  from public.cs_agendamentos a
-                  where a.profissional_id = h.profissional_id
-                    and a.data_agendamento = h.data
-                    and a.horario = h.horario
-                    and a.status not in ('cancelado', 'concluido')
-                ) then false
-                else true  -- padrão: DISPONÍVEL (grade da clínica é a fonte oficial)
-              end,
-            -- indisponivel_por: só 'medico' com bloqueio_manual real, só 'cliente' com agendamento real
-            'indisponivel_por',
-              case
-                when coalesce(h.bloqueio_manual, false) then 'medico'
-                when exists (
-                  select 1
-                  from public.cs_agendamentos a
-                  where a.profissional_id = h.profissional_id
-                    and a.data_agendamento = h.data
-                    and a.horario = h.horario
-                    and a.status not in ('cancelado', 'concluido')
-                ) then 'cliente'
-                else null
-              end,
-            'bloqueio_manual', coalesce(h.bloqueio_manual, false)
+                  and coalesce (a.clinic_id, p.clinic_id) = p_clinic_id
+              ) then false
+              else true
+            end,
+            'indisponivel_por', case
+              when coalesce (h.bloqueio_manual, false) then 'medico'
+              when exists (
+                select
+                  1
+                from
+                  public.cs_agendamentos a
+                where
+                  a.profissional_id = h.profissional_id
+                  and a.data_agendamento = h.data
+                  and a.horario = h.horario
+                  and a.status not in ('cancelado', 'concluido')
+                  and coalesce (a.clinic_id, p.clinic_id) = p_clinic_id
+              ) then 'cliente'
+              else null
+            end,
+            'bloqueio_manual', coalesce (h.bloqueio_manual, false)
           )
-          order by p.nome asc, h.horario asc
+          order by
+            p.nome asc,
+            h.horario asc
         )
-      from public.cs_horarios_disponiveis h
-      inner join public.cs_profissionais p on p.id = h.profissional_id
-      where h.data = p_data
+      from
+        public.cs_horarios_disponiveis h
+        inner join public.cs_profissionais p on p.id = h.profissional_id
+      where
+        h.data = p_data
         and p.ativo = true
-        and (p.clinic_id is null or p.clinic_id = p_clinic_id)
-        and extract(hour from h.horario)::integer = any (v_hours)
+        and p.clinic_id = p_clinic_id
+        and extract (hour from h.horario)::integer = any (v_hours)
     ),
     '[]'::jsonb
   );
@@ -143,38 +160,52 @@ declare
   v_hour int;
   v_hours int[];
 begin
-  if not public.rls_is_clinic_owner (p_clinic_id) then
+  if not public.rls_has_clinic_access (p_clinic_id) then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
-  select coalesce(c.agenda_visible_hours, array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[])
-  into v_hours
-  from public.clinics c
-  where c.id = p_clinic_id;
+  select
+    coalesce(
+      c.agenda_visible_hours,
+      array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[]
+    )
+  into
+    v_hours
+  from
+    public.clinics c
+  where
+    c.id = p_clinic_id;
 
-  select extract(hour from h.horario)::integer
-  into v_hour
-  from public.cs_horarios_disponiveis h
-  where h.id = p_horario_id;
+  select
+    extract (hour from h.horario)::integer
+  into
+    v_hour
+  from
+    public.cs_horarios_disponiveis h
+  where
+    h.id = p_horario_id;
 
   if v_hour is null or not (v_hour = any (v_hours)) then
     return jsonb_build_object(
       'ok', false,
-      'error',
-      'hour_not_in_clinic_agenda',
-      'message',
-      'Este horário não está habilitado na configuração global da clínica (6h–22h).'
+      'error', 'hour_not_in_clinic_agenda',
+      'message', 'Este horário não está habilitado na configuração global da clínica (6h–22h).'
     );
   end if;
 
-  select true
-  into v_ok
-  from public.cs_horarios_disponiveis h
-  inner join public.cs_profissionais p on p.id = h.profissional_id
-  where h.id = p_horario_id
+  select
+    true
+  into
+    v_ok
+  from
+    public.cs_horarios_disponiveis h
+    inner join public.cs_profissionais p on p.id = h.profissional_id
+  where
+    h.id = p_horario_id
     and p.ativo = true
-    and (p.clinic_id is null or p.clinic_id = p_clinic_id)
-  limit 1;
+    and p.clinic_id = p_clinic_id
+  limit
+    1;
 
   if v_ok is distinct from true then
     return jsonb_build_object('ok', false, 'error', 'slot_not_found_or_forbidden');
@@ -183,8 +214,12 @@ begin
   update public.cs_horarios_disponiveis
   set
     disponivel = p_disponivel,
-    bloqueio_manual = case when p_disponivel then false else true end
-  where id = p_horario_id;
+    bloqueio_manual = case
+      when p_disponivel then false
+      else true
+    end
+  where
+    id = p_horario_id;
 
   return jsonb_build_object('ok', true, 'disponivel', p_disponivel);
 end;
@@ -204,54 +239,72 @@ as $$
 declare
   v_hours int[];
 begin
-  if not public.rls_is_clinic_owner (p_clinic_id) then
+  if not public.rls_has_clinic_access (p_clinic_id) then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
-  select coalesce(c.agenda_visible_hours, array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[])
-  into v_hours
-  from public.clinics c
-  where c.id = p_clinic_id;
+  select
+    coalesce(
+      c.agenda_visible_hours,
+      array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[]
+    )
+  into
+    v_hours
+  from
+    public.clinics c
+  where
+    c.id = p_clinic_id;
 
-  if v_hours is null or cardinality(v_hours) = 0 then
+  if v_hours is null or cardinality (v_hours) = 0 then
     v_hours := array[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]::integer[];
   end if;
 
-  -- Inserir linhas em falta (novos horários adicionados à grade)
-  insert into public.cs_horarios_disponiveis (profissional_id, data, horario, disponivel, bloqueio_manual)
+  insert into public.cs_horarios_disponiveis (
+    profissional_id,
+    data,
+    horario,
+    disponivel,
+    bloqueio_manual
+  )
   select
     p.id,
     p_data,
-    make_time(s.h::int, 0, 0),
+    make_time (s.h::int, 0, 0),
     true,
     false
-  from public.cs_profissionais p
-  cross join lateral unnest(v_hours) as s(h)
-  where p.ativo = true
-    and (p.clinic_id is null or p.clinic_id = p_clinic_id)
+  from
+    public.cs_profissionais p
+    cross join lateral unnest (v_hours) as s (h)
+  where
+    p.ativo = true
+    and p.clinic_id = p_clinic_id
     and s.h between 6 and 22
   on conflict (profissional_id, data, horario) do nothing;
 
-  -- Reparar bloqueios fantasma do dia:
-  -- disponivel=false sem bloqueio_manual=true e sem agendamento ativo → restaurar
   update public.cs_horarios_disponiveis h
   set
-    disponivel      = true,
+    disponivel = true,
     bloqueio_manual = false
-  from public.cs_profissionais p
-  where h.profissional_id = p.id
+  from
+    public.cs_profissionais p
+  where
+    h.profissional_id = p.id
     and h.data = p_data
     and p.ativo = true
-    and (p.clinic_id is null or p.clinic_id = p_clinic_id)
-    and coalesce(h.bloqueio_manual, false) = false
+    and p.clinic_id = p_clinic_id
+    and coalesce (h.bloqueio_manual, false) = false
     and h.disponivel = false
     and not exists (
-      select 1
-      from public.cs_agendamentos a
-      where a.profissional_id = h.profissional_id
+      select
+        1
+      from
+        public.cs_agendamentos a
+      where
+        a.profissional_id = h.profissional_id
         and a.data_agendamento = h.data
-        and a.horario          = h.horario
+        and a.horario = h.horario
         and a.status not in ('cancelado', 'concluido')
+        and coalesce (a.clinic_id, p.clinic_id) = p_clinic_id
     );
 
   return jsonb_build_object('ok', true);

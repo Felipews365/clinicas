@@ -1,7 +1,8 @@
 -- Painel web: expor agendamentos gravados pelo n8n em cs_agendamentos (modelo paralelo a public.appointments).
 -- Executar no SQL Editor do Supabase após existir cs_agendamentos.
 --
--- Inclui: listagem JSON + confirmação/cancelamento pelo dono (clinic owner via rls_is_clinic_owner).
+-- Inclui: listagem JSON + confirmação/cancelamento (dono ou clinic_members via rls_has_clinic_access).
+-- Espelho da migração 20260403120000_cs_tenant_isolation.sql (filtro tenant em cs_profissionais / cs_agendamentos).
 
 alter table public.cs_agendamentos
   add column if not exists painel_confirmado boolean not null default false;
@@ -16,7 +17,7 @@ as $$
 declare
   tz text;
 begin
-  if not public.rls_is_clinic_owner (p_clinic_id) then
+  if not public.rls_has_clinic_access (p_clinic_id) then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
@@ -79,6 +80,9 @@ begin
             pr_panel.cs_profissional_id = p.id
             or pr_panel.id = p.id
           )
+        where
+          p.clinic_id = p_clinic_id
+          and coalesce (a.clinic_id, p.clinic_id) = p_clinic_id
       ) sub
     ),
     '[]'::jsonb
@@ -98,14 +102,21 @@ as $$
 declare
   v_n int;
 begin
-  if not public.rls_is_clinic_owner (p_clinic_id) then
+  if not public.rls_has_clinic_access (p_clinic_id) then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
-  update public.cs_agendamentos
-  set painel_confirmado = true
-  where id = p_cs_agendamento_id
-    and status not in ('cancelado', 'concluido');
+  update public.cs_agendamentos a
+  set
+    painel_confirmado = true
+  from
+    public.cs_profissionais p
+  where
+    a.id = p_cs_agendamento_id
+    and p.id = a.profissional_id
+    and p.clinic_id = p_clinic_id
+    and coalesce (a.clinic_id, p.clinic_id) = p_clinic_id
+    and a.status not in ('cancelado', 'concluido');
 
   get diagnostics v_n = row_count;
   if v_n = 0 then
@@ -129,15 +140,25 @@ declare
   v record;
   v_slot uuid;
 begin
-  if not public.rls_is_clinic_owner (p_clinic_id) then
+  if not public.rls_has_clinic_access (p_clinic_id) then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
-  select id, profissional_id, data_agendamento, horario, status
+  select
+    a.id,
+    a.profissional_id,
+    a.data_agendamento,
+    a.horario,
+    a.status
   into v
-  from public.cs_agendamentos
-  where id = p_cs_agendamento_id
-  for update;
+  from
+    public.cs_agendamentos a
+    inner join public.cs_profissionais p on p.id = a.profissional_id
+  where
+    a.id = p_cs_agendamento_id
+    and p.clinic_id = p_clinic_id
+    and coalesce (a.clinic_id, p.clinic_id) = p_clinic_id
+  for update of cs_agendamentos;
 
   if not found then
     return jsonb_build_object('ok', false, 'error', 'not_found');
@@ -147,17 +168,22 @@ begin
     return jsonb_build_object('ok', false, 'error', 'already_cancelled');
   end if;
 
-  select h.id into v_slot
-  from public.cs_horarios_disponiveis h
-  where h.profissional_id = v.profissional_id
+  select
+    h.id into v_slot
+  from
+    public.cs_horarios_disponiveis h
+  where
+    h.profissional_id = v.profissional_id
     and h.data = v.data_agendamento
     and h.horario = v.horario
   for update;
 
   if found then
     update public.cs_horarios_disponiveis
-    set disponivel = true
-    where id = v_slot;
+    set
+      disponivel = true
+    where
+      id = v_slot;
   end if;
 
   update public.cs_agendamentos
@@ -165,7 +191,8 @@ begin
     status = 'cancelado',
     motivo_cancelamento = coalesce(motivo_cancelamento, 'Cancelado pelo painel'),
     atualizado_em = now()
-  where id = v.id;
+  where
+    id = v.id;
 
   return jsonb_build_object('ok', true);
 end;

@@ -1,5 +1,5 @@
 -- Procedimentos / serviços oferecidos por cada clínica (painel + agente IA / n8n).
--- Executar no SQL Editor após existir public.clinics e public.rls_is_clinic_owner.
+-- Executar no SQL Editor após existir public.clinics e public.rls_has_clinic_access (fase 1 membros).
 
 create table if not exists public.clinic_procedures (
   id uuid primary key default gen_random_uuid(),
@@ -108,8 +108,8 @@ alter table public.clinic_procedures enable row level security;
 drop policy if exists "owners_manage_clinic_procedures" on public.clinic_procedures;
 create policy "owners_manage_clinic_procedures" on public.clinic_procedures
   for all
-  using (public.rls_is_clinic_owner(clinic_procedures.clinic_id))
-  with check (public.rls_is_clinic_owner(clinic_procedures.clinic_id));
+  using (public.rls_has_clinic_access(clinic_procedures.clinic_id))
+  with check (public.rls_has_clinic_access(clinic_procedures.clinic_id));
 
 drop policy if exists "professionals_read_clinic_procedures" on public.clinic_procedures;
 create policy "professionals_read_clinic_procedures" on public.clinic_procedures
@@ -137,7 +137,7 @@ declare
   v_role text := coalesce(auth.jwt() ->> 'role', '');
 begin
   if v_role is distinct from 'service_role'
-     and not public.rls_is_clinic_owner(p_clinic_id) then
+     and not public.rls_has_clinic_access(p_clinic_id) then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 

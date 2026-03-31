@@ -354,14 +354,16 @@ export function NotificationAlertsPage({
               ["cancelamento", "Cancelamento"],
               ["reagendamento", "Reagendamento"],
             ] as const
-          ).map(([key, label]) =>
-            toggleRow(
-              label,
-              prefs[key],
-              (v) => updatePrefs({ ...prefs, [key]: v }),
-              `alert-event-${key}`
-            )
-          )}
+          ).map(([key, label]) => (
+            <div key={key}>
+              {toggleRow(
+                label,
+                prefs[key],
+                (v) => updatePrefs({ ...prefs, [key]: v }),
+                `alert-event-${key}`
+              )}
+            </div>
+          ))}
         </section>
       </div>
 

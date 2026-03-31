@@ -209,6 +209,7 @@ export function ClinicRegisterForm() {
     await supabase.auth.signOut();
     setSession(null);
     setEmail("");
+    router.replace("/");
     router.refresh();
   }
 

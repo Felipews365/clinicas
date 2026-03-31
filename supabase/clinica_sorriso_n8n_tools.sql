@@ -199,10 +199,12 @@ declare
   v_nome_prof text;
   v_nome_serv text;
   v_nome_cli text;
+  v_clinic_id uuid;
 begin
   v_nome_cli := trim(p_nome_cliente);
 
-  select p.nome into v_nome_prof
+  select p.nome, p.clinic_id
+  into v_nome_prof, v_clinic_id
   from cs_profissionais p
   where p.id = p_profissional_id;
 
@@ -212,6 +214,9 @@ begin
 
   if v_nome_prof is null then
     raise exception 'profissional_id inválido: %', p_profissional_id;
+  end if;
+  if v_clinic_id is null then
+    raise exception 'profissional sem clinic_id (associar à clínica antes de agendar)';
   end if;
   if v_nome_serv is null then
     raise exception 'servico_id inválido: %', p_servico_id;
@@ -233,9 +238,10 @@ begin
     );
   end if;
 
-  insert into cs_clientes (nome, telefone)
-  values (v_nome_cli, p_telefone)
-  on conflict (telefone) do update
+  insert into cs_clientes (nome, telefone, clinic_id)
+  values (v_nome_cli, p_telefone, v_clinic_id)
+  on conflict (clinic_id, telefone) where clinic_id is not null
+  do update
     set nome = excluded.nome,
         updated_at = now()
   returning id into v_cliente_id;
@@ -250,7 +256,8 @@ begin
     observacoes,
     nome_cliente,
     nome_profissional,
-    nome_procedimento
+    nome_procedimento,
+    clinic_id
   )
   values (
     v_cliente_id,
@@ -262,7 +269,8 @@ begin
     coalesce(nullif(trim(p_observacoes), ''), ''),
     v_nome_cli,
     v_nome_prof,
-    v_nome_serv
+    v_nome_serv,
+    v_clinic_id
   )
   returning id into v_ag_id;
 
@@ -292,13 +300,18 @@ declare
   v_nome_prof text;
   v_same_slot boolean;
   v_booked int;
+  v_clinic_id uuid;
 begin
-  select p.nome into v_nome_prof
+  select p.nome, p.clinic_id
+  into v_nome_prof, v_clinic_id
   from cs_profissionais p
   where p.id = p_novo_profissional_id;
 
   if v_nome_prof is null then
     raise exception 'p_novo_profissional_id inválido: %', p_novo_profissional_id;
+  end if;
+  if v_clinic_id is null then
+    raise exception 'profissional sem clinic_id (associar à clínica antes de reagendar)';
   end if;
 
   v_same_slot :=
@@ -309,6 +322,7 @@ begin
   if v_same_slot then
     update cs_agendamentos
     set
+      clinic_id = coalesce(clinic_id, v_clinic_id),
       atualizado_em = now()
     where id = p_agendamento_id;
 
@@ -344,6 +358,7 @@ begin
     profissional_id = p_novo_profissional_id,
     nome_profissional = v_nome_prof,
     status = 'reagendado',
+    clinic_id = v_clinic_id,
     atualizado_em = now()
   where id = p_agendamento_id;
 
