@@ -1,128 +1,364 @@
 {
   "name": "Fluxo WhatsApp Multi-Tenant",
-  "description": "Processa mensagens WhatsApp de múltiplas clínicas, verifica acesso, consulta agente IA e envia resposta",
+  "description": "Webhook produção (/) e teste → normalizar Evolution → resolver clínica (RPC) → Switch assinatura → IA ou resposta controlada",
   "nodes": [
     {
       "parameters": {
-        "path": "/webhook/whatsapp",
+        "path": "webhook/whatsapp",
         "method": "POST",
         "options": {}
       },
-      "name": "Webhook WhatsApp",
+      "name": "Webhook Produção",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [
-        220,
-        360
-      ],
-      "webhookId": "whatsapp-webhook"
+      "position": [0, 280],
+      "webhookId": "whatsapp-webhook-prod"
     },
     {
       "parameters": {
-        "conditions": {
-          "options": [
+        "path": "webhook/whatsapp-test",
+        "method": "POST",
+        "options": {}
+      },
+      "name": "Webhook Teste",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 480],
+      "webhookId": "whatsapp-webhook-test"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst root = item.body ?? item;\nconst event = root.event ?? item.event ?? \"\";\n\nfunction getInstance(payload) {\n  return (\n    payload?.instance ||\n    payload?.instanceName ||\n    payload?.data?.instance ||\n    payload?.data?.instanceName ||\n    payload?.eventData?.instance ||\n    payload?.eventData?.instanceName ||\n    \"\"\n  );\n}\n\nconst instance_name = String(getInstance(root) || \"\").trim();\nconst data = root.data ?? {};\nconst numero_clinica = String(\n  root.numero_clinica ??\n  data.numero_clinica ??\n  item.headers?.[\"x-numero-clinica\"] ??\n  \"\"\n).trim();\n\nlet patient_phone_e164 = \"\";\nlet message_text = \"\";\nlet connection_state = \"\";\n\nfunction jidToDigits(jid) {\n  if (!jid || typeof jid !== \"string\") return \"\";\n  const user = jid.split(\"@\")[0];\n  return user.split(\":\")[0].replace(/\\D/g, \"\");\n}\n\nfunction extractText(m) {\n  if (!m || typeof m !== \"object\") return \"\";\n  if (m.conversation) return String(m.conversation);\n  if (m.extendedTextMessage?.text) return String(m.extendedTextMessage.text);\n  if (m.imageMessage?.caption) return String(m.imageMessage.caption);\n  return \"\";\n}\n\nif (event === \"MESSAGES_UPSERT\") {\n  let payload = data;\n  if (Array.isArray(payload)) payload = payload[0];\n  if (payload?.messages?.[0]) payload = payload.messages[0];\n  const key = payload.key ?? payload?.message?.key;\n  if (key?.fromMe === true) return [];\n  const remoteJid = key?.remoteJid || payload.remoteJid || \"\";\n  const waDigits = jidToDigits(remoteJid);\n  if (!waDigits) return [];\n  patient_phone_e164 = \"+\" + waDigits;\n  const msgObj = payload.message ?? payload;\n  message_text = extractText(msgObj).trim();\n}\n\nif (event === \"CONNECTION_UPDATE\") {\n  connection_state = String(data.state ?? root.state ?? \"\").toLowerCase();\n}\n\nreturn [{\n  json: {\n    event,\n    instance_name,\n    numero_clinica,\n    patient_phone_e164,\n    message_text,\n    connection_state,\n    raw: root,\n  },\n}];"
+      },
+      "name": "Code: Normalizar Webhook",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 380]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
             {
-              "condition": "objectProperty",
-              "value1": "{{ $json.event }}",
-              "value2": "MESSAGES_UPSERT"
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "evt-mensagem",
+                    "leftValue": "={{ $json.event }}",
+                    "rightValue": "MESSAGES_UPSERT",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "mensagem"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "evt-conexao",
+                    "leftValue": "={{ $json.event }}",
+                    "rightValue": "CONNECTION_UPDATE",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "conexao"
             }
           ]
-        }
+        },
+        "options": {}
       },
       "name": "Switch: Tipo de Evento",
       "type": "n8n-nodes-base.switch",
-      "typeVersion": 1,
-      "position": [
-        420,
-        360
-      ]
+      "typeVersion": 3,
+      "position": [500, 380]
     },
     {
       "parameters": {
-        "postgresqlDb": "{{ $secret.SUPABASE_CONNECTION }}",
-        "query": "SELECT * FROM clinicas_acesso WHERE instancia_evolution = @instance LIMIT 1",
-        "queryParams": "instance={{ $json.instance }}"
+        "postgresqlDb": "={{ $secret.SUPABASE_CONNECTION }}",
+        "query": "SELECT * FROM public.n8n_resolve_clinic($1::text, $2::text)",
+        "additionalFields": {
+          "queryParams": "={{ [String($json.instance_name || ''), String($json.numero_clinica || '')] }}"
+        }
       },
-      "name": "Buscar Clínica",
+      "name": "Postgres: Resolver Clínica",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [
-        620,
-        250
-      ]
+      "position": [760, 200]
     },
     {
       "parameters": {
-        "conditions": {
-          "options": [
+        "jsCode": "// Valida resultado da RPC n8n_resolve_clinic e mescla com dados do normalizador.\n// Colocado ANTES do Switch: Assinatura para garantir que cenario está sempre definido\n// e para que todos os ramos (inclusive os de bloqueio) tenham acesso a instance_name\n// e patient_phone_e164 sem precisar referenciar outros nós.\n//\n// Campos herdados do normalizador (norm):\n//   event, instance_name, numero_clinica, patient_phone_e164, message_text,\n//   connection_state, raw\n//\n// Campos retornados pela RPC (row):\n//   found, erro, clinica_id, instance_name, numero_clinica, clinica_ativa,\n//   tipo_plano, data_expiracao, inadimplente, whatsapp_status,\n//   clinica_nome, agent_instructions, cenario\n//\n// Em caso de colisão, campos da RPC têm precedência (exceto cenario, que é\n// sempre normalizado abaixo).\n\nconst items = $input.all();\nconst norm = $('Code: Normalizar Webhook').first().json;\n\nif (!items || items.length === 0 || !items[0].json) {\n  return [{ json: {\n    ...norm,\n    found: false,\n    erro: 'not_found',\n    cenario: 'clinica_nao_encontrada',\n    clinica_id: null,\n    clinica_nome: null,\n    agent_instructions: null,\n  }}];\n}\n\nconst row = items[0].json;\nconst cenario = row.cenario || 'clinica_nao_encontrada';\n\nreturn [{ json: { ...norm, ...row, cenario } }];"
+      },
+      "name": "Code: Processar Resultado RPC",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 200]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
             {
-              "condition": "objectProperty",
-              "value1": "{{ $json[0].status_acesso }}",
-              "value2": "liberado"
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "a",
+                    "leftValue": "={{ $json.cenario }}",
+                    "rightValue": "clinica_nao_encontrada",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "clinica_nao_encontrada"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "b",
+                    "leftValue": "={{ $json.cenario }}",
+                    "rightValue": "teste_expirado",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "teste_expirado"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c",
+                    "leftValue": "={{ $json.cenario }}",
+                    "rightValue": "mensal_expirado",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "mensal_expirado"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "d",
+                    "leftValue": "={{ $json.cenario }}",
+                    "rightValue": "ativo",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ativo"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Switch: Assinatura / Acesso",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1240, 200]
+    },
+    {
+      "parameters": {
+        "bodyParameters": {
+          "values": [
+            {
+              "name": "ok",
+              "value": "false"
+            },
+            {
+              "name": "motivo",
+              "value": "clinica_nao_encontrada"
             }
           ]
         }
       },
-      "name": "Verificar Acesso",
-      "type": "n8n-nodes-base.switch",
+      "name": "Resposta Clínica Não Encontrada",
+      "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [
-        820,
-        250
-      ]
+      "position": [1480, 0]
     },
     {
       "parameters": {
-        "postgresqlDb": "{{ $secret.SUPABASE_CONNECTION }}",
-        "query": "SELECT valor FROM dados_clinica WHERE clinica_id = @clinicaId AND chave = @chave",
-        "queryParams": "clinicaId={{ $json[0].id }}&chave={{ $regex.test($nodeExecutionData[0][0].json.body, 'chave_dados_customizados') }}"
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $json.instance_name }}",
+        "authentication": "genericCredentialType",
+        "genericCredentials": "={{ $secret.EVOLUTION_API_KEY }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: String(($json.patient_phone_e164 || '').replace(/^\\+/, '')), text: 'Seu período de teste deste consultório expirou. Entre em contacto com o suporte para continuar a usar o atendimento automático.' }) }}",
+        "options": {
+          "timeout": 15000
+        }
       },
-      "name": "Buscar Dados da Clínica",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
-      "position": [
-        1020,
-        250
-      ]
+      "name": "HTTP Aviso Teste Expirado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1480, 140],
+      "continueOnFail": true
     },
     {
       "parameters": {
-        "postgresqlDb": "{{ $secret.SUPABASE_CONNECTION }}",
-        "query": "SELECT historico FROM conversas WHERE clinica_id = @clinicaId AND paciente_telefone = @telefone",
-        "queryParams": "clinicaId={{ $json[0].id }}&telefone={{ $json.data.key }}"
+        "bodyParameters": {
+          "values": [
+            {
+              "name": "ok",
+              "value": "false"
+            },
+            {
+              "name": "motivo",
+              "value": "teste_expirado"
+            }
+          ]
+        }
+      },
+      "name": "Resposta Webhook Teste Expirado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1720, 140]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $json.instance_name }}",
+        "authentication": "genericCredentialType",
+        "genericCredentials": "={{ $secret.EVOLUTION_API_KEY }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: String(($json.patient_phone_e164 || '').replace(/^\\+/, '')), text: 'A assinatura deste consultório está inactiva ou em atraso. Por favor regularize o pagamento para voltar a usar o atendimento automático.' }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "name": "HTTP Aviso Mensal Expirado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1480, 280],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "bodyParameters": {
+          "values": [
+            {
+              "name": "ok",
+              "value": "false"
+            },
+            {
+              "name": "motivo",
+              "value": "mensal_expirado"
+            }
+          ]
+        }
+      },
+      "name": "Resposta Webhook Mensal Expirado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1720, 280]
+    },
+    {
+      "parameters": {
+        "postgresqlDb": "={{ $secret.SUPABASE_CONNECTION }}",
+        "query": "SELECT COALESCE((SELECT historico FROM public.conversas WHERE clinica_id = $1::uuid AND paciente_telefone = $2 LIMIT 1), '[]'::jsonb) AS historico",
+        "additionalFields": {
+          "queryParams": "={{ [$json.clinica_id, $json.patient_phone_e164] }}"
+        }
       },
       "name": "Buscar Histórico",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [
-        1220,
-        250
-      ]
+      "position": [1480, 440]
     },
     {
       "parameters": {
-        "jsCode": "// Montar sistema prompt isolado para a clínica\nconst clinica = $json[0];\nconst mensagemPaciente = $json.body.messages[0].body;\nconst telefonePaciente = $json.data.key;\nconst historico = $json[0]?.historico || [];\n\n// Limitar últimas 20 mensagens\nconst historicoLimitado = historico.slice(-20);\n\n// Formatar histórico para contexto\nconst historicoFormatado = historicoLimitado\n  .map(msg => `${msg.role === 'user' ? 'Paciente' : 'Agente'}: ${msg.content}`)\n  .join('\\n');\n\n// System prompt isolado por clínica\nconst systemPrompt = `${clinica.prompt_agente}\n\n## Contexto da Clínica\nClínica: ${clinica.nome}\nTelefone do Paciente: ${telefonePaciente}\nData/Hora: ${new Date().toLocaleString('pt-BR')}\n\n## Histórico da Conversa\n${historicoFormatado}\n\n## Instruções Críticas\n- Responda sempre como agente de IA da clínica\n- Mantenha tom profissional mas acolhedor\n- Se não souber responder, ofereça contato direto com a clínica\n- Não inente dados do paciente\n- Respeite privacidade e confidencialidade`;\n\nreturn {\n  systemPrompt,\n  mensagemPaciente,\n  telefonePaciente,\n  historicoLimitado,\n  clinicaId: clinica.id,\n  nomeInstancia: clinica.instancia_evolution,\n  promptAgente: clinica.prompt_agente\n};"
+        "jsCode": "// $input vem de Buscar Histórico (contém { historico: [...] })\n// Contexto da clínica e do paciente vêm de Code: Processar Resultado RPC\nconst base = $('Code: Processar Resultado RPC').first().json;\nconst histRow = $input.first().json;\nconst row = { ...base, ...histRow };\n\nlet historicoRaw = row.historico;\nif (typeof historicoRaw === 'string') {\n  try { historicoRaw = JSON.parse(historicoRaw); } catch { historicoRaw = []; }\n}\nconst historico = Array.isArray(historicoRaw) ? historicoRaw : [];\nconst historicoLimitado = historico.slice(-20);\nconst historicoFormatado = historicoLimitado\n  .map((msg) => `${msg.role === 'user' ? 'Paciente' : 'Agente'}: ${msg.content}`)\n  .join('\\n');\n\nconst agentText = row.agent_instructions || '';\nconst nome = row.clinica_nome || '';\nconst systemPrompt = `${agentText}\\n\\n## Contexto da Clínica\\nClínica: ${nome}\\nTelefone do Paciente: ${row.patient_phone_e164}\\nData/Hora: ${new Date().toLocaleString('pt-BR')}\\n\\n## Histórico da Conversa\\n${historicoFormatado}\\n\\n## Instruções Críticas\\n- Responda sempre como agente de IA da clínica\\n- Mantenha tom profissional mas acolhedor\\n- Se não souber responder, ofereça contato direto com a clínica\\n- Não invente dados do paciente\\n- Respeite privacidade e confidencialidade`;\n\nreturn [{\n  json: {\n    systemPrompt,\n    mensagemPaciente: row.message_text,\n    telefonePaciente: row.patient_phone_e164,\n    historicoLimitado,\n    clinicaId: row.clinica_id,\n    nomeInstancia: row.instance_name,\n  }\n}];"
       },
       "name": "Code: Montar Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        1420,
-        250
-      ]
+      "position": [1720, 440]
     },
     {
       "parameters": {
-        "model": "claude-opus-4-6",
-        "apiKey": "{{ $secret.ANTHROPIC_API_KEY }}",
+        "model": "claude-3-5-sonnet-20241022",
+        "apiKey": "={{ $secret.ANTHROPIC_API_KEY }}",
         "messages": {
           "values": [
             {
-              "content": "{{ $json.systemPrompt }}",
+              "content": "={{ $json.systemPrompt }}",
               "role": "system"
             },
             {
-              "content": "{{ $json.mensagemPaciente }}",
+              "content": "={{ $json.mensagemPaciente }}",
               "role": "user"
             }
           ]
@@ -131,52 +367,48 @@
       "name": "Claude API",
       "type": "n8n-nodes-base.anthropic",
       "typeVersion": 1,
-      "position": [
-        1620,
-        250
-      ]
+      "position": [1960, 440]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "{{ $env.EVOLUTION_API_URL }}/message/sendText/{{ $json.nomeInstancia }}",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $('Code: Montar Prompt').first().json.nomeInstancia }}",
         "authentication": "genericCredentialType",
-        "genericCredentials": "{{ $secret.EVOLUTION_API_KEY }}",
-        "body": "{\n  \"number\": \"{{ $json.telefonePaciente }}\",\n  \"text\": \"{{ $json.message.content }}\"\n}"
+        "genericCredentials": "={{ $secret.EVOLUTION_API_KEY }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: String(($('Code: Montar Prompt').first().json.telefonePaciente || '').replace(/^\\+/, '')), text: ($json.content || []).filter(b => b.type === 'text').map(b => b.text || '').join('') || $json.text || '' }) }}",
+        "options": {
+          "timeout": 20000
+        }
       },
       "name": "Enviar Mensagem Evolution",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [
-        1820,
-        250
-      ]
+      "typeVersion": 4.2,
+      "position": [2200, 440],
+      "continueOnFail": true
     },
     {
       "parameters": {
-        "jsCode": "// Preparar dados para salvar no histórico\nconst novoHistorico = $json.historicoLimitado || [];\n\n// Adicionar nova mensagem do paciente\nnovoHistorico.push({\n  role: 'user',\n  content: $json.mensagemPaciente,\n  timestamp: new Date().toISOString()\n});\n\n// Adicionar resposta do agente\nnovoHistorico.push({\n  role: 'assistant',\n  content: $json.message.content,\n  timestamp: new Date().toISOString()\n});\n\n// Limitar a 20 mensagens\nconst historicoFinal = novoHistorico.slice(-20);\n\nreturn {\n  clinicaId: $json.clinicaId,\n  telefonePaciente: $json.telefonePaciente,\n  historico: JSON.stringify(historicoFinal)\n};"
+        "jsCode": "// $input vem de Enviar Mensagem Evolution (resposta HTTP da Evolution API)\n// Dados do contexto vêm de Code: Montar Prompt e Claude API\nconst promptData = $('Code: Montar Prompt').first().json;\nconst claudeOutput = $('Claude API').first().json;\n\n// Extrai texto da resposta da Anthropic Messages API\n// Suporta content[] (formato atual) e campos legados text/output\nconst claudeText =\n  (claudeOutput.content || [])\n    .filter(b => b.type === 'text')\n    .map(b => b.text || '')\n    .join('') ||\n  claudeOutput.text ||\n  claudeOutput.output ||\n  '';\n\nconst novoHistorico = [...(promptData.historicoLimitado || [])];\nnovoHistorico.push({\n  role: 'user',\n  content: promptData.mensagemPaciente,\n  timestamp: new Date().toISOString(),\n});\nnovoHistorico.push({\n  role: 'assistant',\n  content: claudeText,\n  timestamp: new Date().toISOString(),\n});\nconst historicoFinal = novoHistorico.slice(-20);\n\nreturn [{\n  json: {\n    clinicaId: promptData.clinicaId,\n    telefonePaciente: promptData.telefonePaciente,\n    historico: JSON.stringify(historicoFinal),\n  }\n}];"
       },
       "name": "Code: Preparar Histórico",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        2020,
-        250
-      ]
+      "position": [2440, 440]
     },
     {
       "parameters": {
-        "postgresqlDb": "{{ $secret.SUPABASE_CONNECTION }}",
-        "query": "INSERT INTO conversas (clinica_id, paciente_telefone, historico) VALUES (@clinicaId, @telefone, @historico) ON CONFLICT (clinica_id, paciente_telefone) DO UPDATE SET historico = @historico, updated_at = NOW()",
-        "queryParams": "clinicaId={{ $json.clinicaId }}&telefone={{ $json.telefonePaciente }}&historico={{ $json.historico }}"
+        "postgresqlDb": "={{ $secret.SUPABASE_CONNECTION }}",
+        "query": "INSERT INTO public.conversas (clinica_id, paciente_telefone, historico) VALUES ($1::uuid, $2, $3::jsonb) ON CONFLICT (clinica_id, paciente_telefone) DO UPDATE SET historico = EXCLUDED.historico, updated_at = NOW()",
+        "additionalFields": {
+          "queryParams": "={{ [$json.clinicaId, $json.telefonePaciente, $json.historico] }}"
+        }
       },
       "name": "Salvar Histórico",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [
-        2220,
-        250
-      ]
+      "position": [2680, 440]
     },
     {
       "parameters": {
@@ -192,27 +424,21 @@
       "name": "Resposta Sucesso",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [
-        2420,
-        250
-      ]
+      "position": [2920, 440]
     },
     {
       "parameters": {
-        "jsCode": "// Extrair estado e instância do payload CONNECTION_UPDATE da Evolution API\n// O estado vem em data.state (pode ser 'open', 'connecting', 'close')\nconst state = $json.data?.state ?? $json.state ?? '';\nconst instance = $json.instance ?? $json.data?.instance ?? '';\n\nconst statusWhatsapp = state === 'open' ? 'conectado' : 'desconectado';\n\nconsole.log(`[CONNECTION_UPDATE] instance=${instance} state=${state} → ${statusWhatsapp}`);\n\nreturn { statusWhatsapp, instance };"
+        "jsCode": "const norm = $input.first().json;\nconst state = String(norm.connection_state || norm.raw?.data?.state || '').toLowerCase();\nconst instance = norm.instance_name || '';\nconst statusWhatsapp = state === 'open' ? 'connected' : 'disconnected';\nreturn [{ json: { statusWhatsapp, instance } }];"
       },
       "name": "Code: Extrair Estado Conexão",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        620,
-        480
-      ]
+      "position": [760, 520]
     },
     {
       "parameters": {
-        "postgresqlDb": "{{ $secret.SUPABASE_CONNECTION }}",
-        "query": "UPDATE clinic_whatsapp_integrations SET status = $1, last_connection_at = CASE WHEN $1 = 'connected' THEN NOW() ELSE last_connection_at END, updated_at = NOW() WHERE instance_name = $2",
+        "postgresqlDb": "={{ $secret.SUPABASE_CONNECTION }}",
+        "query": "UPDATE public.clinic_whatsapp_integrations SET status = $1, last_connection_at = CASE WHEN $1 = 'connected' THEN NOW() ELSE last_connection_at END, updated_at = NOW() WHERE instance_name = $2",
         "additionalFields": {
           "queryParams": "={{ [$json.statusWhatsapp, $json.instance] }}"
         }
@@ -220,10 +446,7 @@
       "name": "Atualizar Status Conexão",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [
-        820,
-        480
-      ]
+      "position": [1020, 520]
     },
     {
       "parameters": {
@@ -239,68 +462,33 @@
       "name": "Resposta Connection",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [
-        1020,
-        480
-      ]
-    },
-    {
-      "parameters": {
-        "bodyParameters": {
-          "values": [
-            {
-              "name": "erro",
-              "value": "Clínica bloqueada ou acesso expirado"
-            }
-          ]
-        }
-      },
-      "name": "Resposta Bloqueio",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        1020,
-        480
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "{{ $env.EVOLUTION_API_URL }}/message/sendText/{{ $json[0].instancia_evolution }}",
-        "authentication": "genericCredentialType",
-        "genericCredentials": "{{ $secret.EVOLUTION_API_KEY }}",
-        "body": "{\n  \"number\": \"{{ $json.data.key }}\",\n  \"text\": \"Desculpe, sua clínica não está ativa. Entre em contato com o suporte.\"\n}"
-      },
-      "name": "Enviar Msg Bloqueio",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [
-        1020,
-        550
-      ]
-    },
-    {
-      "parameters": {
-        "bodyParameters": {
-          "values": [
-            {
-              "name": "erro",
-              "value": "Clínica não encontrada"
-            }
-          ]
-        }
-      },
-      "name": "Resposta Clínica Não Encontrada",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        820,
-        350
-      ]
+      "position": [1280, 520]
     }
   ],
   "connections": {
-    "Webhook WhatsApp": {
+    "Webhook Produção": {
+      "main": [
+        [
+          {
+            "node": "Code: Normalizar Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Teste": {
+      "main": [
+        [
+          {
+            "node": "Code: Normalizar Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Normalizar Webhook": {
       "main": [
         [
           {
@@ -315,7 +503,7 @@
       "main": [
         [
           {
-            "node": "Buscar Clínica",
+            "node": "Postgres: Resolver Clínica",
             "type": "main",
             "index": 0
           }
@@ -329,40 +517,76 @@
         ]
       ]
     },
-    "Buscar Clínica": {
+    "Postgres: Resolver Clínica": {
       "main": [
         [
           {
-            "node": "Verificar Acesso",
+            "node": "Code: Processar Resultado RPC",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Verificar Acesso": {
+    "Code: Processar Resultado RPC": {
       "main": [
         [
           {
-            "node": "Buscar Dados da Clínica",
+            "node": "Switch: Assinatura / Acesso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch: Assinatura / Acesso": {
+      "main": [
+        [
+          {
+            "node": "Resposta Clínica Não Encontrada",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Enviar Msg Bloqueio",
+            "node": "HTTP Aviso Teste Expirado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Aviso Mensal Expirado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Buscar Histórico",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Buscar Dados da Clínica": {
+    "HTTP Aviso Teste Expirado": {
       "main": [
         [
           {
-            "node": "Buscar Histórico",
+            "node": "Resposta Webhook Teste Expirado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Aviso Mensal Expirado": {
+      "main": [
+        [
+          {
+            "node": "Resposta Webhook Mensal Expirado",
             "type": "main",
             "index": 0
           }
@@ -451,17 +675,6 @@
         [
           {
             "node": "Resposta Connection",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Enviar Msg Bloqueio": {
-      "main": [
-        [
-          {
-            "node": "Resposta Bloqueio",
             "type": "main",
             "index": 0
           }

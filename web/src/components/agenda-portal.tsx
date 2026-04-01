@@ -14,6 +14,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { WhatsappHumanModal } from "@/components/whatsapp-human-modal";
 import { ReportModal } from "@/components/report-modal";
 import { AgentConfigModal } from "@/components/agent-config-modal";
+import { ClinicSubscriptionPanel } from "@/components/clinic-subscription-panel";
 import { ConectarWhatsapp } from "@/components/conectar-whatsapp";
 import {
   addDaysToYmd,
@@ -246,6 +247,7 @@ export function AgendaPortal() {
     | "clinic-hours"
     | "whatsapp-human"
     | "whatsapp-connect"
+    | "clinic-subscription"
     | "agent"
     | "report"
     | "alerts";
@@ -1092,6 +1094,10 @@ export function AgendaPortal() {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.12.55 4.18 1.6 6L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.19-1.25-6.21-3.48-8.52ZM12 22c-1.85 0-3.66-.5-5.23-1.44l-.37-.22-3.88 1.02 1.04-3.8-.24-.38A9.95 9.95 0 0 1 2 12C2 6.47 6.47 2 12 2a9.95 9.95 0 0 1 7.07 2.93A9.95 9.95 0 0 1 22 12c0 5.53-4.47 10-10 10Z"/></svg>
             Conectar WhatsApp
           </button>
+          <button type="button" onClick={() => setSidebarPage("clinic-subscription")} className={sidebarNavClass("clinic-subscription")}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 2v4M16 2v4"/></svg>
+            Assinatura e acesso
+          </button>
           <button type="button" onClick={() => setSidebarPage("report")} className={sidebarNavClass("report")}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
             Relatório
@@ -1275,6 +1281,14 @@ export function AgendaPortal() {
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.12.55 4.18 1.6 6L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.19-1.25-6.21-3.48-8.52ZM12 22c-1.85 0-3.66-.5-5.23-1.44l-.37-.22-3.88 1.02 1.04-3.8-.24-.38A9.95 9.95 0 0 1 2 12C2 6.47 6.47 2 12 2a9.95 9.95 0 0 1 7.07 2.93A9.95 9.95 0 0 1 22 12c0 5.53-4.47 10-10 10Z"/></svg></span>
                   Conectar WhatsApp
+                </button>
+                <button
+                  type="button"
+                  className={mobileNavRowClass("clinic-subscription")}
+                  onClick={() => goToSidebarPageAfterMobileMenuClose("clinic-subscription")}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 2v4M16 2v4"/></svg></span>
+                  Assinatura e acesso
                 </button>
                 <button
                   type="button"
@@ -1703,6 +1717,9 @@ export function AgendaPortal() {
                 clinicId={access.clinicId}
                 supabase={supabase}
               />
+            ) : null}
+            {sidebarPage === "clinic-subscription" ? (
+              <ClinicSubscriptionPanel clinicId={access.clinicId} />
             ) : null}
             {sidebarPage === "report" ? (
               <ReportModal

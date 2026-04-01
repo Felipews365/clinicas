@@ -15,7 +15,7 @@ const supabase = createClient(
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL;
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
-const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL;
+const { resolveN8nWebhookUrl } = require('./config/n8n-webhook');
 
 // ============================================================================
 // FUNÇÃO: criarInstanciaClinica()
@@ -120,7 +120,7 @@ async function criarInstanciaEvolution(nomeInstancia) {
 // ============================================================================
 async function configurarWebhookEvolution(nomeInstancia) {
   try {
-    const webhookUrl = `${N8N_WEBHOOK_URL}/webhook/whatsapp`;
+    const webhookUrl = resolveN8nWebhookUrl();
 
     // Configurar webhooks para os eventos que nos interessam
     const eventos = [

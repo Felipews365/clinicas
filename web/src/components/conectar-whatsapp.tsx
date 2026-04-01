@@ -1,10 +1,30 @@
 "use client";
 
+import confetti from "canvas-confetti";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseApiJson } from "@/lib/parse-api-response";
 
+/** Confete só em fluxo real de conexão — moderado para não cansar */
+const CONFETTI_BURST = {
+  particleCount: 85,
+  spread: 68,
+  startVelocity: 32,
+  ticks: 220,
+  gravity: 1.05,
+  scalar: 0.95,
+} as const;
+
+const CONFETTI_DEBOUNCE_MS = 1800;
+
+function dispararConfeteConexao() {
+  const y = 0.62;
+  void confetti({ ...CONFETTI_BURST, angle: 55, origin: { x: 0.12, y } });
+  void confetti({ ...CONFETTI_BURST, angle: 125, origin: { x: 0.88, y } });
+}
+
 type WhatsappApiJson = {
+  ok?: boolean;
   status?: string;
   qrcode?: string | null;
   webhookConfigured?: boolean;
@@ -36,9 +56,14 @@ export function ConectarWhatsapp({ clinicId, supabase, onStatusChange }: Props) 
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [webhookConfigured, setWebhookConfigured] = useState(false);
+  const [desativando, setDesativando] = useState(false);
+  const [modalDesativarAberto, setModalDesativarAberto] = useState(false);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stepProgressRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevStatusRef = useRef<StatusWhatsapp | null>(null);
+  const ultimoConfeteEmRef = useRef(0);
+  const botaoCancelarModalRef = useRef<HTMLButtonElement | null>(null);
 
   const normalizeStatus = useCallback((raw?: string | null): StatusWhatsapp => {
     if (!raw) return "disconnected";
@@ -95,6 +120,40 @@ export function ConectarWhatsapp({ clinicId, supabase, onStatusChange }: Props) 
     })();
     return () => { cancelled = true; };
   }, [carregarStatus]);
+
+  // ─── Confete ao passar a conectado (ignora carregamento inicial null → connected) ─
+  useEffect(() => {
+    const anterior = prevStatusRef.current;
+    if (
+      status === "connected" &&
+      anterior !== null &&
+      anterior !== "connected"
+    ) {
+      const agora = Date.now();
+      if (agora - ultimoConfeteEmRef.current >= CONFETTI_DEBOUNCE_MS) {
+        ultimoConfeteEmRef.current = agora;
+        dispararConfeteConexao();
+      }
+    }
+    prevStatusRef.current = status;
+  }, [status]);
+
+  // ─── Foco no modal de desativar ────────────────────────────────────────────
+  useEffect(() => {
+    if (!modalDesativarAberto) return;
+    const t = window.setTimeout(() => botaoCancelarModalRef.current?.focus(), 0);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !desativando) {
+        e.preventDefault();
+        setModalDesativarAberto(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [modalDesativarAberto, desativando]);
 
   // ─── Polling: verifica status a cada 3 s ───────────────────────────────────
   const iniciarPolling = useCallback(() => {
@@ -247,10 +306,106 @@ export function ConectarWhatsapp({ clinicId, supabase, onStatusChange }: Props) 
       setCarregando(false);
     }
   };
+  const executarDesativacao = async () => {
+    pararPolling();
+    setDesativando(true);
+    setErro(null);
+    try {
+      const res = await fetch("/api/whatsapp/desconectar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clinicId }),
+      });
+      const parsed = await parseApiJson<WhatsappApiJson>(res);
+      if (parsed.parseFailed || !parsed.data) {
+        setErro("Resposta inválida ao desativar.");
+        setStatus("error");
+        onStatusChange?.("error");
+        return;
+      }
+      const json = parsed.data;
+      if (!parsed.resOk) {
+        setErro(json.message ?? "Não foi possível desativar o WhatsApp.");
+        setStatus("error");
+        onStatusChange?.("error");
+        return;
+      }
+      setStatus("disconnected");
+      setQrCode(null);
+      setMensagem(json.message ?? null);
+      onStatusChange?.("disconnected");
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro de rede ao desativar.");
+      setStatus("error");
+      onStatusChange?.("error");
+    } finally {
+      setDesativando(false);
+      setModalDesativarAberto(false);
+    }
+  };
+
 
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5">
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto p-5">
+      {modalDesativarAberto && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          aria-hidden={!modalDesativarAberto}
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50 backdrop-blur-[1px]"
+            aria-label="Fechar aviso"
+            disabled={desativando}
+            onClick={() => {
+              if (!desativando) setModalDesativarAberto(false);
+            }}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-desativar-titulo"
+            className="relative z-10 w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--card,var(--surface))] p-6 shadow-xl"
+          >
+            <h3
+              id="modal-desativar-titulo"
+              className="text-base font-semibold text-[var(--text)]"
+            >
+              Desativar WhatsApp?
+            </h3>
+            <div className="mt-3 space-y-2 text-sm text-[var(--text-muted)]">
+              <p>
+                O atendimento automático por este número deixa de receber mensagens
+                dos pacientes até voltar a ligar o WhatsApp.
+              </p>
+              <ul className="list-disc space-y-1 pl-5 text-left">
+                <li>A sessão na Evolution será terminada nesta clínica.</li>
+                <li>Pode reconectar quando quiser com um novo QR Code.</li>
+              </ul>
+            </div>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                ref={botaoCancelarModalRef}
+                type="button"
+                disabled={desativando}
+                className="rounded-xl border border-[var(--border)] px-4 py-2.5 text-sm font-semibold text-[var(--text)] transition hover:bg-[var(--surface-2,#f8fafc)] disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => setModalDesativarAberto(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={desativando}
+                className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => void executarDesativacao()}
+              >
+                {desativando ? "A desativar…" : "Sim, desativar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="mx-auto w-full max-w-sm">
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card,var(--surface))] p-6 shadow-sm">
           {/* Cabeçalho */}
@@ -303,6 +458,22 @@ export function ConectarWhatsapp({ clinicId, supabase, onStatusChange }: Props) 
                   Instância e webhook configurados com sucesso.
                 </p>
               )}
+              <p className="max-w-[260px] text-xs text-[var(--text-muted)]">
+                Para parar o atendimento por este número, desative a ligação. Pode ligar novamente quando quiser.
+              </p>
+              {erro && status === "connected" && (
+                <p className="w-full rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-950 dark:text-red-400">
+                  {erro}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => setModalDesativarAberto(true)}
+                disabled={desativando}
+                className="mt-1 rounded-xl border border-red-500/50 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:text-red-400"
+              >
+                Desativar WhatsApp
+              </button>
             </div>
           )}
 

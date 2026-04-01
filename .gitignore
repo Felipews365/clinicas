@@ -31,6 +31,7 @@ web/.vercel/
 coverage/
 
 # Cursor — pode conter API keys (MCP); não enviar para o remoto
+# Modelo versionado: copiar mcp.json.example → .cursor/mcp.json e preencher segredos.
 .cursor/
 
 # Claude Code — settings locais e preferências

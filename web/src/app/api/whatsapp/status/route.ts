@@ -1,5 +1,44 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { obterConfigEvolutionServidor } from "@/lib/env/evolution-server";
+
+type EvolutionConnectionPayload = {
+  instance?: { state?: string; status?: string; wuid?: string; owner?: string };
+  state?: string;
+};
+
+function cabecalhosEvo(apiKey: string): HeadersInit {
+  return { apikey: apiKey };
+}
+
+async function consultarEstadoEvolution(
+  evoUrl: string,
+  apiKey: string,
+  instanceName: string
+): Promise<{ estado: string; telefone: string | null }> {
+  const url = `${evoUrl}/instance/connectionState/${encodeURIComponent(instanceName)}`;
+  const res = await fetch(url, {
+    headers: cabecalhosEvo(apiKey),
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    return { estado: "", telefone: null };
+  }
+
+  const raw = (await res.json().catch(() => ({}))) as EvolutionConnectionPayload & Record<string, unknown>;
+  const inst = (raw.instance as Record<string, unknown> | undefined) ?? raw;
+  const estado = String(inst?.state ?? inst?.status ?? raw.state ?? "").toLowerCase();
+
+  const jid =
+    (inst?.wuid as string | undefined) ??
+    (inst?.owner as string | undefined) ??
+    (raw.wuid as string | undefined) ??
+    null;
+  const telefone = jid ? (jid.split("@")[0] ?? jid) : null;
+
+  return { estado, telefone };
+}
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -10,7 +49,9 @@ export async function GET(req: Request) {
   }
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "UNAUTHENTICATED", message: "Não autenticado." }, { status: 401 });
   }
@@ -25,17 +66,58 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "DB_ERROR", message: error.message }, { status: 500 });
   }
 
-  // Sem registro → ainda não configurado
   if (!data) {
     return NextResponse.json({ status: "disconnected", webhookConfigured: false, qrcode: null });
   }
 
+  let statusAtual = data.status;
+  let lastQr = data.last_qr_code;
+  let lastConnAt = data.last_connection_at;
+
+  const evo = obterConfigEvolutionServidor();
+  if (evo.valido && data.instance_name) {
+    const { estado, telefone } = await consultarEstadoEvolution(
+      evo.config.url,
+      evo.config.apiKey,
+      data.instance_name
+    );
+
+    if (estado === "open") {
+      const agora = new Date().toISOString();
+      const novoLastConn = statusAtual === "connected" && data.last_connection_at ? data.last_connection_at : agora;
+      const patch: Record<string, unknown> = {
+        status: "connected",
+        last_connection_at: novoLastConn,
+        last_qr_code: null,
+      };
+      if (telefone) patch.phone_number = telefone;
+
+      await supabase.from("clinic_whatsapp_integrations").update(patch).eq("clinic_id", clinicId);
+
+      statusAtual = "connected";
+      lastQr = null;
+      lastConnAt = novoLastConn;
+    } else if (estado === "close" || estado === "closed") {
+      if (statusAtual === "connected" || statusAtual === "waiting_qrcode") {
+        await supabase
+          .from("clinic_whatsapp_integrations")
+          .update({ status: "disconnected", last_qr_code: null })
+          .eq("clinic_id", clinicId);
+        statusAtual = "disconnected";
+        lastQr = null;
+      }
+    }
+  }
+
   return NextResponse.json({
-    status: data.status,
+    status: statusAtual,
     webhookConfigured: data.webhook_configured,
-    qrcode: data.status === "waiting_qrcode" ? (data.last_qr_code ?? null) : null,
-    message: data.status === "connected"
-      ? `Conectado em ${data.last_connection_at ? new Date(data.last_connection_at).toLocaleString("pt-BR") : "data desconhecida"}`
-      : null,
+    qrcode: statusAtual === "waiting_qrcode" ? (lastQr ?? null) : null,
+    message:
+      statusAtual === "connected"
+        ? `Conectado em ${
+            lastConnAt ? new Date(lastConnAt).toLocaleString("pt-BR") : "data desconhecida"
+          }`
+        : null,
   });
 }

@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=YOUR_SUPABASE_PROJECT_REF"
+    },
+    "n8n": {
+      "command": "npx",
+      "args": ["-y", "@leonardsellem/n8n-mcp-server@latest"],
+      "env": {
+        "N8N_API_URL": "https://your-n8n-host.example/api/v1",
+        "N8N_API_KEY": "YOUR_N8N_API_KEY"
+      }
+    },
+    "n8n-mcp-http": {
+      "type": "http",
+      "url": "https://your-n8n-host.example/mcp-server/http"
+    }
+  }
+}

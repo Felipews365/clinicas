@@ -220,3 +220,94 @@ Para o nó Code / Switch ler sempre a mesma forma:
 ## 9. `leads_pagamento`
 
 Tabela à parte do fluxo de agenda; só integra se quiseres ligar pagamentos ou CRM ao mesmo webhook.
+
+---
+
+## 10. WhatsApp multi-tenant (`fluxo-clinicas.json`)
+
+Após a migração `20260405120000_n8n_clinic_resolve_subscription.sql` (ou equivalente no SQL Editor):
+
+### Colunas em `public.clinics`
+
+| Coluna | Uso no n8n |
+|--------|------------|
+| `numero_clinica` | Código opcional (único quando preenchido); desambigua se houver mais de uma linha com o mesmo `instance_name`. |
+| `tipo_plano` | `teste` ou `mensal`. |
+| `data_expiracao` | `date`; comparada com `CURRENT_DATE` na RPC. `NULL` = não aplica bloqueio por data. |
+| `inadimplente` | `boolean`; para `mensal`, bloqueia junto com data vencida. |
+| `ativo` | `false` força cenário `clinica_nao_encontrada` no fluxo. |
+| `agent_instructions` | Texto / JSON usado no nó **Code: Montar Prompt**. |
+
+### View `public.n8n_clinic_directory`
+
+Join `clinics` + `clinic_whatsapp_integrations` (só clínicas com integração). Campos expostos: `clinica_id`, `clinica_nome`, `instance_name`, `numero_clinica`, `clinica_ativa`, `tipo_plano`, `data_expiracao`, `inadimplente`, `whatsapp_status`, `agent_instructions`.
+
+### RPC `public.n8n_resolve_clinic(p_instance_name text, p_numero_clinica text)`
+
+- **Ordem:** localiza primeiro por `instance_name`; se várias linhas, filtra por `numero_clinica` (case-insensitive); se ainda não resolveu, tenta só `numero_clinica`.
+- **Retorno (uma linha):** `found`, `erro` (`ambiguous` \| `not_found` \| `NULL`), dados da clínica e **`cenario`**: `ativo` \| `teste_expirado` \| `mensal_expirado` \| `clinica_nao_encontrada`.
+- **Permissão:** `GRANT EXECUTE ... TO service_role` (n8n com connection string / role de serviço).
+
+### Payload normalizado (nó **Code: Normalizar Webhook**)
+
+Saída típica:
+
+```json
+{
+  "event": "MESSAGES_UPSERT | CONNECTION_UPDATE | ...",
+  "instance_name": "clinica-<uuid>",
+  "numero_clinica": "",
+  "patient_phone_e164": "+5511999990000",
+  "message_text": "...",
+  "connection_state": "open | close | ...",
+  "raw": {}
+}
+```
+
+`numero_clinica` no webhook pode vir de `body.data.numero_clinica`, `body.numero_clinica` ou cabeçalho `x-numero-clinica` (configuração opcional à frente).
+
+### Webhooks no n8n
+
+| Caminho | Uso |
+|---------|-----|
+| `POST .../webhook/whatsapp` | **Produção** — URL a configurar na Evolution. |
+| `POST .../webhook/whatsapp-test` | **Testes** — mesmo fluxo; não substituir a URL de produção até validar. |
+
+### Tabela `public.conversas`
+
+Histórico por `(clinica_id, paciente_telefone)` com `historico` em `jsonb` — usada pelos nós **Buscar Histórico** e **Salvar Histórico** do export.
+
+### Arquitetura de nós (fluxo refatorado)
+
+```
+Webhook Produção / Webhook Teste
+  └─► Code: Normalizar Webhook
+        └─► Switch: Tipo de Evento  (typeVersion 3)
+              ├─[mensagem]─► Postgres: Resolver Clínica
+              │               └─► Code: Processar Resultado RPC   ← merge + validação
+              │                     └─► Switch: Assinatura / Acesso  (typeVersion 3)
+              │                           ├─[clinica_nao_encontrada]─► Resposta Clínica Não Encontrada
+              │                           ├─[teste_expirado]──────────► HTTP Aviso → Resposta Webhook
+              │                           ├─[mensal_expirado]─────────► HTTP Aviso → Resposta Webhook
+              │                           └─[ativo]───────────────────► Buscar Histórico
+              │                                                           └─► Code: Montar Prompt
+              │                                                                 └─► Claude API
+              │                                                                       └─► Enviar Mensagem Evolution
+              │                                                                             └─► Code: Preparar Histórico
+              │                                                                                   └─► Salvar Histórico
+              │                                                                                         └─► Resposta Sucesso
+              └─[conexao]──► Code: Extrair Estado Conexão
+                              └─► Atualizar Status Conexão
+                                    └─► Resposta Connection
+```
+
+**Nó `Code: Processar Resultado RPC`** (substitui o antigo `Code: Merge contexto IA`):
+- Posicionado **antes** do Switch, não depois — garante que todos os ramos de bloqueio já têm `instance_name` e `patient_phone_e164` sem referências a outros nós.
+- Trata resultado vazio do Postgres (RPC sem linhas) → força `cenario = clinica_nao_encontrada`.
+- Mescla dados do normalizador com os da RPC; campos da RPC têm precedência.
+
+### Ajustes no n8n após importar
+
+- Confirmar credencial Postgres (`SUPABASE_CONNECTION`) e variáveis `EVOLUTION_API_URL` / chaves.
+- No nó **Claude API**, validar o **model**; a resposta da API Anthropic Messages retorna `content[0].text` — os nós **Enviar Mensagem Evolution** e **Code: Preparar Histórico** já usam esse formato.
+- **Enviar Mensagem Evolution** usa `$('Code: Montar Prompt').first().json` para obter `nomeInstancia` e `telefonePaciente`, pois o `$json` nesse ponto é a resposta do Claude.
