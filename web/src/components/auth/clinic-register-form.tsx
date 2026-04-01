@@ -482,7 +482,16 @@ export function ClinicRegisterForm() {
         </button>
       </form>
 
-      <p className="mt-8 text-center text-sm text-slate-600">
+      <p className="mt-6 text-center text-xs text-slate-500">
+        É administrador da plataforma (não é clínica)?{" "}
+        <Link
+          href="/cadastro/admin"
+          className="font-semibold text-[#0047AB] underline-offset-2 hover:underline"
+        >
+          Cadastro de admin
+        </Link>
+      </p>
+      <p className="mt-4 text-center text-sm text-slate-600">
         Já tem conta?{" "}
         <Link
           href="/login"

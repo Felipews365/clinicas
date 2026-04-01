@@ -34,6 +34,9 @@ coverage/
 # Modelo versionado: copiar mcp.json.example → .cursor/mcp.json e preencher segredos.
 .cursor/
 
+# Skill espelhada: junction → .claude/skills (fonte única versionada)
+.agents/skills/landing-page-copywriter
+
 # Claude Code — settings locais e preferências
 .claude/settings.json
 .claude/settings.local.json

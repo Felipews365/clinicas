@@ -193,6 +193,88 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "crm-if-uuid",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2960,
+        -896
+      ],
+      "id": "e41ca8b0-9f2c-4c8d-a1e0-crmwhatsapp0001",
+      "name": "CRM Cliente com id?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.SUPABASE_URL || '').replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_crm_whatsapp_touch' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  p_clinic_id: $('Get Empresa').first().json.id,\n  p_telefone: $('Campos iniciais').first().json.numCliente,\n  p_resumo: String($('Campos iniciais').first().json.msg ?? '')\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2750,
+        -980
+      ],
+      "id": "e41ca8b0-9f2c-4c8d-a1e0-crmwhatsapp0002",
+      "name": "RPC n8n_crm_whatsapp_touch"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mantém o payload do Get Cliente para o IF seguinte ($json.telefone)\nreturn $('Get Cliente').all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2540,
+        -980
+      ],
+      "id": "e41ca8b0-9f2c-4c8d-a1e0-crmwhatsapp0003",
+      "name": "CRM reidrata Get Cliente"
+    },
+    {
+      "parameters": {
         "operation": "get",
         "tableId": "clinics",
         "filters": {
@@ -2644,7 +2726,7 @@
       "main": [
         [
           {
-            "node": "Verificar se cliente est? cadastrado",
+            "node": "CRM Cliente com id?",
             "type": "main",
             "index": 0
           }
@@ -3557,6 +3639,46 @@
           }
         ]
       ]
+    },
+    "CRM Cliente com id?": {
+      "main": [
+        [
+          {
+            "node": "RPC n8n_crm_whatsapp_touch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Verificar se cliente est? cadastrado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RPC n8n_crm_whatsapp_touch": {
+      "main": [
+        [
+          {
+            "node": "CRM reidrata Get Cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM reidrata Get Cliente": {
+      "main": [
+        [
+          {
+            "node": "Verificar se cliente est? cadastrado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -3783,6 +3905,88 @@
             "name": "Supabase clinicas"
           }
         }
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "crm-if-uuid",
+                "leftValue": "={{ $json.id }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "notEmpty",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          -2960,
+          -896
+        ],
+        "id": "e41ca8b0-9f2c-4c8d-a1e0-crmwhatsapp0001",
+        "name": "CRM Cliente com id?"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ ($env.SUPABASE_URL || '').replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_crm_whatsapp_touch' }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({\n  p_clinic_id: $('Get Empresa').first().json.id,\n  p_telefone: $('Campos iniciais').first().json.numCliente,\n  p_resumo: String($('Campos iniciais').first().json.msg ?? '')\n}) }}",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -2750,
+          -980
+        ],
+        "id": "e41ca8b0-9f2c-4c8d-a1e0-crmwhatsapp0002",
+        "name": "RPC n8n_crm_whatsapp_touch"
+      },
+      {
+        "parameters": {
+          "jsCode": "// Mantém o payload do Get Cliente para o IF seguinte ($json.telefone)\nreturn $('Get Cliente').all();"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -2540,
+          -980
+        ],
+        "id": "e41ca8b0-9f2c-4c8d-a1e0-crmwhatsapp0003",
+        "name": "CRM reidrata Get Cliente"
       },
       {
         "parameters": {
@@ -6237,7 +6441,7 @@
         "main": [
           [
             {
-              "node": "Verificar se cliente est? cadastrado",
+              "node": "CRM Cliente com id?",
               "type": "main",
               "index": 0
             }
@@ -7145,6 +7349,46 @@
           [
             {
               "node": "Marcar origem webhook teste",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "CRM Cliente com id?": {
+        "main": [
+          [
+            {
+              "node": "RPC n8n_crm_whatsapp_touch",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Verificar se cliente est? cadastrado",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "RPC n8n_crm_whatsapp_touch": {
+        "main": [
+          [
+            {
+              "node": "CRM reidrata Get Cliente",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "CRM reidrata Get Cliente": {
+        "main": [
+          [
+            {
+              "node": "Verificar se cliente est? cadastrado",
               "type": "main",
               "index": 0
             }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
+import { LandingPricingSection } from '@/components/landing-pricing-section';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -148,10 +149,49 @@ export default function LandingPage() {
             --card-elevated: rgba(18, 30, 34, 0.92);
           }
 
-          html.dark .hero.spotlight-hero {
+          .hero.spotlight-hero {
             position: relative;
-            background: radial-gradient(ellipse 85% 70% at 50% -15%, var(--spotlight) 0%, transparent 55%),
-              var(--bg-light);
+            overflow: hidden;
+            background-color: var(--bg-light);
+            min-height: min(720px, 92vh);
+          }
+
+          .hero.spotlight-hero::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            background-image: url('/landing/hero-reception.webp');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            pointer-events: none;
+          }
+
+          html.dark .hero.spotlight-hero::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background:
+              radial-gradient(ellipse 85% 70% at 50% -15%, var(--spotlight) 0%, transparent 55%),
+              linear-gradient(180deg, rgba(10, 14, 16, 0.86) 0%, rgba(10, 14, 16, 0.9) 45%, rgba(10, 14, 16, 0.93) 100%);
+          }
+
+          html.light .hero.spotlight-hero::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background:
+              linear-gradient(180deg, rgba(255, 255, 255, 0.76) 0%, rgba(248, 247, 245, 0.84) 45%, rgba(255, 255, 255, 0.87) 100%);
+          }
+
+          .hero.spotlight-hero > .container {
+            position: relative;
+            z-index: 1;
           }
 
           .text-spotlight {
@@ -1240,7 +1280,7 @@ export default function LandingPage() {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
-                Testar grátis 14 dias
+                Testar grátis 7 dias
               </motion.button>
             </div>
           </div>
@@ -1288,7 +1328,7 @@ export default function LandingPage() {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  Testar grátis 14 dias
+                  Testar grátis 7 dias
                 </motion.button>
                 <motion.a
                   href="#passos"
@@ -1778,202 +1818,7 @@ export default function LandingPage() {
             </div>
           </section>
 
-          {/* Pricing Section */}
-          <section className="section">
-            <div className="container">
-              <motion.h2
-                className="text-center mb-4"
-                variants={titleVariants}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, margin: '-100px' }}
-              >
-                Planos Simples e Transparentes
-              </motion.h2>
-              <motion.p
-                className="text-center"
-                style={{color: 'var(--text-light)', marginBottom: 'var(--spacing-2xl)', fontSize: '1.05rem'}}
-                initial={{ opacity: 0 }}
-                whileInView={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                viewport={{ once: true, margin: '-100px' }}
-              >
-                Escolha o plano que melhor se adequa ao tamanho e necessidade da sua clínica.
-              </motion.p>
-
-              <motion.div
-                className="grid grid-3"
-                variants={containerVariants}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, margin: '-100px' }}
-                style={{marginBottom: 'var(--spacing-2xl)'}}
-              >
-                {[
-                  {
-                    name: 'Básico',
-                    price: 'R$ 199',
-                    period: '/mês',
-                    desc: 'Para consultórios pequenos e independentes',
-                    features: [
-                      'Até 5 profissionais',
-                      'Agenda para 500+ pacientes',
-                      'Confirmação automática básica',
-                      'Suporte por email',
-                      'Relatórios simples'
-                    ],
-                    cta: 'Começar no Básico',
-                    highlighted: false
-                  },
-                  {
-                    name: 'Profissional',
-                    price: 'R$ 499',
-                    period: '/mês',
-                    desc: 'Para clínicas e consultórios em crescimento',
-                    features: [
-                      'Até 20 profissionais',
-                      'Agenda para 5.000+ pacientes',
-                      'Confirmação automática avançada',
-                      'Suporte por WhatsApp e email',
-                      'Relatórios detalhados',
-                      'Integração com WhatsApp Business'
-                    ],
-                    cta: 'Quero o Plano Profissional',
-                    highlighted: true
-                  },
-                  {
-                    name: 'Enterprise',
-                    price: 'Sob Consulta',
-                    period: '',
-                    desc: 'Para redes e grandes clínicas',
-                    features: [
-                      'Profissionais ilimitados',
-                      'Pacientes ilimitados',
-                      'Confirmação automática com IA',
-                      'Suporte prioritário 24/7',
-                      'Relatórios avançados e BI',
-                      'Integrações customizadas',
-                      'Dedicado exclusivo'
-                    ],
-                    cta: 'Falar com especialista',
-                    highlighted: false
-                  }
-                ].map((plan) => (
-                  <motion.div
-                    key={plan.name}
-                    className="card"
-                    variants={cardVariants}
-                    whileHover="hover"
-                    style={{
-                      border: plan.highlighted ? '2px solid var(--primary)' : '1px solid var(--border)',
-                      background: plan.highlighted ? 'linear-gradient(135deg, var(--primary), var(--primary-light))' : 'var(--card-bg)',
-                      color: plan.highlighted ? 'white' : 'inherit'
-                    }}
-                  >
-                    {plan.highlighted && (
-                      <div style={{
-                        display: 'inline-block',
-                        background: 'rgba(255,255,255,0.2)',
-                        color: 'white',
-                        padding: '4px 12px',
-                        borderRadius: '20px',
-                        fontSize: '0.75rem',
-                        fontWeight: '600',
-                        marginBottom: 'var(--spacing-md)',
-                        textTransform: 'uppercase'
-                      }}>
-                        Mais escolhido
-                      </div>
-                    )}
-                    <h3 style={{color: plan.highlighted ? 'white' : 'inherit'}}>{plan.name}</h3>
-                    <p style={{color: plan.highlighted ? 'rgba(255,255,255,0.9)' : 'var(--text-light)'}}>{plan.desc}</p>
-
-                    <div style={{
-                      margin: 'var(--spacing-lg) 0',
-                      paddingBottom: 'var(--spacing-lg)',
-                      borderBottom: plan.highlighted ? '1px solid rgba(255,255,255,0.2)' : '1px solid var(--border)'
-                    }}>
-                      <div style={{
-                        fontSize: '2.5rem',
-                        fontWeight: '700',
-                        color: plan.highlighted ? 'white' : 'var(--primary)',
-                      }}>
-                        {plan.price}
-                      </div>
-                      {plan.period && (
-                        <div style={{
-                          color: plan.highlighted ? 'rgba(255,255,255,0.8)' : 'var(--text-light)',
-                          fontSize: '0.9rem'
-                        }}>
-                          {plan.period}
-                        </div>
-                      )}
-                    </div>
-
-                    <ul style={{
-                      listStyle: 'none',
-                      padding: 0,
-                      margin: 'var(--spacing-lg) 0',
-                      flex: 1
-                    }}>
-                      {plan.features.map((feature, i) => (
-                        <li key={i} style={{
-                          padding: 'var(--spacing-sm) 0',
-                          color: plan.highlighted ? 'rgba(255,255,255,0.9)' : 'inherit'
-                        }}>
-                          ✓ {feature}
-                        </li>
-                      ))}
-                    </ul>
-
-                    <motion.button
-                      className="btn"
-                      style={{
-                        width: '100%',
-                        background: plan.highlighted ? 'white' : 'var(--primary)',
-                        color: plan.highlighted ? 'var(--primary)' : 'white',
-                        marginTop: 'var(--spacing-md)'
-                      }}
-                      onClick={() => {
-                        if (plan.name === 'Enterprise') {
-                          window.open('https://wa.me/5511999999999?text=' + encodeURIComponent('Olá! Gostaria de saber mais sobre o plano Enterprise do AgendaClinic.'), '_blank');
-                        } else {
-                          document.getElementById('demo-form')?.scrollIntoView({ behavior: 'smooth' });
-                        }
-                      }}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      {plan.cta}
-                    </motion.button>
-                  </motion.div>
-                ))}
-              </motion.div>
-
-              <motion.div
-                className="text-center"
-                initial={{ opacity: 0 }}
-                whileInView={{ opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                viewport={{ once: true, margin: '-100px' }}
-              >
-                <div style={{background: 'rgba(13, 107, 122, 0.1)', padding: 'var(--spacing-lg)', borderRadius: 'var(--radius-lg)', marginBottom: 'var(--spacing-lg)'}}>
-                  <p style={{color: 'var(--primary)', fontWeight: '600', marginBottom: 'var(--spacing-sm)'}}>
-                    Preço especial até <strong>{urgencyDeadline}</strong>
-                  </p>
-                  <p style={{color: 'var(--text-dark)', marginBottom: 0}}>
-                    <strong>Primeiros 30 clientes:</strong> 30% de desconto nos primeiros 3 meses — condição válida até a data acima ou até esgotar as vagas.
-                  </p>
-                </div>
-                <p style={{color: 'var(--text-light)', marginBottom: 'var(--spacing-sm)', fontSize: '0.95rem'}}>
-                  ✅ Sem cartão de crédito | ✅ 14 dias grátis | ✅ Cancele quando quiser
-                </p>
-                <p style={{color: 'var(--primary)', fontWeight: '600', marginBottom: 0}}>
-                  ✅ Garantia 100%: Se não gostar, devolvemos seu dinheiro
-                </p>
-              </motion.div>
-            </div>
-          </section>
+          <LandingPricingSection urgencyDeadline={urgencyDeadline} />
 
           {/* FAQ */}
           <section id="faq" className="section section-tight faq-section" aria-labelledby="faq-heading">
@@ -2007,7 +1852,7 @@ export default function LandingPage() {
                 <details>
                   <summary>Como funciona o cancelamento?</summary>
                   <p>
-                    Você cancela pelo painel ou falando com o suporte antes da próxima cobrança. Durante o teste de 14 dias não há cobrança; depois disso, o que já foi faturado segue o ciclo vigente até o fim do período pago, conforme a política exibida na contratação.
+                    Você cancela pelo painel ou falando com o suporte antes da próxima cobrança. Durante o teste de 7 dias não há cobrança; depois disso, o que já foi faturado segue o ciclo vigente até o fim do período pago, conforme a política exibida na contratação.
                   </p>
                 </details>
                 <details>
@@ -2049,7 +1894,7 @@ export default function LandingPage() {
                 transition={{ duration: 0.6, delay: 0.1 }}
                 viewport={{ once: true, margin: '-100px' }}
               >
-                Teste o AgendaClinic gratuitamente por 14 dias. Veja seus pacientes confirmando sozinhos. Se não gostar, cancelamos — sem perguntas, sem burocracia.
+                Teste o AgendaClinic gratuitamente por 7 dias. Veja seus pacientes confirmando sozinhos. Se não gostar, cancelamos — sem perguntas, sem burocracia.
               </motion.p>
 
               <motion.div

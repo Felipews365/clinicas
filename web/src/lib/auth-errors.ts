@@ -1,6 +1,13 @@
 /** Mensagens de erro de auth mais claras para o utilizador. */
 export function friendlyAuthError(message: string): string {
   const m = message.toLowerCase();
+  if (m.includes("unsupported provider") || m.includes("provider is not enabled")) {
+    return (
+      "O login com Google não está ativo neste projeto Supabase. No dashboard: Authentication → " +
+      "Providers → ative Google e preencha Client ID e Client Secret (Google Cloud Console). " +
+      "Em URL Configuration, inclua os URLs de redirect (ex.: …/auth/callback, …/login, …/login/admin)."
+    );
+  }
   if (
     m.includes("failed to fetch") ||
     m.includes("networkerror") ||

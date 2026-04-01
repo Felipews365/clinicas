@@ -34,6 +34,8 @@ import {
   normalizeAgendaVisibleHours,
 } from "@/lib/clinic-agenda-hours";
 import { resolveProfessionalCardStyle } from "@/lib/professional-palette";
+import { hasFullAccess } from "@/lib/crm-access";
+import { getSupportWhatsAppActivatePlanUrl } from "@/lib/support-whatsapp";
 import { createClient } from "@/lib/supabase/client";
 import { isClinicMembersUnavailableError } from "@/lib/supabase/clinic-members-compat";
 import {
@@ -250,8 +252,14 @@ export function AgendaPortal() {
     | "clinic-subscription"
     | "agent"
     | "report"
-    | "alerts";
+    | "alerts"
+    | "crm";
   const [sidebarPage, setSidebarPage] = useState<SidebarPage>("dashboard");
+  const [crmSubscription, setCrmSubscription] = useState<
+    | { loaded: false }
+    | { loaded: true; hasAccess: boolean; tipo_plano: string }
+  >({ loaded: false });
+  const [crmUpgradeOpen, setCrmUpgradeOpen] = useState(false);
   const [clinicAgendaHours, setClinicAgendaHours] = useState<number[]>(() =>
     normalizeAgendaVisibleHours(null)
   );
@@ -267,6 +275,9 @@ export function AgendaPortal() {
   /** 0 = ainda não houve um load completo; após 1º load finalizado só sincroniza; difs só a partir do 2º. */
   const apptNotifSettledLoadsRef = useRef(0);
   const apptSnapshotRef = useRef<AppointmentSnapshot>(new Map());
+  /** Só true após `loadAppointments` terminar — evita snapshot vazio antes de `setListLoading(true)` aplicar. */
+  const apptNotifyReadyRef = useRef(false);
+  const prevClinicIdForNotifRef = useRef<string | null>(null);
   const agendaNotif = useAgendaNotifications();
   /** Vazio até ao mount no cliente — evita hidratação (data UTC vs fuso local). */
   const [dayKey, setDayKey] = useState("");
@@ -351,17 +362,25 @@ export function AgendaPortal() {
     router.replace("/cadastro");
   }, [access?.kind, supabase, router]);
 
-  // Limpa notificações quando muda de clínica (evita vazamento de dados entre clínicas)
+  // Limpa inbox só ao mudar de clínica — não em cada refresh (para "Limpar" persistir).
   useEffect(() => {
-    if (access?.kind === "clinic" && access.clinicId) {
+    if (access?.kind !== "clinic") {
+      prevClinicIdForNotifRef.current = null;
+      return;
+    }
+    const id = access.clinicId;
+    const prev = prevClinicIdForNotifRef.current;
+    if (prev != null && prev !== id) {
       agendaNotif.clearInbox();
     }
-  }, [access?.kind === "clinic" ? access.clinicId : null]);
+    prevClinicIdForNotifRef.current = id;
+  }, [access?.kind, access?.kind === "clinic" ? access.clinicId : null, agendaNotif.clearInbox]);
 
   const loadAppointments = useCallback(async () => {
     if (!supabase) return;
     if (access?.kind !== "clinic") return;
     const clinicId = access.clinicId;
+    apptNotifyReadyRef.current = false;
     setListLoading(true);
     setListError(null);
 
@@ -403,6 +422,7 @@ export function AgendaPortal() {
     if (error) {
       setListError(error.message);
       setRows([]);
+      apptNotifyReadyRef.current = true;
       setListLoading(false);
       return;
     }
@@ -421,6 +441,7 @@ export function AgendaPortal() {
     );
     setRows(merged);
     prevRowsRef.current = merged;
+    apptNotifyReadyRef.current = true;
     setListLoading(false);
   }, [supabase, access]);
 
@@ -679,6 +700,84 @@ export function AgendaPortal() {
   }, [supabase, session?.user?.id]);
 
   useEffect(() => {
+    if (!access || access.kind !== "clinic") {
+      setCrmSubscription({ loaded: false });
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const res = await fetch(
+        `/api/clinica/${encodeURIComponent(access.clinicId)}/assinatura`,
+        { credentials: "same-origin" }
+      );
+      const j = (await res.json().catch(() => ({}))) as {
+        fields?: {
+          tipo_plano?: string;
+          plan_tem_crm?: boolean;
+          data_expiracao?: string | null;
+          ativo?: boolean;
+          inadimplente?: boolean;
+        };
+      };
+      if (cancelled) return;
+      const f = j.fields;
+      if (!f) {
+        setCrmSubscription({
+          loaded: true,
+          hasAccess: false,
+          tipo_plano: "mensal",
+        });
+        return;
+      }
+      const tipo = typeof f.tipo_plano === "string" ? f.tipo_plano : "teste";
+      setCrmSubscription({
+        loaded: true,
+        hasAccess: hasFullAccess({
+          tipo_plano: tipo,
+          data_expiracao: f.data_expiracao ?? null,
+          ativo: f.ativo !== false,
+          inadimplente: !!f.inadimplente,
+          plan_tem_crm:
+            f.plan_tem_crm === true || String(f.plan_tem_crm) === "true",
+        }),
+        tipo_plano: tipo,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [access]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("crm_upgrade") === "1") {
+      setCrmUpgradeOpen(true);
+      window.history.replaceState({}, "", "/painel");
+    }
+  }, []);
+
+  const openCrmOrUpgrade = useCallback(() => {
+    if (access?.kind !== "clinic") return;
+    if (crmSubscription.loaded && crmSubscription.hasAccess) {
+      router.push(`/clinica/${access.clinicId}/crm`);
+    } else {
+      setCrmUpgradeOpen(true);
+    }
+  }, [access, crmSubscription, router]);
+
+  const crmBadgeText =
+    !crmSubscription.loaded || access?.kind !== "clinic"
+      ? "…"
+      : !crmSubscription.hasAccess
+        ? "Upgrade"
+        : crmSubscription.tipo_plano === "enterprise"
+          ? "Enterprise"
+          : crmSubscription.hasAccess && crmSubscription.tipo_plano !== "teste"
+            ? "CRM"
+            : "Trial";
+
+  useEffect(() => {
     if (
       !access ||
       access.kind === "loading" ||
@@ -709,17 +808,18 @@ export function AgendaPortal() {
     void refreshHumanQueue();
   }, [refreshHumanQueue, sidebarPage]);
 
+  const clinicNotifKey = access?.kind === "clinic" ? access.clinicId : null;
   useEffect(() => {
-    if (access?.kind !== "clinic") {
-      apptNotifSettledLoadsRef.current = 0;
-      apptSnapshotRef.current = new Map();
-    }
-  }, [access?.kind, access?.kind === "clinic" ? access.clinicId : null]);
+    apptNotifSettledLoadsRef.current = 0;
+    apptSnapshotRef.current = new Map();
+    apptNotifyReadyRef.current = false;
+  }, [clinicNotifKey]);
 
   useEffect(() => {
     if (!agendaNotif.hydrated) return;
     if (listLoading) return;
     if (access?.kind !== "clinic") return;
+    if (!apptNotifyReadyRef.current) return;
 
     const snap = buildAppointmentSnapshot(rows);
     if (apptNotifSettledLoadsRef.current === 0) {
@@ -983,6 +1083,46 @@ export function AgendaPortal() {
 
   return (
     <div className="painel-root flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[var(--bg)] text-[var(--text)] transition-colors duration-300 sm:flex-row">
+      {crmUpgradeOpen ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="crm-upgrade-title"
+        >
+          <div className="max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl">
+            <h2 id="crm-upgrade-title" className="font-display text-lg font-semibold text-[var(--text)]">
+              CRM disponível no Enterprise ou no teste activo
+            </h2>
+            <p className="mt-2 text-sm text-[var(--text-muted)]">
+              Entre em contato com nosso suporte para ativar seu plano e liberar o CRM.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-white"
+                onClick={() => {
+                  window.open(
+                    getSupportWhatsAppActivatePlanUrl(),
+                    "_blank",
+                    "noopener,noreferrer"
+                  );
+                  setCrmUpgradeOpen(false);
+                }}
+              >
+                Falar com suporte
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-[var(--border)] px-4 py-2.5 text-sm font-medium text-[var(--text)]"
+                onClick={() => setCrmUpgradeOpen(false)}
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {supabase ? (
         <>
           <ScheduleAppointmentModal
@@ -1097,6 +1237,21 @@ export function AgendaPortal() {
           <button type="button" onClick={() => setSidebarPage("clinic-subscription")} className={sidebarNavClass("clinic-subscription")}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 2v4M16 2v4"/></svg>
             Assinatura e acesso
+          </button>
+          <button
+            type="button"
+            onClick={() => openCrmOrUpgrade()}
+            className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${sidebarNavIdle}`}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+            <span className="min-w-0 flex-1 text-left">CRM</span>
+            <span className="rounded-md bg-[var(--primary)]/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--primary)]">
+              {crmBadgeText}
+            </span>
           </button>
           <button type="button" onClick={() => setSidebarPage("report")} className={sidebarNavClass("report")}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -1289,6 +1444,25 @@ export function AgendaPortal() {
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 2v4M16 2v4"/></svg></span>
                   Assinatura e acesso
+                </button>
+                <button
+                  type="button"
+                  className={mobileNavRowClass("crm")}
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    openCrmOrUpgrade();
+                  }}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4" />
+                      <circle cx="9" cy="7" r="4" />
+                    </svg>
+                  </span>
+                  <span className="min-w-0 flex-1 text-left">CRM</span>
+                  <span className="rounded-md bg-[var(--primary)]/20 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[var(--primary)]">
+                    {crmBadgeText}
+                  </span>
                 </button>
                 <button
                   type="button"

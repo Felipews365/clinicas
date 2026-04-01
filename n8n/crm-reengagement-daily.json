@@ -1,0 +1,118 @@
+{
+  "name": "CRM — sumido + candidatos reengajamento",
+  "meta": {
+    "description": "DEPRECATED: use o workflow live \"CRM — rotina diária 8h (por clínica)\" (OG6mNupmXUjersFr) com RPCs n8n_crm_list_daily_eligible_clinics + n8n_crm_daily_clinic_run. Este template global (n8n_crm_mark_sumido_and_candidates) pode duplicar mensagens se mantiver activo em paralelo."
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24
+            }
+          ]
+        }
+      },
+      "id": "crm-schedule",
+      "name": "Agendamento 24h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.SUPABASE_URL || '').replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_crm_mark_sumido_and_candidates' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {}
+      },
+      "id": "crm-rpc-supabase",
+      "name": "RPC n8n_crm_mark_sumido_and_candidates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\nlet arr = row;\nif (typeof row === 'string') {\n  try { arr = JSON.parse(row); } catch { arr = []; }\n}\nif (!Array.isArray(arr)) {\n  arr = [];\n}\nif (arr.length === 0) {\n  return [{ json: { skip: true, reason: 'sem_candidatos' } }];\n}\nreturn arr.map((item) => ({ json: item }));"
+      },
+      "id": "crm-split-items",
+      "name": "Um item por paciente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2, "leftValue": "", "caseSensitive": true, "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "has-phone",
+              "leftValue": "={{ $json.telefone }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            },
+            {
+              "id": "not-skip",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": "true",
+              "operator": { "type": "boolean", "operation": "notEquals" }
+            }
+          ]
+        }
+      },
+      "id": "crm-if-send",
+      "name": "Tem telefone?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [760, 0]
+    },
+    {
+      "parameters": {
+        "content": "## Evolution API\\nLigue a saída **true** a um nó HTTP que envia mensagem WhatsApp para `{{ $json.telefone }}`, usando a instância `clinica-{{ $json.clinic_id }}` (ou o padrão do seu projeto). Corpo sugerido: `{ \\\"number\\\": \\\"...\\\", \\\"text\\\": \\\"{{ $json.mensagem }}\\\" }`.",
+        "height": 280,
+      "width": 380
+      },
+      "id": "crm-sticky-evolution",
+      "name": "Nota Evolution",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [980, -120]
+    }
+  ],
+  "connections": {
+    "Agendamento 24h": {
+      "main": [[{ "node": "RPC n8n_crm_mark_sumido_and_candidates", "type": "main", "index": 0 }]]
+    },
+    "RPC n8n_crm_mark_sumido_and_candidates": {
+      "main": [[{ "node": "Um item por paciente", "type": "main", "index": 0 }]]
+    },
+    "Um item por paciente": {
+      "main": [[{ "node": "Tem telefone?", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

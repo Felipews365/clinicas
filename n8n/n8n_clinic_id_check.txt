@@ -1,0 +1,13 @@
+Verificação p_clinic_id → n8n_cs_consultar_vagas (SaaS)
+
+OK — dinâmico por tenant:
+  workflow-kCX2LfxJrdYWB0vk-panel-aligned.json
+  Corpo JSON inclui p_clinic_id a partir de $('Code merge webhook e resolucao').first().json.clinica_id
+
+Revisar por instância — UUID fixo (trocar se a clínica não for esta):
+  workflow-x22UDZ4n5BuR7bUk-refactored.json
+  workflow-x22UDZ4n5BuR7bUk-fetched.json
+  workflow-live.json
+  (procurar "n8n_cs_consultar_vagas" e o campo jsonBody com p_clinic_id)
+
+RPC no Supabase: public.n8n_cs_consultar_vagas(p_clinic_id uuid) — exige cs_profissionais.clinic_id = p_clinic_id, disponivel = true, bloqueio_manual = false, hora em clinics.agenda_visible_hours.

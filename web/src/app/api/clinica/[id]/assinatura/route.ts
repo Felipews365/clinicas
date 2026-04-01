@@ -1,38 +1,18 @@
 import { NextResponse } from "next/server";
+import { canManageClinic } from "@/lib/clinic-permissions";
 import { createClient } from "@/lib/supabase/server";
+import { computeTrialExpiryLocalDate } from "@/lib/trial";
 
 type AssinaturaFields = {
+  plan_id: string | null;
   tipo_plano: string;
+  plan_tem_crm: boolean;
   data_expiracao: string | null;
   inadimplente: boolean;
   ativo: boolean;
   numero_clinica: string | null;
+  crm_reengagement_message: string | null;
 };
-
-async function canManageClinic(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  clinicId: string,
-  userId: string
-): Promise<boolean> {
-  const { data: clinic, error: cErr } = await supabase
-    .from("clinics")
-    .select("owner_id")
-    .eq("id", clinicId)
-    .maybeSingle();
-
-  if (cErr || !clinic) return false;
-  if (clinic.owner_id === userId) return true;
-
-  const { data: member } = await supabase
-    .from("clinic_members")
-    .select("role")
-    .eq("clinic_id", clinicId)
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  const role = member?.role;
-  return role === "owner" || role === "admin";
-}
 
 export async function GET(
   _req: Request,
@@ -53,7 +33,9 @@ export async function GET(
 
   const { data, error } = await supabase
     .from("clinics")
-    .select("tipo_plano, data_expiracao, inadimplente, ativo, numero_clinica")
+    .select(
+      "plan_id, plan_tem_crm, tipo_plano, data_expiracao, inadimplente, ativo, numero_clinica, crm_reengagement_message"
+    )
     .eq("id", clinicId)
     .maybeSingle();
 
@@ -66,8 +48,16 @@ export async function GET(
 
   const canEdit = await canManageClinic(supabase, clinicId, user.id);
 
+  const planId =
+    data.plan_id == null || String(data.plan_id).trim() === ""
+      ? null
+      : String(data.plan_id);
+
   const fields: AssinaturaFields = {
+    plan_id: planId,
     tipo_plano: typeof data.tipo_plano === "string" ? data.tipo_plano : "teste",
+    plan_tem_crm:
+      data.plan_tem_crm === true || String(data.plan_tem_crm) === "true",
     data_expiracao:
       data.data_expiracao == null
         ? null
@@ -80,6 +70,11 @@ export async function GET(
       data.numero_clinica == null || String(data.numero_clinica).trim() === ""
         ? null
         : String(data.numero_clinica).trim(),
+    crm_reengagement_message:
+      data.crm_reengagement_message == null ||
+      String(data.crm_reengagement_message).trim() === ""
+        ? null
+        : String(data.crm_reengagement_message).trim(),
   };
 
   return NextResponse.json({ fields, canEdit });
@@ -119,15 +114,59 @@ export async function PATCH(
 
   const patch: Record<string, unknown> = {};
 
-  if (body.tipo_plano !== undefined) {
-    const v = body.tipo_plano;
-    if (v !== "teste" && v !== "mensal") {
+  if (body.plan_id !== undefined) {
+    const raw = body.plan_id;
+    if (raw === null || raw === "") {
       return NextResponse.json(
-        { error: "VALIDATION", message: "tipo_plano deve ser teste ou mensal." },
+        {
+          error: "VALIDATION",
+          message: "plan_id é obrigatório; use o identificador do plano na lista.",
+        },
         { status: 400 }
       );
     }
-    patch.tipo_plano = v;
+    const pid = String(raw).trim();
+    const { data: pl, error: pe } = await supabase
+      .from("planos")
+      .select("id")
+      .eq("id", pid)
+      .eq("ativo", true)
+      .maybeSingle();
+    if (pe) {
+      return NextResponse.json({ error: pe.message }, { status: 500 });
+    }
+    if (!pl) {
+      return NextResponse.json(
+        {
+          error: "VALIDATION",
+          message: "Plano não encontrado ou inativo.",
+        },
+        { status: 400 }
+      );
+    }
+    patch.plan_id = pid;
+  } else if (body.tipo_plano !== undefined) {
+    const codigo = String(body.tipo_plano).trim().toLowerCase();
+    const { data: pl, error: pe } = await supabase
+      .from("planos")
+      .select("id")
+      .eq("codigo", codigo)
+      .eq("ativo", true)
+      .maybeSingle();
+    if (pe) {
+      return NextResponse.json({ error: pe.message }, { status: 500 });
+    }
+    if (!pl) {
+      return NextResponse.json(
+        {
+          error: "VALIDATION",
+          message:
+            "Código de plano desconhecido. Atualize o cliente ou escolha plan_id.",
+        },
+        { status: 400 }
+      );
+    }
+    patch.plan_id = pl.id;
   }
 
   if (body.data_expiracao !== undefined) {
@@ -171,6 +210,25 @@ export async function PATCH(
       patch.numero_clinica = t.length ? t : null;
     } else {
       return NextResponse.json({ error: "VALIDATION" }, { status: 400 });
+    }
+  }
+
+  if (
+    patch.plan_id !== undefined &&
+    body.data_expiracao === undefined &&
+    typeof patch.plan_id === "string"
+  ) {
+    const { data: plCod, error: codErr } = await supabase
+      .from("planos")
+      .select("codigo")
+      .eq("id", patch.plan_id)
+      .maybeSingle();
+    if (codErr) {
+      return NextResponse.json({ error: codErr.message }, { status: 500 });
+    }
+    const cod = typeof plCod?.codigo === "string" ? plCod.codigo.trim().toLowerCase() : "";
+    if (cod === "teste") {
+      patch.data_expiracao = computeTrialExpiryLocalDate();
     }
   }
 

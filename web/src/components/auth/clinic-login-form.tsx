@@ -206,6 +206,15 @@ export function ClinicLoginForm() {
           <p className="mt-2 text-center text-sm text-slate-600">
             Entre no painel da sua clínica.
           </p>
+          <p className="mt-3 text-center text-xs text-slate-500">
+            Administrador da plataforma?{" "}
+            <Link
+              href="/login/admin"
+              className="font-semibold text-[#0047AB] underline-offset-2 hover:underline"
+            >
+              Login de admin
+            </Link>
+          </p>
 
           <form
             className="mt-8 space-y-4"

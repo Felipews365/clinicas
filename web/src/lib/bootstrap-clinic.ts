@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { computeTrialExpiryLocalDate } from "@/lib/trial";
 import { isClinicMembersUnavailableError } from "@/lib/supabase/clinic-members-compat";
 
 /** Rascunho de profissional no cadastro inicial (login / onboarding). */
@@ -118,7 +119,11 @@ export async function bootstrapClinicForUser(
 
   const { data: clinic, error: cErr } = await supabase
     .from("clinics")
-    .insert({ name, owner_id: userId })
+    .insert({
+      name,
+      owner_id: userId,
+      data_expiracao: computeTrialExpiryLocalDate(),
+    })
     .select("id")
     .single();
 
