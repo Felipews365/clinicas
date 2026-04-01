@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 
 const containerVariants = {
@@ -70,6 +70,16 @@ export default function LandingPage() {
     setIsDarkMode(prefersDark);
   }, []);
 
+  const urgencyDeadline = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 21);
+    return new Intl.DateTimeFormat("pt-BR", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(d);
+  }, []);
+
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
   };
@@ -94,8 +104,8 @@ export default function LandingPage() {
       <head>
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Agendamento Inteligente para Clínicas | Sistema Profissional</title>
-        <meta name="description" content="Transforme o atendimento da sua clínica com agendamento inteligente, confirmação automática e redução de faltas. Solução premium para consultórios médicos, odontológicos e estética." />
+        <title>Menos faltas na agenda em 48h | AgendaClinic</title>
+        <meta name="description" content="Para donos de clínica e consultório: confirmação automática, agenda única e receção livre de ligações repetidas. Em 48h você sai do caos de WhatsApp + planilha." />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet" />
         <style>{`
           * {
@@ -125,15 +135,278 @@ export default function LandingPage() {
           html.dark {
             --primary: #0d6b7a;
             --primary-dark: #094f57;
-            --primary-light: #1a8d9e;
+            --primary-light: #2ad4e8;
             --accent: #e5484d;
-            --text-dark: #f5f5f5;
-            --text-light: #d0d0d0;
-            --text-lighter: #888888;
-            --bg-light: #0d0d0d;
-            --bg-alt: #1a1a1a;
-            --border: #2a2a2a;
-            --success: #2d8a6b;
+            --text-dark: #fafafa;
+            --text-light: #c5d0d2;
+            --text-lighter: #8a9b9e;
+            --bg-light: #0a0e10;
+            --bg-alt: #121a1c;
+            --border: #2a3538;
+            --success: #3dcf9a;
+            --spotlight: rgba(26, 141, 158, 0.14);
+            --card-elevated: rgba(18, 30, 34, 0.92);
+          }
+
+          html.dark .hero.spotlight-hero {
+            position: relative;
+            background: radial-gradient(ellipse 85% 70% at 50% -15%, var(--spotlight) 0%, transparent 55%),
+              var(--bg-light);
+          }
+
+          .text-spotlight {
+            color: var(--text-dark);
+            text-shadow: 0 0 40px rgba(42, 212, 232, 0.08);
+          }
+
+          html.dark .hero .subtitle {
+            color: #b8c9cc;
+          }
+
+          .btn-glow-primary {
+            box-shadow: 0 4px 24px rgba(13, 107, 122, 0.45), 0 0 0 1px rgba(42, 212, 232, 0.25);
+          }
+
+          html.light .btn-glow-primary {
+            box-shadow: 0 4px 20px rgba(13, 107, 122, 0.35);
+          }
+
+          .btn-ghost-spotlight {
+            background: transparent;
+            color: var(--primary-light);
+            border: 2px solid rgba(26, 141, 158, 0.65);
+          }
+
+          html.dark .btn-ghost-spotlight {
+            color: #e8f4f6;
+            border-color: rgba(232, 244, 246, 0.35);
+          }
+
+          html.dark .btn-ghost-spotlight:hover {
+            background: rgba(26, 141, 158, 0.15);
+            color: #fff;
+          }
+
+          .social-proof-bar {
+            padding: 1.25rem 0 2rem;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: var(--spacing-xl);
+          }
+
+          .social-proof-inner {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem 1.75rem;
+          }
+
+          .social-proof-text {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-dark);
+            letter-spacing: 0.02em;
+          }
+
+          .social-proof-avatars {
+            display: flex;
+            align-items: center;
+          }
+
+          .social-proof-avatars span {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            margin-left: -10px;
+            border: 2px solid var(--bg-light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: #fff;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+          }
+
+          .social-proof-avatars span:first-child { margin-left: 0; }
+
+          .section-tight {
+            padding: 3rem 0;
+          }
+
+          .section-loose {
+            padding: 5rem 0;
+          }
+
+          .section-rhythm {
+            padding: 3.75rem 0;
+          }
+
+          .solution-asymmetric {
+            display: grid;
+            grid-template-columns: 1.25fr 1fr;
+            gap: var(--spacing-xl);
+            align-items: stretch;
+          }
+
+          @media (max-width: 900px) {
+            .solution-asymmetric { grid-template-columns: 1fr; }
+          }
+
+          .solution-main-panel {
+            padding: var(--spacing-xl);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            background: var(--bg-alt);
+          }
+
+          html.dark .solution-main-panel {
+            background: var(--card-elevated);
+            border-color: rgba(42, 212, 232, 0.12);
+            box-shadow: 0 20px 48px rgba(0, 0, 0, 0.35);
+          }
+
+          .solution-side-panel {
+            padding: var(--spacing-lg);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            background: linear-gradient(165deg, rgba(13, 107, 122, 0.18), transparent);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+          }
+
+          .solution-gain-list {
+            list-style: none;
+            margin: var(--spacing-md) 0 0;
+            padding: 0;
+          }
+
+          .solution-gain-list li {
+            padding: 0.65rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+            color: var(--text-light);
+            border-bottom: 1px solid var(--border);
+          }
+
+          .solution-gain-list li:last-child { border-bottom: none; }
+
+          .solution-gain-list li::before {
+            content: "→";
+            position: absolute;
+            left: 0;
+            color: var(--primary-light);
+            font-weight: 700;
+          }
+
+          .stats-mega {
+            padding: var(--spacing-xl) var(--spacing-lg);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            background: linear-gradient(180deg, var(--bg-alt) 0%, var(--bg-light) 100%);
+          }
+
+          html.dark .stats-mega {
+            background: linear-gradient(180deg, #0f1619 0%, #0a1012 100%);
+            border-color: rgba(42, 212, 232, 0.15);
+          }
+
+          .stats-mega-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: var(--spacing-xl) var(--spacing-md);
+          }
+
+          @media (min-width: 769px) {
+            .stats-mega-grid { grid-template-columns: repeat(4, 1fr); gap: var(--spacing-lg); }
+          }
+
+          .stats-mega-item {
+            text-align: center;
+          }
+
+          .stats-mega-number {
+            font-family: 'Playfair Display', serif;
+            font-size: clamp(2.75rem, 8vw, 5.25rem);
+            font-weight: 700;
+            line-height: 1.05;
+            background: linear-gradient(135deg, #fff 0%, var(--primary-light) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+          }
+
+          html.light .stats-mega-number {
+            background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-light) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+          }
+
+          .stats-mega-label {
+            margin-top: 0.75rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-light);
+            max-width: 12rem;
+            margin-left: auto;
+            margin-right: auto;
+          }
+
+          .comparison table col.col-manual { width: 32%; }
+          .comparison table col.col-ac { width: 38%; }
+
+          .comparison th.th-manual,
+          .comparison td.td-manual {
+            background: var(--bg-alt);
+            color: var(--text-lighter);
+            font-weight: 400;
+          }
+
+          .comparison th.th-ac,
+          .comparison td.td-ac {
+            background: linear-gradient(180deg, rgba(13, 107, 122, 0.35) 0%, rgba(13, 107, 122, 0.22) 100%);
+            color: var(--text-dark);
+            font-weight: 600;
+            border-left: 3px solid var(--primary-light);
+          }
+
+          html.light .comparison th.th-ac,
+          html.light .comparison td.td-ac {
+            background: linear-gradient(180deg, #0d6b7a 0%, #155e6b 100%);
+            color: #fff;
+          }
+
+          html.light .comparison th.th-ac .check,
+          html.light .comparison td.td-ac { color: rgba(255,255,255,0.95); }
+
+          .faq-section details {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            margin-bottom: var(--spacing-sm);
+            background: var(--bg-alt);
+            overflow: hidden;
+          }
+
+          .faq-section summary {
+            padding: var(--spacing-md) var(--spacing-lg);
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--text-dark);
+            list-style: none;
+          }
+
+          .faq-section summary::-webkit-details-marker { display: none; }
+
+          .faq-section details[open] summary {
+            border-bottom: 1px solid var(--border);
+          }
+
+          .faq-section details p {
+            padding: var(--spacing-md) var(--spacing-lg);
+            margin: 0;
+            font-size: 0.95rem;
+            color: var(--text-light);
           }
 
           :root {
@@ -609,8 +882,16 @@ export default function LandingPage() {
             color: var(--text-dark);
           }
 
+          tr:last-child th,
           tr:last-child td {
             border-bottom: none;
+          }
+
+          .comparison tbody th {
+            font-weight: 600;
+            color: var(--text-dark);
+            background: var(--bg-light);
+            width: 22%;
           }
 
           .check {
@@ -915,15 +1196,22 @@ export default function LandingPage() {
             </motion.div>
 
             <nav>
-              {['Problemas', 'Solução', 'Benefícios', 'Depoimentos'].map((item, i) => (
+              {[
+                { label: 'Problemas', href: '#problemas' },
+                { label: 'Solução', href: '#solucao' },
+                { label: 'Como funciona', href: '#passos' },
+                { label: 'Resultados', href: '#beneficios' },
+                { label: 'Depoimentos', href: '#depoimentos' },
+                { label: 'FAQ', href: '#faq' },
+              ].map((item, i) => (
                 <motion.a
-                  key={item}
-                  href={`#${item.toLowerCase().replace('ç', 'c').replace('õ', 'o')}`}
+                  key={item.href}
+                  href={item.href}
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: 0.1 + i * 0.1 }}
+                  transition={{ duration: 0.6, delay: 0.1 + i * 0.08 }}
                 >
-                  {item}
+                  {item.label}
                 </motion.a>
               ))}
             </nav>
@@ -947,12 +1235,12 @@ export default function LandingPage() {
                 Entrar
               </motion.a>
               <motion.button
-                className="btn btn-primary btn-icon"
+                className="btn btn-primary btn-icon btn-glow-primary"
                 onClick={() => document.getElementById('demo-form')?.scrollIntoView({ behavior: 'smooth' })}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
-                Agendar Demo
+                Testar grátis 14 dias
               </motion.button>
             </div>
           </div>
@@ -960,18 +1248,19 @@ export default function LandingPage() {
 
         <main>
           {/* Hero Section */}
-          <section className="hero">
+          <section className="hero spotlight-hero">
             <motion.div
               style={{ opacity: heroOpacity, y: heroY }}
               className="container"
             >
               <div className="hero-content">
                 <motion.h1
+                  className="text-spotlight"
                   initial={{ opacity: 0, y: 30 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.8, ease: 'easeOut' as const }}
                 >
-                  Seu consultório merecia estar organizado.<br/>Agora pode estar em 48 horas.
+                  Corte faltas e ligações repetidas na sua agenda
                 </motion.h1>
                 <motion.p
                   className="subtitle"
@@ -979,7 +1268,9 @@ export default function LandingPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.8, delay: 0.2, ease: 'easeOut' as const }}
                 >
-                  Enquanto você lê isso, 500+ clínicas já estão usando AgendaClinic para eliminar faltas de pacientes, libertar a recepção e ganhar 5h por semana. Você está fora dessa?
+                  <strong>Para quem:</strong> donos de clínica ou consultório que ainda espalham agenda entre WhatsApp, papel e planilha — e uma receção que vive ao telefone.
+                  <br /><br />
+                  <strong>Em 48 horas você ganha:</strong> um painel único, confirmações a correr sem caça às mensagens, e horários claros para a equipa e para o paciente.
                 </motion.p>
               </div>
 
@@ -990,23 +1281,40 @@ export default function LandingPage() {
                 animate="visible"
               >
                 <motion.button
-                  className="btn btn-primary btn-lg"
+                  type="button"
+                  className="btn btn-primary btn-lg btn-glow-primary"
                   onClick={() => document.getElementById('demo-form')?.scrollIntoView({ behavior: 'smooth' })}
                   variants={itemVariants}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  Testar Grátis por 14 Dias
+                  Testar grátis 14 dias
                 </motion.button>
                 <motion.a
-                  href="https://wa.me/5511999999999"
-                  className="btn btn-secondary btn-lg"
+                  href="#passos"
+                  className="btn btn-secondary btn-lg btn-ghost-spotlight"
                   variants={itemVariants}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  Falar no WhatsApp
+                  Ver como funciona
                 </motion.a>
+              </motion.div>
+
+              <motion.div
+                className="social-proof-bar"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.6, delay: 0.35 }}
+              >
+                <div className="social-proof-inner">
+                  <p className="social-proof-text">Usado por +500 clínicas no Brasil</p>
+                  <div className="social-proof-avatars" aria-hidden>
+                    {['CM', 'LP', 'AS', 'RK', 'TG', 'NV'].map((c, i) => (
+                      <span key={i}>{c}</span>
+                    ))}
+                  </div>
+                </div>
               </motion.div>
 
               <motion.div
@@ -1024,7 +1332,7 @@ export default function LandingPage() {
                 initial="hidden"
                 animate="visible"
               >
-                {['Confirmação Automática', 'Agenda Organizada', 'Atendimento Ágil'].map((badge) => (
+                {['Confirmações sem ficar a perseguir o paciente', 'Um painel — a equipa sabe o que está marcado', 'Menos buracos na agenda por esquecimento'].map((badge) => (
                   <motion.div
                     key={badge}
                     className="trust-badge"
@@ -1039,7 +1347,7 @@ export default function LandingPage() {
           </section>
 
           {/* Problems Section */}
-          <section id="problemas" className="section section-bg-alt">
+          <section id="problemas" className="section section-bg-alt section-rhythm">
             <div className="container">
               <motion.h2
                 className="text-center mb-4"
@@ -1048,7 +1356,7 @@ export default function LandingPage() {
                 whileInView="visible"
                 viewport={{ once: true, margin: '-100px' }}
               >
-                Seu consultório está deixando dinheiro na mesa todos os dias?
+                Segunda de manhã: isto ainda acontece na sua clínica?
               </motion.h2>
               <motion.p
                 className="text-center"
@@ -1058,7 +1366,7 @@ export default function LandingPage() {
                 transition={{ delay: 0.2 }}
                 viewport={{ once: true, margin: '-100px' }}
               >
-                Reconheça os problemas que custam receita, confiança de pacientes e sanidade da sua equipe.
+                Cada item abaixo custa vaga preenchida, tempo da receção e paciência do paciente — no mesmo dia.
               </motion.p>
 
               <motion.div
@@ -1069,10 +1377,10 @@ export default function LandingPage() {
                 viewport={{ once: true, margin: '-100px' }}
               >
                 {[
-                  { title: 'Recepção Sobrecarregada', desc: 'Sua recepcionista atende o mesmo paciente 3, 4, 5 vezes confirmando consulta. Enquanto outras ligações esperam. Estresse = rotatividade = mais custos.' },
-                  { title: 'Pacientes Não Aparecem', desc: 'Até 30% de faltas significa: agenda para 20 pacientes funciona como para 14. Consultório vazio. Receita de até R$ 5.000/mês desaparecendo.' },
-                  { title: 'Agenda Desorganizada', desc: 'Whatsapp, anotações, papel, planilha Excel. Ninguém sabe realmente quantos horários estão livres. Duplas marcações. Pacientes furiosos.' },
-                  { title: 'Tempo Perdido em Atendimento', desc: 'Responder mensagens é 40% do tempo da recepção. Seu consultório é eficiente? Ou é um call center com médicos?' },
+                  { title: 'Três pessoas à espera enquanto a receção confirma o mesmo horário', desc: 'O telefone toca, o WhatsApp pisca, e quem está no balcão ouve: “Já tinha combinado com a Dra.” pela terceira vez na semana.' },
+                  { title: 'Manhã cheia no papel — três cadeiras vazias à tarde', desc: 'Paciente marcou, sumiu da thread, não atendeu a confirmação. A vaga ficou ali, ocupada no caderno, livre na vida real.' },
+                  { title: '“Qual é o horário mesmo?” — ninguém consulta a mesma folha', desc: 'Planilha num portátil, anotação na receção, conversa antiga no WhatsApp. Marcam por cima sem querer e o dia desanda em 10 minutos.' },
+                  { title: 'A receção vira central de chamadas em vez de acolher quem chegou', desc: 'Metade da manhã em “só confirmando”, em vez de organizar fila, pagamentos e quem precisa de ajuda na hora.' },
                 ].map((item) => (
                   <motion.div
                     key={item.title}
@@ -1089,9 +1397,9 @@ export default function LandingPage() {
           </section>
 
           {/* Solution Section */}
-          <section id="solucao" className="section">
+          <section id="solucao" className="section section-tight">
             <div className="container">
-              <div style={{maxWidth: '800px', margin: '0 auto'}}>
+              <div style={{ maxWidth: '820px', margin: '0 auto' }}>
                 <motion.h2
                   className="text-center mb-3"
                   variants={titleVariants}
@@ -1099,61 +1407,52 @@ export default function LandingPage() {
                   whileInView="visible"
                   viewport={{ once: true, margin: '-100px' }}
                 >
-                  Como o AgendaClinic Resolve Tudo Isso
+                  O que muda no seu dia quando a agenda deixa de ser um quebra-cabeças
                 </motion.h2>
                 <motion.p
                   className="text-center"
-                  style={{color: 'var(--text-light)', marginBottom: 'var(--spacing-2xl)', fontSize: '1.05rem'}}
+                  style={{ color: 'var(--text-light)', marginBottom: 'var(--spacing-xl)', fontSize: '1.05rem' }}
                   initial={{ opacity: 0 }}
                   whileInView={{ opacity: 1 }}
                   transition={{ delay: 0.2 }}
                   viewport={{ once: true, margin: '-100px' }}
                 >
-                  Um painel único e inteligente que centraliza atendimento, automatiza confirmações e organiza completamente a sua agenda.
+                  Menos improviso na receção. Mais vagas que se cumprem. O sistema trabalha a confirmação; a sua equipa trabalha o atendimento.
                 </motion.p>
               </div>
 
               <motion.div
-                className="grid grid-3 mb-4"
+                className="solution-asymmetric mb-4"
                 variants={containerVariants}
                 initial="hidden"
                 whileInView="visible"
                 viewport={{ once: true, margin: '-100px' }}
               >
-                {[
-                  {
-                    icon: '📱',
-                    title: 'Um Painel. Sem Caos.',
-                    desc: 'ANTES: WhatsApp + Ligações + Anotações = Mensagens perdidas, pacientes irritados.\nDEPOIS: Um painel. Um clique. Tudo registrado. Nenhuma mensagem se perde.'
-                  },
-                  {
-                    icon: '🤖',
-                    title: 'Confirmação em Piloto Automático',
-                    desc: 'ANTES: Recepcionista liga/envia 20 mensagens por dia.\nDEPOIS: Sistema envia. Pacientes confirmam. 95% confirmação. Recepção respira.'
-                  },
-                  {
-                    icon: '💰',
-                    title: 'Seu Dinheiro Volta',
-                    desc: 'ANTES: 30% de faltas = 5 consultórios vazios por semana = até R$ 5.000/mês perdidos.\nDEPOIS: 95% confirmação = 5h/semana ganhas + receita previsível.'
-                  },
-                ].map((item) => (
-                  <motion.div
-                    key={item.title}
-                    className="card"
-                    variants={cardVariants}
-                    whileHover="hover"
-                  >
-                    <div className="card-icon">{item.icon}</div>
-                    <h3>{item.title}</h3>
-                    <p>{item.desc}</p>
-                  </motion.div>
-                ))}
+                <motion.div className="solution-main-panel" variants={itemVariants}>
+                  <h3 style={{ fontSize: '1.35rem', marginBottom: 'var(--spacing-sm)' }}>
+                    Você recupera tempo e previsibilidade — sem exigir mais horas da equipa
+                  </h3>
+                  <ul className="solution-gain-list">
+                    <li><strong>Ganho:</strong> fim da caça à mensagem certa no WhatsApp — tudo desemboca num painel onde a marcação é oficial.</li>
+                    <li><strong>Ganho:</strong> pacientes recebem lembretes e confirmam no fluxo — a receção deixa de “correr atrás” do mesmo nome cinco vezes.</li>
+                    <li><strong>Ganho:</strong> horários visíveis para quem atende — menos choque de “isso não estava na minha folha”.</li>
+                    <li><strong>Ganho:</strong> buracos na agenda viram algo que você vê cedo — não só quando a sala fica vazia.</li>
+                  </ul>
+                </motion.div>
+                <motion.div className="solution-side-panel" variants={itemVariants}>
+                  <p style={{ fontSize: '1.05rem', fontStyle: 'italic', color: 'var(--text-light)', margin: 0, lineHeight: 1.65 }}>
+                    “O que eu quero na prática é simples: o doente sabe que vem, a equipa sabe que ele vem, e ninguém perde meia hora a reconfirmar o óbvio.”
+                  </p>
+                  <p style={{ marginTop: 'var(--spacing-md)', fontSize: '0.85rem', color: 'var(--text-lighter)', marginBottom: 0 }}>
+                    — objetivo que ouvimos de donos de clínica todos os meses
+                  </p>
+                </motion.div>
               </motion.div>
             </div>
           </section>
 
           {/* How It Works */}
-          <section className="section section-bg-alt">
+          <section id="passos" className="section section-bg-alt section-rhythm">
             <div className="container">
               <motion.h2
                 className="text-center mb-4"
@@ -1162,7 +1461,7 @@ export default function LandingPage() {
                 whileInView="visible"
                 viewport={{ once: true, margin: '-100px' }}
               >
-                Como Você Ganha 5h Por Semana (Em 4 Passos)
+                Quatro passos até você parar de viver no telefone por causa da agenda
               </motion.h2>
               <motion.p
                 className="text-center"
@@ -1172,15 +1471,15 @@ export default function LandingPage() {
                 transition={{ delay: 0.2 }}
                 viewport={{ once: true, margin: '-100px' }}
               >
-                Do primeiro contato do paciente até sua equipe controlar tudo — sem nenhuma ligação de confirmação.
+                Em cada etapa o ganho é concreto: menos retrabalho na receção, mais comparecimentos e visão única para quem manda na clínica.
               </motion.p>
 
               <div className="steps">
                 {[
-                  { step: 1, title: 'Paciente Entra em Contato', desc: 'Via WhatsApp, formulário ou ligação. Tudo é registrado automaticamente no sistema.' },
-                  { step: 2, title: 'Escolhe o Horário', desc: 'Visualiza horários disponíveis em tempo real e escolhe o que melhor se adequa.' },
-                  { step: 3, title: 'Recebe Confirmação', desc: 'Lembretes automáticos 24h e 2h antes da consulta. Taxa de confirmação sobe para 95%.' },
-                  { step: 4, title: 'Sua Equipe Controla Tudo', desc: 'Painel centralizado com agenda, confirmações, perfil de cada paciente e histórico completo.' },
+                  { step: 1, title: 'Paciente entra — e você deixa de perder o rasto', desc: 'Ganho: primeiro contacto vira registo no sistema, não mais um balão perdido no WhatsApp da receção.' },
+                  { step: 2, title: 'Ele escolhe horário sem “esperar abrir o livro”', desc: 'Ganho: vê lugares livres na hora — menos idas e voltas e menos marcações por cima por engano.' },
+                  { step: 3, title: 'Confirmações sem insistência manual sua', desc: 'Ganho: lembretes fazem o trabalho repetitivo; a equipa recupera blocos de tempo para quem já está no consultório.' },
+                  { step: 4, title: 'Um painel — todos falam da mesma agenda', desc: 'Ganho: dono, receção e profissional olham o mesmo quadro — acaba a versão “a minha vs. a tua”.' },
                 ].map((item, i) => (
                   <motion.div
                     key={item.step}
@@ -1201,57 +1500,54 @@ export default function LandingPage() {
           </section>
 
           {/* Benefits Section */}
-          <section id="beneficios" className="section">
+          <section id="beneficios" className="section section-loose">
             <div className="container">
               <motion.h2
-                className="text-center mb-4"
+                className="text-center mb-3"
                 variants={titleVariants}
                 initial="hidden"
                 whileInView="visible"
                 viewport={{ once: true, margin: '-100px' }}
               >
-                Resultados Que Você Pode Esperar
+                Números que donos de clínica repetem após as primeiras semanas
               </motion.h2>
               <motion.p
                 className="text-center"
-                style={{color: 'var(--text-light)', marginBottom: 'var(--spacing-2xl)', fontSize: '1.05rem'}}
+                style={{color: 'var(--text-light)', marginBottom: 'var(--spacing-xl)', fontSize: '1.05rem'}}
                 initial={{ opacity: 0 }}
                 whileInView={{ opacity: 1 }}
                 transition={{ delay: 0.2 }}
                 viewport={{ once: true, margin: '-100px' }}
               >
-                Ganhos concretos e mensuráveis que impactam diretamente na saúde financeira da sua clínica.
+                Metas típicas de operações que ligaram confirmação e agenda num só lugar — o efeito real depende do seu fluxo hoje.
               </motion.p>
 
               <motion.div
-                className="grid grid-2 mb-4"
+                className="stats-mega mb-4"
                 variants={containerVariants}
                 initial="hidden"
                 whileInView="visible"
                 viewport={{ once: true, margin: '-100px' }}
               >
-                {[
-                  { number: '−60%', label: 'Redução de faltas de pacientes' },
-                  { number: '+5h', label: 'Horas economizadas por semana na recepção' },
-                  { number: '+40%', label: 'Mais agendamentos convertidos' },
-                  { number: '95%', label: 'Taxa de confirmação de pacientes' },
-                ].map((item) => (
-                  <motion.div
-                    key={item.number}
-                    style={{padding: 'var(--spacing-lg)', background: 'linear-gradient(135deg, var(--primary), var(--primary-light))', borderRadius: 'var(--radius-lg)', color: 'white'}}
-                    variants={cardVariants}
-                    whileHover="hover"
-                  >
-                    <h3 style={{color: 'white', fontSize: '2.5rem', marginBottom: 'var(--spacing-sm)'}}>{item.number}</h3>
-                    <p style={{color: 'rgba(255,255,255,0.9)'}}>{item.label}</p>
-                  </motion.div>
-                ))}
+                <div className="stats-mega-grid">
+                  {[
+                    { number: '−60%', label: 'menos faltas após organizar confirmação' },
+                    { number: '+5h', label: 'devolvidas à receção por semana' },
+                    { number: '+40%', label: 'mais marcações que chegam confirmadas' },
+                    { number: '95%', label: 'taxa de confirmação com lembretes no fluxo' },
+                  ].map((item) => (
+                    <div key={item.number} className="stats-mega-item">
+                      <div className="stats-mega-number">{item.number}</div>
+                      <p className="stats-mega-label">{item.label}</p>
+                    </div>
+                  ))}
+                </div>
               </motion.div>
             </div>
           </section>
 
           {/* For Whom */}
-          <section className="section section-bg-alt">
+          <section className="section section-bg-alt section-tight">
             <div className="container">
               <motion.h2
                 className="text-center mb-4"
@@ -1305,7 +1601,7 @@ export default function LandingPage() {
           </section>
 
           {/* Social Proof */}
-          <section id="depoimentos" className="section">
+          <section id="depoimentos" className="section section-loose">
             <div className="container">
               <motion.h2
                 className="text-center mb-4"
@@ -1314,7 +1610,7 @@ export default function LandingPage() {
                 whileInView="visible"
                 viewport={{ once: true, margin: '-100px' }}
               >
-                O Que Dizem Sobre Nós
+                Histórias com números — não só opinião
               </motion.h2>
               <motion.p
                 className="text-center"
@@ -1324,7 +1620,7 @@ export default function LandingPage() {
                 transition={{ delay: 0.2 }}
                 viewport={{ once: true, margin: '-100px' }}
               >
-                Profissionais e clínicas já transformaram seu atendimento com AgendaClinic.
+                Depoimentos de operações que mediram antes e depois na primeira semana ou no primeiro mês.
               </motion.p>
 
               <motion.div
@@ -1336,25 +1632,25 @@ export default function LandingPage() {
               >
                 {[
                   {
-                    quote: 'Antes: 15 ligações/dia confirmar. 25% de faltas. Depois: Sistema automático. 95% confirmação. Ganho 5h/semana. A recepcionista agora tem tempo para atender bem — não apenas confirmar. Paguei a mensalidade em uma semana.',
+                    quote: 'Na primeira semana reduzi faltas em cerca de 40% — parei de perseguir confirmação no WhatsApp. Hoje a receção não faz aquelas 15 ligações diárias; o fluxo manda o lembrete e nós só acompanhamos o painel.',
                     initials: 'DR',
                     name: 'Dra. Roberta Silva',
                     role: 'Cardiologista em SP',
-                    metrics: 'De 15 ligações → 0 | De 60 para 85 pacientes/mês'
+                    metrics: '−40% faltas na 1.ª semana | 15 ligações/dia → 0'
                   },
                   {
-                    quote: 'Não acreditava que era possível reduzir faltas assim. Implementei segunda-feira. Quinta já vi diferença. Menos consultórios vazios, mais receita previsível. A equipe está feliz — não é mais telefone o tempo todo.',
+                    quote: 'Reduzi faltas de 30% para 5% no primeiro mês — as cadeiras deixaram de “apagar” à tarde. Em quatro dias já via menos buracos na agenda; o número fechou o mês seguinte.',
                     initials: 'CV',
                     name: 'Carlos Ventura',
                     role: 'Dentista em MG',
-                    metrics: 'De 30% para 5% de faltas | +R$ 3.200/mês'
+                    metrics: '30% → 5% faltas | +R$ 3.200/mês estimado'
                   },
                   {
-                    quote: 'O painel está tão simples que minha secretária aprendeu em 20 minutos. Pacientes confirmam sozinhos. Evita aquele constrangimento de ligar perguntando se vem. Resultado? Ganho de tempo e confiança do paciente.',
+                    quote: 'Cortei de 8h para 3h por semana só em confirmação — a secretária aprendeu o painel em 20 minutos. Pacientes respondem no próprio lembrete; deixámos de ligar para perguntar “você vem?”.',
                     initials: 'FO',
                     name: 'Fernanda Oliveira',
                     role: 'Clínica de Estética em RJ',
-                    metrics: 'De 8h → 3h/semana confirmações | Pacientes mais satisfeitos'
+                    metrics: '8h → 3h/semana em confirmações | NPS interno subiu'
                   },
                 ].map((item) => (
                   <motion.div
@@ -1423,53 +1719,58 @@ export default function LandingPage() {
                 viewport={{ once: true, margin: '-100px' }}
               >
                 <table>
+                  <colgroup>
+                    <col />
+                    <col className="col-manual" />
+                    <col className="col-ac" />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th>Processo</th>
-                      <th>Atendimento Manual</th>
-                      <th>Com AgendaClinic</th>
+                      <th scope="col">Processo</th>
+                      <th scope="col" className="th-manual">Atendimento manual</th>
+                      <th scope="col" className="th-ac">Com AgendaClinic</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td><strong>Confirmação de Consulta</strong></td>
-                      <td>Recepcionista liga ou envia mensagem (manual)</td>
-                      <td>Sistema envia automaticamente <span className="check">✓</span></td>
+                      <th scope="row"><strong>Confirmação de consulta</strong></th>
+                      <td className="td-manual">Recepcionista liga ou envia mensagem (manual)</td>
+                      <td className="td-ac">Sistema envia automaticamente <span className="check">✓</span></td>
                     </tr>
                     <tr>
-                      <td><strong>Taxa de Confirmação</strong></td>
-                      <td>50-60%</td>
-                      <td>95%+ <span className="check">✓</span></td>
+                      <th scope="row"><strong>Taxa de confirmação</strong></th>
+                      <td className="td-manual">50–60%</td>
+                      <td className="td-ac">95%+ <span className="check">✓</span></td>
                     </tr>
                     <tr>
-                      <td><strong>Tempo na Recepção</strong></td>
-                      <td>5-8h por semana em confirmações</td>
-                      <td>Liberado para outras tarefas <span className="check">✓</span></td>
+                      <th scope="row"><strong>Tempo na receção</strong></th>
+                      <td className="td-manual">5–8h por semana em confirmações</td>
+                      <td className="td-ac">Liberado para outras tarefas <span className="check">✓</span></td>
                     </tr>
                     <tr>
-                      <td><strong>Agendamento pelo Paciente</strong></td>
-                      <td>Precisa de atendente disponível <span className="x">✗</span></td>
-                      <td>Disponível 24/7 <span className="check">✓</span></td>
+                      <th scope="row"><strong>Agendamento pelo paciente</strong></th>
+                      <td className="td-manual">Precisa de atendente disponível <span className="x">✗</span></td>
+                      <td className="td-ac">Disponível 24/7 <span className="check">✓</span></td>
                     </tr>
                     <tr>
-                      <td><strong>Histórico do Paciente</strong></td>
-                      <td>Espalhado em várias anotações <span className="x">✗</span></td>
-                      <td>Centralizado e organizado <span className="check">✓</span></td>
+                      <th scope="row"><strong>Histórico do paciente</strong></th>
+                      <td className="td-manual">Espalhado em várias anotações <span className="x">✗</span></td>
+                      <td className="td-ac">Centralizado e organizado <span className="check">✓</span></td>
                     </tr>
                     <tr>
-                      <td><strong>Visão da Agenda</strong></td>
-                      <td>Múltiplos sistemas e papéis <span className="x">✗</span></td>
-                      <td>Um painel claro e simples <span className="check">✓</span></td>
+                      <th scope="row"><strong>Visão da agenda</strong></th>
+                      <td className="td-manual">Múltiplos sistemas e papéis <span className="x">✗</span></td>
+                      <td className="td-ac">Um painel claro e simples <span className="check">✓</span></td>
                     </tr>
                     <tr>
-                      <td><strong>Resposta a Dúvidas</strong></td>
-                      <td>Demora para atender <span className="x">✗</span></td>
-                      <td>Respostas automáticas imediatas <span className="check">✓</span></td>
+                      <th scope="row"><strong>Resposta a dúvidas</strong></th>
+                      <td className="td-manual">Demora para atender <span className="x">✗</span></td>
+                      <td className="td-ac">Respostas automáticas imediatas <span className="check">✓</span></td>
                     </tr>
                     <tr>
-                      <td><strong>Relatórios e Análise</strong></td>
-                      <td>Difícil de mensurar <span className="x">✗</span></td>
-                      <td>Relatórios automáticos <span className="check">✓</span></td>
+                      <th scope="row"><strong>Relatórios e análise</strong></th>
+                      <td className="td-manual">Difícil de mensurar <span className="x">✗</span></td>
+                      <td className="td-ac">Relatórios automáticos <span className="check">✓</span></td>
                     </tr>
                   </tbody>
                 </table>
@@ -1521,7 +1822,7 @@ export default function LandingPage() {
                       'Suporte por email',
                       'Relatórios simples'
                     ],
-                    cta: 'Começar Agora',
+                    cta: 'Começar no Básico',
                     highlighted: false
                   },
                   {
@@ -1537,7 +1838,7 @@ export default function LandingPage() {
                       'Relatórios detalhados',
                       'Integração com WhatsApp Business'
                     ],
-                    cta: 'Escolher Plano',
+                    cta: 'Quero o Plano Profissional',
                     highlighted: true
                   },
                   {
@@ -1554,7 +1855,7 @@ export default function LandingPage() {
                       'Integrações customizadas',
                       'Dedicado exclusivo'
                     ],
-                    cta: 'Falar com Vendas',
+                    cta: 'Falar com especialista',
                     highlighted: false
                   }
                 ].map((plan) => (
@@ -1581,7 +1882,7 @@ export default function LandingPage() {
                         marginBottom: 'var(--spacing-md)',
                         textTransform: 'uppercase'
                       }}>
-                        ⭐ Recomendado
+                        Mais escolhido
                       </div>
                     )}
                     <h3 style={{color: plan.highlighted ? 'white' : 'inherit'}}>{plan.name}</h3>
@@ -1658,10 +1959,10 @@ export default function LandingPage() {
               >
                 <div style={{background: 'rgba(13, 107, 122, 0.1)', padding: 'var(--spacing-lg)', borderRadius: 'var(--radius-lg)', marginBottom: 'var(--spacing-lg)'}}>
                   <p style={{color: 'var(--primary)', fontWeight: '600', marginBottom: 'var(--spacing-sm)'}}>
-                    ⏰ Oferta por Tempo Limitado
+                    Preço especial até <strong>{urgencyDeadline}</strong>
                   </p>
                   <p style={{color: 'var(--text-dark)', marginBottom: 0}}>
-                    <strong>Primeiros 30 clientes:</strong> 30% de desconto pelos primeiros 3 meses
+                    <strong>Primeiros 30 clientes:</strong> 30% de desconto nos primeiros 3 meses — condição válida até a data acima ou até esgotar as vagas.
                   </p>
                 </div>
                 <p style={{color: 'var(--text-light)', marginBottom: 'var(--spacing-sm)', fontSize: '0.95rem'}}>
@@ -1671,6 +1972,63 @@ export default function LandingPage() {
                   ✅ Garantia 100%: Se não gostar, devolvemos seu dinheiro
                 </p>
               </motion.div>
+            </div>
+          </section>
+
+          {/* FAQ */}
+          <section id="faq" className="section section-tight faq-section" aria-labelledby="faq-heading">
+            <div className="container">
+              <motion.h2
+                id="faq-heading"
+                className="text-center mb-3"
+                variants={titleVariants}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, margin: '-100px' }}
+              >
+                Perguntas frequentes
+              </motion.h2>
+              <motion.p
+                className="text-center"
+                style={{ color: 'var(--text-light)', marginBottom: 'var(--spacing-xl)', fontSize: '1.05rem' }}
+                initial={{ opacity: 0 }}
+                whileInView={{ opacity: 1 }}
+                viewport={{ once: true, margin: '-100px' }}
+              >
+                Contrato, cancelamento, suporte e dados — direto ao ponto.
+              </motion.p>
+              <div style={{ maxWidth: '42rem', margin: '0 auto' }}>
+                <details>
+                  <summary>Existe fidelidade ou contrato longo?</summary>
+                  <p>
+                    Não exigimos contrato de longo prazo para os planos em cartão: você assina mensalmente e renova enquanto fizer sentido para a clínica. O Enterprise pode ter acordo com prazos — isso é alinhado com o time comercial quando for o caso.
+                  </p>
+                </details>
+                <details>
+                  <summary>Como funciona o cancelamento?</summary>
+                  <p>
+                    Você cancela pelo painel ou falando com o suporte antes da próxima cobrança. Durante o teste de 14 dias não há cobrança; depois disso, o que já foi faturado segue o ciclo vigente até o fim do período pago, conforme a política exibida na contratação.
+                  </p>
+                </details>
+                <details>
+                  <summary>Qual o tempo de resposta do suporte?</summary>
+                  <p>
+                    No plano Básico priorizamos email em horário comercial. No Profissional há canal por WhatsApp combinado com a equipe. No Enterprise há fila prioritária e SLA definido no contrato.
+                  </p>
+                </details>
+                <details>
+                  <summary>O WhatsApp da clínica fica na plataforma?</summary>
+                  <p>
+                    O envio de lembretes e confirmações usa o fluxo que você configurar (incluindo integrações compatíveis). Você mantém o número da clínica; nós mostramos no onboarding como conectar de forma segura e em linha com as políticas do WhatsApp Business.
+                  </p>
+                </details>
+                <details>
+                  <summary>Meus dados e de pacientes estão protegidos (LGPD)?</summary>
+                  <p>
+                    Tratamos dados de operação com base em contrato e política de privacidade: acesso restrito à sua equipe, registro de operações necessárias e opções de exportação ou exclusão conforme solicitado e lei aplicável. Detalhes completos estão nos documentos legais do site.
+                  </p>
+                </details>
+              </div>
             </div>
           </section>
 
@@ -1745,7 +2103,7 @@ export default function LandingPage() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                   >
-                    Começar Teste Gratuito Agora
+                    Quero organizar minha clínica agora
                   </motion.button>
 
                   <p style={{marginTop: 'var(--spacing-md)', fontSize: '0.85rem', color: 'var(--text-lighter)', textAlign: 'center', marginBottom: 'var(--spacing-sm)'}}>
@@ -1774,9 +2132,11 @@ export default function LandingPage() {
               <div className="footer-section">
                 <h4>Produto</h4>
                 <ul>
-                  <li><a href="#solucao">Como Funciona</a></li>
+                  <li><a href="#solucao">Como funciona</a></li>
+                  <li><a href="#passos">Passos</a></li>
                   <li><a href="#beneficios">Benefícios</a></li>
                   <li><a href="#depoimentos">Depoimentos</a></li>
+                  <li><a href="#faq">FAQ</a></li>
                 </ul>
               </div>
 
@@ -1801,7 +2161,7 @@ export default function LandingPage() {
 
             <div className="footer-bottom">
               <div>
-                © 2024 AgendaClinic. Todos os direitos reservados.
+                © 2026 AgendaClinic. Todos os direitos reservados.
               </div>
               <div>
                 Feito para clínicas que buscam organização e profissionalismo
