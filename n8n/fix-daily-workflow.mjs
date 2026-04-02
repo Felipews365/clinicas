@@ -15,6 +15,12 @@ const getRes = await fetch(`${baseUrl}/workflows/${id}`, {
 });
 const w = await getRes.json();
 
+const sched = w.nodes.find((n) => n.id === "crm-daily-sched-1");
+if (sched?.parameters?.rule?.interval?.[0]) {
+  // 08h Brasília (UTC−3) ≈ 11h UTC — n8n com settings.timezone UTC
+  sched.parameters.rule.interval[0].expression = "0 11 * * *";
+}
+
 for (const nid of ["crm-daily-list", "crm-daily-run"]) {
   const n = w.nodes.find((x) => x.id === nid);
   if (n?.parameters?.url) {
