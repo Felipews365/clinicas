@@ -3,8 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { AppointmentCardList } from "@/components/appointment-card-list";
-import { AppointmentsCalendar } from "@/components/appointments-calendar";
 import { ProceduresManagerModal } from "@/components/procedures-manager-modal";
 import { ProfessionalsManagerModal } from "@/components/professionals-manager-modal";
 import { ScheduleAppointmentModal } from "@/components/schedule-appointment-modal";
@@ -28,6 +26,7 @@ import {
   NotificationAlertsPage,
   NotificationToastStack,
 } from "@/components/notification-center";
+import { PainelDashboard } from "@/components/painel-dashboard";
 import { useAgendaNotifications } from "@/hooks/use-agenda-notifications";
 import {
   calendarSlotBoundsFromVisibleHours,
@@ -193,36 +192,6 @@ function IconClose({ className }: { className?: string }) {
 }
 
 
-function AgendaListSkeleton() {
-  return (
-    <div
-      className="flex flex-col gap-5"
-      aria-busy="true"
-      aria-live="polite"
-    >
-      <p className="sr-only">A carregar a lista de agendamentos</p>
-      {[0, 1, 2].map((i) => (
-        <div
-          key={i}
-          className="agenda-animate-in rounded-[1.35rem] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm"
-          style={{ animationDelay: `${i * 70}ms` }}
-        >
-          <div className="flex gap-5">
-            <div className="agenda-skeleton h-14 w-14 shrink-0 rounded-2xl" />
-            <div className="flex flex-1 flex-col gap-3">
-              <div className="agenda-skeleton h-7 max-w-[220px] rounded-lg" />
-              <div className="grid gap-2 sm:grid-cols-2">
-                <div className="agenda-skeleton h-[4.25rem] rounded-xl" />
-                <div className="agenda-skeleton h-[4.25rem] rounded-xl" />
-              </div>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function AgendaPortal() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -237,9 +206,16 @@ export function AgendaPortal() {
   );
   const [profFilterId, setProfFilterId] = useState<string | null>(null);
   const [profRoster, setProfRoster] = useState<
-    { id: string; name: string; panel_color: string | null }[]
+    {
+      id: string;
+      name: string;
+      panel_color: string | null;
+      cs_profissional_id: string | null;
+    }[]
   >([]);
-  const [viewMode, setViewMode] = useState<"calendar" | "list">("list");
+  const [viewMode, setViewMode] = useState<"calendar" | "list" | "grid">(
+    "list"
+  );
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [proceduresOpen, setProceduresOpen] = useState(false);
   type SidebarPage =
@@ -409,14 +385,19 @@ export function AgendaPortal() {
       supabase.rpc("painel_list_cs_agendamentos", { p_clinic_id: clinicId }),
       supabase
         .from("professionals")
-        .select("id, name, panel_color")
+        .select("id, name, panel_color, cs_profissional_id")
         .eq("clinic_id", clinicId)
         .order("sort_order", { ascending: true })
         .order("name", { ascending: true }),
     ]);
 
     setProfRoster(
-      (pros ?? []) as { id: string; name: string; panel_color: string | null }[]
+      (pros ?? []) as {
+        id: string;
+        name: string;
+        panel_color: string | null;
+        cs_profissional_id: string | null;
+      }[]
     );
 
     if (error) {
@@ -523,6 +504,33 @@ export function AgendaPortal() {
       confirmedOnDay,
     };
   }, [statsDayRows]);
+
+  const yesterdayKey = useMemo(
+    () => (dayKey ? addDaysToYmd(dayKey, -1) : ""),
+    [dayKey]
+  );
+
+  const statsYesterday = useMemo(() => {
+    let base = rows
+      .filter((r) => r.status !== "cancelled")
+      .filter((r) =>
+        yesterdayKey ? matchesLocalDayKey(r.starts_at, yesterdayKey) : false
+      );
+    if (profFilterId) {
+      base = base.filter((r) =>
+        rowMatchesProfessionalFilter(r, profFilterId, profRoster)
+      );
+    }
+    const scheduled = base.filter((r) => r.status === "scheduled");
+    const pending = scheduled.filter((r) => awaitsConfirmation(r)).length;
+    const confirmedOnDay = scheduled.filter((r) => isClinicConfirmed(r))
+      .length;
+    return {
+      totalScheduled: scheduled.length,
+      pending,
+      confirmedOnDay,
+    };
+  }, [rows, yesterdayKey, profFilterId, profRoster]);
 
   useEffect(() => {
     if (!profFilterId || !profRoster.length) return;
@@ -907,7 +915,12 @@ export function AgendaPortal() {
       )
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "cs_agendamentos" },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "cs_agendamentos",
+          filter: `clinic_id=eq.${clinicId}`,
+        },
         (payload) => {
           const row = payload.new as { id?: string };
           if (row.id && locallyModified.current.has(`cs:${row.id}`)) return;
@@ -916,7 +929,12 @@ export function AgendaPortal() {
       )
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "cs_agendamentos" },
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "cs_agendamentos",
+          filter: `clinic_id=eq.${clinicId}`,
+        },
         (payload) => {
           const row = payload.new as { id?: string };
           if (row.id && locallyModified.current.has(`cs:${row.id}`)) return;
@@ -1513,324 +1531,41 @@ export function AgendaPortal() {
       >
         <div className="painel-page-shell w-full max-w-none">
         {sidebarPage === "dashboard" ? (
-        <>
-        <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
-          <div className="agenda-animate-in max-w-xl" style={{ animationDelay: "0ms" }}>
-            <p className="text-xs font-semibold uppercase tracking-widest text-[var(--primary)]">
-              Agenda do dia
-            </p>
-            <h1 className="mt-2 font-bold text-3xl text-[var(--text)] sm:text-4xl">
-              Agendamentos
-            </h1>
-            <p className="mt-3 max-w-prose text-base leading-relaxed text-[var(--text-muted)]">
-              <span className="capitalize">{selectedDayLabel}</span>
-              {dayKey && !isYmdToday(dayKey) && todayLabel ? (
-                <span className="mt-1 block text-sm font-normal normal-case text-[var(--text-muted)]">
-                  Referência de hoje: {todayLabel}
-                </span>
-              ) : null}
-            </p>
-          </div>
-          <div
-            className="agenda-animate-in flex flex-wrap items-center gap-2 sm:justify-end"
-            style={{ animationDelay: "45ms" }}
-            role="tablist"
-            aria-label="Filtrar por estado"
-          >
-            {(
-              [
-                ["all", "Todos"],
-                ["pending", "Pendentes"],
-                ["confirmed", "Confirmados"],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={listFilter === value}
-                onClick={() => setListFilter(value)}
-                className={listFilter === value ? filterActive : filterIdle}
-              >
-                {label}
-                {value === "pending" && stats.pending > 0 ? (
-                  <span
-                    className={`ml-1.5 inline-flex min-h-[1.25rem] min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
-                      listFilter === "pending"
-                        ? "bg-white/20 text-white"
-                        : "bg-[#fff0e6] text-[#b45309]"
-                    }`}
-                  >
-                    {stats.pending > 99 ? "99+" : stats.pending}
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div
-          className="agenda-animate-in mb-8 flex flex-col gap-2"
-          style={{ animationDelay: "28ms" }}
-        >
-          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-            Profissional
-          </p>
-          <div
-            className="flex flex-wrap gap-2"
-            role="tablist"
-            aria-label="Filtrar por profissional"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={profFilterId === null}
-              onClick={() => setProfFilterId(null)}
-              className={
-                profFilterId === null
-                  ? "rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white shadow-sm"
-                  : "rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs font-medium text-[var(--text-muted)] shadow-sm transition-colors hover:bg-[var(--surface-soft)]"
-              }
-            >
-              Todos
-            </button>
-            {profRoster.map((p) => {
-              const accent = resolveProfessionalCardStyle(p.panel_color, p.id)
-                .accent;
-              const sel = profFilterId === p.id;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={sel}
-                  onClick={() => setProfFilterId(p.id)}
-                  className={
-                    sel
-                      ? "inline-flex items-center gap-2 rounded-full bg-[var(--primary)] pl-2 pr-4 py-2 text-xs font-semibold text-white shadow-sm"
-                      : "inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] pl-2 pr-4 py-2 text-xs font-medium text-[var(--text-muted)] shadow-sm transition-colors hover:bg-[var(--surface-soft)]"
-                  }
-                >
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full border border-[var(--text)]/15 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]"
-                    style={{ backgroundColor: accent }}
-                    aria-hidden
-                  />
-                  <span className="max-w-[200px] truncate">{p.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="agenda-animate-in mb-8 flex flex-col gap-4 rounded-2xl bg-[var(--surface)] shadow-sm p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:p-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              disabled={!dayKey}
-              onClick={() => dayKey && setDayKey((k) => addDaysToYmd(k, -1))}
-              className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-sm font-semibold text-[var(--text-muted)] shadow-sm transition-colors hover:bg-[var(--surface-soft)]"
-            >
-              Dia anterior
-            </button>
-            <label className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
-              <span className="sr-only sm:not-sr-only">Data</span>
-              <input
-                type="date"
-                disabled={!dayKey}
-                value={dayKey}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v) setDayKey(v);
-                }}
-                className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 font-sans text-[var(--text)] shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] disabled:opacity-50"
-              />
-            </label>
-            <button
-              type="button"
-              disabled={!dayKey}
-              onClick={() => dayKey && setDayKey((k) => addDaysToYmd(k, 1))}
-              className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-sm font-semibold text-[var(--text-muted)] shadow-sm transition-colors hover:bg-[var(--surface-soft)]"
-            >
-              Próximo dia
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const now = new Date();
-                setDayKey(formatLocalYmd(now));
-                setTodayLabel(
-                  new Intl.DateTimeFormat("pt-BR", {
-                    weekday: "long",
-                    day: "numeric",
-                    month: "long",
-                  }).format(now)
-                );
-              }}
-              disabled={!dayKey || isYmdToday(dayKey)}
-              className="rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[var(--primary-strong)] disabled:opacity-40"
-            >
-              Ir para hoje
-            </button>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div
-              className="flex items-center gap-0.5 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-1"
-              role="group"
-              aria-label="Vista"
-            >
-              <button
-                type="button"
-                onClick={() => setViewMode("list")}
-                className={
-                  viewMode === "list" ? viewToggleActive : viewToggleIdle
-                }
-              >
-                Lista
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("calendar")}
-                className={
-                  viewMode === "calendar" ? viewToggleActive : viewToggleIdle
-                }
-              >
-                Calendário
-              </button>
-            </div>
-            <button
-              type="button"
-              disabled={listLoading}
-              onClick={() => void loadAppointments()}
-              className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-medium text-[var(--text-muted)] shadow-sm transition-colors hover:bg-[var(--surface-soft)] disabled:opacity-50"
-            >
-              Atualizar dados
-            </button>
-          </div>
-        </div>
-
-        <div
-          className="mb-10 grid gap-4 sm:grid-cols-3"
-          aria-label="Resumo numérico do dia"
-        >
-          <div className="agenda-animate-in rounded-2xl bg-[var(--surface)] shadow-sm px-6 py-5">
-            <p className="font-display text-4xl font-semibold tabular-nums text-[var(--primary)]">
-              {stats.totalScheduled}
-            </p>
-            <p className="mt-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-              No dia
-            </p>
-            <p className="mt-1 text-sm text-[var(--text-muted)]">Consultas agendadas</p>
-          </div>
-          <div
-            className="agenda-animate-in rounded-2xl bg-[var(--surface)] shadow-sm px-6 py-5"
-            style={{ animationDelay: "60ms" }}
-          >
-            <p className="font-display text-4xl font-semibold tabular-nums text-[#dc6526]">
-              {stats.pending}
-            </p>
-            <p className="mt-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-              Pendentes
-            </p>
-            <p className="mt-1 text-sm text-[var(--text-muted)]">
-              Inclui marcações via WhatsApp
-            </p>
-          </div>
-          <div
-            className="agenda-animate-in rounded-2xl bg-[var(--surface)] shadow-sm px-6 py-5"
-            style={{ animationDelay: "120ms" }}
-          >
-            <p className="font-display text-4xl font-semibold tabular-nums text-[var(--primary)]">
-              {stats.confirmedOnDay}
-            </p>
-            <p className="mt-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-              Confirmados
-            </p>
-            <p className="mt-1 text-sm text-[var(--text-muted)]">
-              Validados no painel
-            </p>
-          </div>
-        </div>
-
-        {listError ? (
-          <p
-            className="agenda-animate-in mb-6 rounded-2xl border border-red-200/90 bg-red-50/95 px-4 py-3.5 text-sm leading-relaxed text-red-900 shadow-sm"
-            role="alert"
-          >
-            {listError}
-          </p>
-        ) : null}
-
-        {viewMode === "calendar" ? (
-          <AppointmentsCalendar
-            rows={profFilteredRows}
-            loading={listLoading}
-            focusDate={calendarFocusDate}
-            slotMinTime={calendarSlotBounds.slotMinTime}
-            slotMaxTime={calendarSlotBounds.slotMaxTime}
-          />
-        ) : listLoading && !rows.length ? (
-          <AgendaListSkeleton />
-        ) : listDisplayRows.length === 0 ? (
-          <div className="agenda-animate-in rounded-[1.35rem] border border-[var(--border)] bg-[var(--surface)] px-8 py-14 text-center shadow-[var(--shadow-card)]">
-            <div
-              className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--success-soft)] text-[var(--success-text)]"
-              aria-hidden
-            >
-              <svg
-                width="28"
-                height="28"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.75"
-              >
-                <rect x="3" y="5" width="18" height="16" rx="2" />
-                <path d="M3 10h18M8 3v4M16 3v4" />
-              </svg>
-            </div>
-            <p className="font-display text-xl font-semibold text-[var(--text)]">
-              {profFilteredRows.length === 0
-                ? "Nenhum agendamento neste filtro"
-                : "Nenhum agendamento neste dia"}
-            </p>
-            <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-[var(--text-muted)]">
-              {profFilteredRows.length > 0 && listDisplayRows.length === 0 ? (
-                <>
-                  Existem marcações em outros dias com este filtro. Use{" "}
-                  <strong className="font-medium text-[var(--text)]">
-                    Dia anterior
-                  </strong>
-                  ,{" "}
-                  <strong className="font-medium text-[var(--text)]">
-                    Próximo dia
-                  </strong>{" "}
-                  ou o campo de data para navegar.
-                </>
-              ) : (
-                <>
-                  As reservas feitas pelo WhatsApp aparecem como{" "}
-                  <strong className="font-medium text-[#9a4f1c]">
-                    Pendentes
-                  </strong>{" "}
-                  até confirmar no painel. Depois ficam como{" "}
-                  <strong className="font-medium text-[var(--primary)]">
-                    Confirmados
-                  </strong>
-                  .
-                </>
-              )}
-            </p>
-          </div>
-        ) : (
-          <AppointmentCardList
-            rows={listDisplayRows}
-            busyId={rowBusy}
-            onConfirm={(id) => void confirmAppointment(id)}
-            onRemove={(id) => void removeAppointment(id)}
-          />
-        )}
-        </>
+          supabase && access.kind === "clinic" ? (
+            <PainelDashboard
+              clinicId={access.clinicId}
+              supabase={supabase}
+              rows={rows}
+              listLoading={listLoading}
+              listError={listError}
+              listFilter={listFilter}
+              setListFilter={setListFilter}
+              profFilterId={profFilterId}
+              setProfFilterId={setProfFilterId}
+              profRoster={profRoster}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+              dayKey={dayKey}
+              setDayKey={setDayKey}
+              todayLabel={todayLabel}
+              setTodayLabel={setTodayLabel}
+              selectedDayLabel={selectedDayLabel}
+              stats={stats}
+              statsYesterday={statsYesterday}
+              loadAppointments={loadAppointments}
+              calendarFocusDate={calendarFocusDate}
+              calendarSlotBounds={calendarSlotBounds}
+              listDisplayRows={listDisplayRows}
+              profFilteredRows={profFilteredRows}
+              rowBusy={rowBusy}
+              onConfirmAppointment={(id) => void confirmAppointment(id)}
+              onRemoveAppointment={(id) => void removeAppointment(id)}
+              filterActive={filterActive}
+              filterIdle={filterIdle}
+              viewToggleActive={viewToggleActive}
+              viewToggleIdle={viewToggleIdle}
+            />
+          ) : null
         ) : supabase ? (
           <div className="w-full min-w-0">
             {sidebarPage === "professionals" ? (

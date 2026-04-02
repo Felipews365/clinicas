@@ -8,7 +8,12 @@ import {
   isYmdToday,
   parseLocalYmd,
 } from "@/lib/local-day";
+import { professionalInitials } from "@/lib/professional-avatar";
+import { resolveProfessionalCardStyle } from "@/lib/professional-palette";
 import { parseSlotHour } from "@/lib/slots-expediente";
+
+const DISPLAY_HOUR_START = 7;
+const DISPLAY_HOUR_END = 19;
 
 export type CsSlotRow = {
   horario_id: string;
@@ -135,6 +140,60 @@ function uniqueProceduresFromSlots(slots: CsSlotRow[]): string[] {
   return out;
 }
 
+function ProfSectionHeader({
+  profId,
+  name,
+  specialty,
+}: {
+  profId: string;
+  name: string;
+  specialty: string | null;
+}) {
+  const accent = resolveProfessionalCardStyle(null, profId).accent;
+  const initials = professionalInitials(name);
+  return (
+    <div className="flex items-start gap-3">
+      <div
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[11px] font-bold tracking-tight text-white shadow-md ring-2 ring-white/10"
+        style={{ backgroundColor: accent }}
+        aria-hidden
+      >
+        {initials}
+      </div>
+      <div className="min-w-0 flex-1">
+        <h3 className="text-base font-semibold text-[var(--text)]">{name}</h3>
+        <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+          {specialty?.trim() || "Profissional"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SlotsLegend({ className = "" }: { className?: string }) {
+  const items: { dot: string; label: string; title: string }[] = [
+    { dot: "bg-teal-950 ring-1 ring-teal-700/80", label: "Livre", title: "Disponível" },
+    { dot: "bg-teal-400 ring-1 ring-teal-300/90", label: "Agendado", title: "Com reserva" },
+    { dot: "bg-orange-500 ring-1 ring-orange-400/90", label: "Agora", title: "Em curso nesta hora" },
+    { dot: "bg-red-950 ring-1 ring-red-800/90", label: "Bloq.", title: "Bloqueado manualmente" },
+    { dot: "bg-zinc-600 ring-1 ring-zinc-500/80", label: "Fora", title: "Fora da configuração da clínica" },
+  ];
+  return (
+    <div
+      className={"flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10px] text-[var(--text-muted)] " + className}
+      role="list"
+      aria-label="Legenda da grelha"
+    >
+      {items.map((it) => (
+        <span key={it.label} className="inline-flex items-center gap-1.5" role="listitem" title={it.title}>
+          <span className={"h-2.5 w-2.5 shrink-0 rounded-full " + it.dot} aria-hidden />
+          <span>{it.label}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function SlotsManagerModal({
   open,
   onClose,
@@ -161,6 +220,12 @@ export function SlotsManagerModal({
   /** Desktop: filtrar um único profissional na vista ("" = todos). */
   const [desktopProfFilter, setDesktopProfFilter] = useState("");
   const [layoutWide, setLayoutWide] = useState(false);
+  const [, setClockTick] = useState(0);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setClockTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const q = window.matchMedia("(min-width: 640px)");
@@ -315,6 +380,15 @@ export function SlotsManagerModal({
     [clinicVisibleHours]
   );
 
+  const displayGridHours = useMemo(() => {
+    const s = new Set<number>();
+    for (let h = DISPLAY_HOUR_START; h <= DISPLAY_HOUR_END; h++) s.add(h);
+    for (const h of clinicGridHours) {
+      if (h >= 6 && h <= 22) s.add(h);
+    }
+    return [...s].sort((a, b) => a - b);
+  }, [clinicGridHours]);
+
   const profEntriesForDesktop = useMemo(() => {
     const e = Array.from(byProf.entries());
     if (!desktopProfFilter) return e;
@@ -339,56 +413,79 @@ export function SlotsManagerModal({
     }
   }, [rows, mobileProfId]);
 
-  /** Só horários em `clinicVisibleHours`; livre ⇒ sempre DISPONÍVEL (nunca «extra listado»). */
-  function renderSlotButton(s: CsSlotRow, compact: boolean): ReactNode {
+  const isViewToday = Boolean(labelKey && isYmdToday(labelKey));
+  const currentHour = new Date().getHours();
+
+  function renderSlotButton(
+    s: CsSlotRow,
+    compact: boolean,
+    slotHour: number
+  ): ReactNode {
     const livre = s.disponivel;
     const porCliente = !livre && s.indisponivel_por === "cliente";
+    const bloqueado = !livre && !porCliente;
     const busy = busyId === s.horario_id;
     const procLabel = s.nome_procedimento?.trim() ?? null;
+    const emCurso = isViewToday && porCliente && slotHour === currentHour;
 
     let estadoLabel: string;
     let chipLabel: string;
     if (livre) {
-      estadoLabel = "disponível para o agente — horário habilitado em Configurar horários da clínica";
-      chipLabel = "DISPONÍVEL";
-    } else if (porCliente) {
-      estadoLabel = "indisponível — ocupado por agendamento";
-      chipLabel = "COM CLIENTE";
-    } else {
+      estadoLabel = "disponível — horário habilitado na clínica";
+      chipLabel = "Livre";
+    } else if (bloqueado) {
       estadoLabel = "indisponível — bloqueio manual no painel";
-      chipLabel = "BLOQUEADO";
+      chipLabel = "Bloq.";
+    } else if (emCurso) {
+      estadoLabel = "consulta em curso nesta hora";
+      chipLabel = "Agora";
+    } else {
+      estadoLabel = "indisponível — ocupado por agendamento";
+      chipLabel = "Agend.";
     }
 
-    const pad = compact ? "px-2 py-1.5 min-w-[4.25rem]" : "px-3 py-2 min-w-[5.5rem]";
-    const textMain = compact ? "text-xs" : "text-sm";
-    const textChip = compact ? "text-[8px]" : "text-[10px]";
-    const procSize = compact ? "text-[9px]" : "text-[10px]";
-    const ariaProc = procLabel ? ` Procedimento: ${procLabel}.` : "";
+    const pad = compact ? "px-1.5 py-1 min-w-[3.25rem]" : "px-2 py-1 min-w-[3.75rem]";
+    const textMain = compact ? "text-[10px] leading-tight" : "text-[11px] leading-tight";
+    const textChip = compact ? "text-[7px]" : "text-[8px]";
+    const procSize = compact ? "text-[7px]" : "text-[8px]";
+    const ariaProc = procLabel ? " Procedimento: " + procLabel + "." : "";
 
     const title = livre
       ? "Marcar como indisponível (bloqueio manual — o agente deixa de listar esta vaga)"
       : porCliente
-        ? (procLabel ? `${procLabel} — ` : "") +
+        ? (procLabel ? procLabel + " — " : "") +
           "Tornar disponível (confirme se quer libertar a vaga com agendamento)"
         : "Marcar como disponível de novo";
 
-    const chipTone = livre
-      ? "text-[#3d6b62]/90"
-      : porCliente
-        ? "text-[#4a5f8a]"
-        : "text-[#b91c1c]";
+    let shell: string;
+    if (bloqueado) {
+      shell =
+        "border border-red-900/70 bg-red-950/75 text-red-100 shadow-sm hover:-translate-y-px focus-visible:outline-red-700 line-through decoration-red-300/60 hover:no-underline";
+    } else if (emCurso) {
+      shell =
+        "border border-orange-500/80 bg-orange-500/25 text-orange-100 shadow-sm hover:-translate-y-px focus-visible:outline-orange-500";
+    } else if (porCliente) {
+      shell =
+        "border border-teal-400/70 bg-teal-500/20 text-teal-50 shadow-sm hover:-translate-y-px focus-visible:outline-teal-400 line-through decoration-teal-600/45 hover:no-underline";
+    } else {
+      shell =
+        "border border-teal-800/80 bg-teal-950/90 text-teal-100 shadow-sm hover:-translate-y-px focus-visible:outline-[var(--primary)]";
+    }
 
-    const procTone = porCliente
-      ? "text-[#2c3d6b]/95"
-      : livre
-        ? "text-[#3d6b62]/85"
-        : "text-[#7f1d1d]/90";
+    const chipTone = bloqueado
+      ? "text-red-200/95"
+      : emCurso
+        ? "text-orange-200"
+        : porCliente
+          ? "text-teal-200"
+          : "text-teal-200/90";
 
-    const shell = livre
-      ? "border border-[#c5ddd4] bg-[#f0faf6] text-[#1e4d40] shadow-sm hover:-translate-y-px focus-visible:outline-[#3d6b62]"
-      : porCliente
-        ? "border border-[#b8c5e0] bg-[#eef2fb] text-[#2c3d6b] line-through decoration-[#7d8ab0] hover:no-underline focus-visible:outline-[#4a5f8a]"
-        : "border border-[#e8b4b4] bg-[#fef2f2] text-[#7f1d1d] line-through decoration-[#b91c1c]/55 hover:no-underline focus-visible:outline-[#b91c1c]";
+    const procTone =
+      porCliente || emCurso
+        ? "text-teal-100/95"
+        : livre
+          ? "text-teal-100/80"
+          : "text-red-100/90";
 
     return (
       <button
@@ -397,19 +494,26 @@ export function SlotsManagerModal({
         disabled={busy}
         onClick={() => void toggleSlot(s)}
         aria-pressed={!livre}
-        aria-label={`${s.horario} — ${estadoLabel}.${ariaProc} Clicar para alternar.`}
+        aria-label={s.horario + " — " + estadoLabel + "." + ariaProc + " Clicar para alternar."}
         title={title}
-        className={`flex ${pad} flex-col items-stretch gap-0.5 rounded-xl font-semibold tabular-nums transition-[transform,box-shadow] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60 ${textMain} ${shell}`}
+        className={
+          "flex " +
+          pad +
+          " flex-col items-stretch gap-0 rounded-lg font-semibold tabular-nums transition-[transform,box-shadow] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60 " +
+          textMain +
+          " " +
+          shell
+        }
       >
         <span>{busy ? "…" : s.horario}</span>
         <span
-          className={`${textChip} font-medium uppercase tracking-wide not-italic no-underline ${chipTone}`}
+          className={textChip + " font-bold uppercase tracking-wide not-italic no-underline " + chipTone}
         >
           {chipLabel}
         </span>
         {procLabel ? (
           <span
-            className={`${procSize} mt-0.5 line-clamp-2 text-left font-medium normal-case leading-tight no-underline ${procTone}`}
+            className={procSize + " line-clamp-1 text-left font-medium normal-case leading-tight no-underline " + procTone}
             title={procLabel}
           >
             {procLabel}
@@ -472,7 +576,7 @@ export function SlotsManagerModal({
     );
   }
 
-  /** Só horas habilitadas em «Configurar horários da clínica»; depois segue expediente + vagas. */
+
   function renderSlotsRow(slots: CsSlotRow[], compact: boolean) {
     const dk = labelKey || activeDayKey;
     const byHour = new Map<number, CsSlotRow>();
@@ -486,59 +590,93 @@ export function SlotsManagerModal({
         .filter((s) => allowed.has(parseSlotHour(s.horario)))
         .sort((a, b) => parseSlotHour(a.horario) - parseSlotHour(b.horario));
       return (
-        <div className={`flex flex-wrap gap-2 ${compact ? "" : ""}`}>
-          {fallback.map((s) => renderSlotButton(s, compact))}
+        <div className={"flex flex-wrap gap-1.5 " + (compact ? "" : "")}>
+          {fallback.map((s) => renderSlotButton(s, compact, parseSlotHour(s.horario)))}
         </div>
       );
     }
     const hint = (
       <p
-        className={`text-[11px] leading-snug text-[#6b635a] ${compact ? "col-span-3 mb-2 sm:col-span-4" : "mb-2"}`}
+        className={
+          "text-[10px] leading-snug text-[var(--text-muted)] " +
+          (compact ? "col-span-4 mb-1 sm:col-span-6" : "mb-1.5")
+        }
       >
-        <strong className="font-medium text-[#3d3d3a]">Grade oficial.</strong> Só entram blocos marcados em{" "}
-        <strong className="font-medium">Configurar horários da clínica</strong>. Por defeito cada bloco é{" "}
-        <strong className="font-medium">DISPONÍVEL</strong> para o agente; com reserva real mostramos{" "}
-        <strong className="font-medium">COM CLIENTE</strong> e com bloqueio manual{" "}
-        <strong className="font-medium">BLOQUEADO</strong>.
+        Blocos conforme{" "}
+        <strong className="font-medium text-[var(--text)]">Configurar horários da clínica</strong>. Toque
+        para bloquear ou libertar vagas (exceto fora da configuração).
       </p>
     );
-    const missingCell = (hour: number) => {
-      const label = `${String(hour).padStart(2, "0")}:00`;
+
+    const outsideCell = (hour: number) => {
+      const label = String(hour).padStart(2, "0") + ":00";
       return (
         <div
-          key={`missing-${hour}`}
-          className={`flex flex-col items-stretch gap-0.5 rounded-xl border border-dashed border-[#c5ddd4] bg-[#f4fbf8] px-2 py-2 text-center ${compact ? "min-w-[4.25rem] px-2 py-1.5" : "min-w-[5.5rem] px-3 py-2"}`}
-          title="Bloco da clínica sem linha sincronizada — estado esperado: disponível após grelha."
+          key={"outside-" + hour}
+          className={
+            "flex flex-col items-center justify-center gap-0 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-1 py-0.5 text-center opacity-75 " +
+            (compact ? "min-w-[3.25rem]" : "min-w-[3.75rem]")
+          }
+          title="Fora dos horários que a clínica configurou para aparecer na agenda"
         >
           <span
             className={
-              compact ? "text-xs font-semibold tabular-nums text-[#1e4d40]" : "text-sm font-semibold tabular-nums text-[#1e4d40]"
+              compact
+                ? "text-[10px] font-semibold tabular-nums text-[var(--text-muted)]"
+                : "text-[11px] font-semibold tabular-nums text-[var(--text-muted)]"
             }
           >
             {label}
           </span>
-          <span className="text-[8px] font-semibold uppercase tracking-wide text-[#3d6b62]/85">DISPONÍVEL</span>
+          <span className="text-[6px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">—</span>
         </div>
       );
     };
-    const visibleGridHours = clinicGridHours;
-    const cells = visibleGridHours.map((h) => {
-      const s = byHour.get(h);
-      if (!s) return missingCell(h);
-      return renderSlotButton(s, compact);
+
+    const missingCell = (hour: number) => {
+      const label = String(hour).padStart(2, "0") + ":00";
+      return (
+        <div
+          key={"missing-" + hour}
+          className={
+            "flex flex-col items-stretch gap-0 rounded-lg border border-dashed border-teal-800/50 bg-teal-950/50 px-1 py-1 text-center " +
+            (compact ? "min-w-[3.25rem]" : "min-w-[3.75rem]")
+          }
+          title="Horário da clínica — sincronização pendente."
+        >
+          <span
+            className={
+              compact
+                ? "text-[10px] font-semibold tabular-nums text-teal-100"
+                : "text-[11px] font-semibold tabular-nums text-teal-100"
+            }
+          >
+            {label}
+          </span>
+          <span className="text-[7px] font-bold uppercase tracking-wide text-teal-300/90">Livre</span>
+        </div>
+      );
+    };
+
+    const hoursRow = displayGridHours.map((h) => {
+      if (!allowed.has(h)) return outsideCell(h);
+      const slot = byHour.get(h);
+      if (!slot) return missingCell(h);
+      return renderSlotButton(slot, compact, h);
     });
+
     if (compact) {
       return (
-        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+        <div className="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-6">
           {hint}
-          {cells}
+          {hoursRow}
         </div>
       );
     }
     return (
       <div>
         {hint}
-        <div className="flex flex-wrap gap-2">{cells}</div>
+        <div className="flex flex-wrap gap-1.5">{hoursRow}</div>
       </div>
     );
   }
@@ -549,36 +687,36 @@ export function SlotsManagerModal({
 
   const shell = (
       <div
-        className={`relative flex w-full min-w-0 flex-col overflow-y-auto overscroll-contain border bg-[#fffdf9] ${
+        className={`relative flex w-full min-w-0 flex-col overflow-y-auto overscroll-contain border border-[var(--border)] bg-[var(--surface)] ${
           isPanel
-            ? "max-h-none rounded-[18px] border-[#dfe8e5] shadow-sm"
-            : "max-h-[94dvh] max-w-2xl rounded-t-3xl border-[#e8e2d9] shadow-[0_-8px_40px_-12px_rgba(44,40,37,0.2)] sm:max-h-[min(94dvh,56rem)] sm:rounded-3xl sm:shadow-[0_20px_60px_-20px_rgba(44,40,37,0.28)]"
+            ? "max-h-none rounded-2xl shadow-sm"
+            : "max-h-[94dvh] max-w-2xl rounded-t-3xl shadow-[0_-8px_40px_-12px_rgba(0,0,0,0.35)] sm:max-h-[min(94dvh,56rem)] sm:rounded-3xl sm:shadow-[0_20px_60px_-20px_rgba(0,0,0,0.45)]"
         }`}
         role={isPanel ? "region" : undefined}
         aria-labelledby="slots-modal-title"
         aria-describedby="slots-modal-desc"
       >
-        <div className="sticky top-0 z-[2] bg-[#fffdf9] shadow-[0_4px_12px_-8px_rgba(44,40,37,0.15)]">
-        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[#ebe6dd] px-6 py-5">
+        <div className="sticky top-0 z-[2] border-b border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur-sm">
+        <header className="flex shrink-0 items-start justify-between gap-4 px-4 py-4 sm:px-6 sm:py-5">
           <div>
             <h2
               id="slots-modal-title"
-              className="font-display text-xl font-semibold text-[#1f1c1a]"
+              className="font-display text-xl font-semibold text-[var(--text)]"
             >
               Horários que aparecem na agenda
             </h2>
-            <p id="slots-modal-desc" className="mt-1 text-[#6b635a]">
+            <p id="slots-modal-desc" className="mt-1 text-[var(--text-muted)]">
               <span className="block text-xs sm:hidden">
                 Escolha o médico e ajuste as vagas só nos horários que a clínica liberou.
               </span>
               <span className="hidden text-sm sm:block">
                 Só aparecem os blocos que a clínica marcou em{" "}
-                <strong className="font-medium">Configurar horários da clínica</strong>. Por médico, indique o que o
+                <strong className="font-medium text-[var(--text)]">Configurar horários da clínica</strong>. Por médico, indique o que o
                 agente pode oferecer.
               </span>
             </p>
             {labelKey ? (
-              <p className="mt-2 text-sm font-medium capitalize text-[#2c2825]">
+              <p className="mt-2 text-sm font-medium capitalize text-[var(--text)]">
                 {dateLabel}
               </p>
             ) : null}
@@ -586,14 +724,14 @@ export function SlotsManagerModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-[#dcd5ca] bg-white px-3 py-2 text-sm font-medium text-[#5c5348] hover:bg-[#f7f4ef]"
+            className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 text-sm font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--bg)]"
           >
             Fechar
           </button>
         </header>
 
-        <div className="shrink-0 border-b border-[#ebe6dd] bg-[#faf8f5]/90 px-4 py-3 sm:px-6">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#8a8278]">
+        <div className="shrink-0 border-b border-[var(--border)] bg-[var(--bg)]/80 px-4 py-2.5 sm:px-6">
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
             Dia a gerir
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -601,7 +739,7 @@ export function SlotsManagerModal({
               type="button"
               disabled={!activeDayKey}
               onClick={() => shiftModalDay(-1)}
-              className="rounded-xl border border-[#b8c8dc] bg-[#eef3fb] px-3 py-2 text-sm font-semibold text-[#2a4a6e] shadow-sm transition-colors hover:bg-[#e2ebf8] disabled:opacity-40"
+              className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 text-sm font-semibold text-[var(--text)] shadow-sm transition-colors hover:bg-[var(--surface)] disabled:opacity-40"
             >
               Dia anterior
             </button>
@@ -617,14 +755,14 @@ export function SlotsManagerModal({
                   setActiveDayKey(v);
                   onDayKeyChange?.(v);
                 }}
-                className="min-w-0 flex-1 rounded-xl border border-[#dcd5ca] bg-white px-3 py-2 font-sans text-sm text-[#2c2825] shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3d6b62] disabled:opacity-50 sm:min-w-[11rem] sm:flex-initial"
+                className="min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 font-sans text-sm text-[var(--text)] shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] disabled:opacity-50 sm:min-w-[11rem] sm:flex-initial"
               />
             </label>
             <button
               type="button"
               disabled={!activeDayKey}
               onClick={() => shiftModalDay(1)}
-              className="rounded-xl border border-[#e4c9a8] bg-[#fff6eb] px-3 py-2 text-sm font-semibold text-[#8b4e12] shadow-sm transition-colors hover:bg-[#ffefd9] disabled:opacity-40"
+              className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 text-sm font-semibold text-[var(--text)] shadow-sm transition-colors hover:bg-[var(--surface)] disabled:opacity-40"
             >
               Próximo dia
             </button>
@@ -632,7 +770,7 @@ export function SlotsManagerModal({
               type="button"
               disabled={!activeDayKey || isYmdToday(activeDayKey)}
               onClick={() => goModalToday()}
-              className="rounded-xl bg-[#4D6D66] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-[#3f5e58] active:bg-[#283f3a] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
+              className="rounded-xl bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 hover:opacity-95 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
             >
               Ir para hoje
             </button>
@@ -640,41 +778,32 @@ export function SlotsManagerModal({
         </div>
         </div>
 
-        <div className="px-6 py-4">
+        <div className="px-4 py-3 sm:px-6">
           {!activeDayKey ? (
-            <p className="text-sm text-[#7a7268]">Escolha uma data no painel ou aguarde…</p>
+            <p className="text-sm text-[var(--text-muted)]">Escolha uma data no painel ou aguarde…</p>
           ) : error ? (
-            <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+            <p className="rounded-xl border border-red-800/50 bg-red-950/40 px-4 py-3 text-sm text-red-100">
               {error}
             </p>
           ) : loading ? (
-            <p className="text-sm text-[#7a7268]">A carregar horários…</p>
+            <p className="text-sm text-[var(--text-muted)]">A carregar horários…</p>
           ) : rows.length === 0 ? (
-            <p className="text-sm leading-relaxed text-[#6b635a]">
+            <p className="text-sm leading-relaxed text-[var(--text-muted)]">
               {isYmdToday(activeDayKey) ? (
                 <>
-                  Não há horários futuros neste dia (ou os blocos já passaram) e não foi encontrada
-                  agenda nos próximos {MAX_DAYS_SCAN} dias em{" "}
-                  <code className="rounded bg-[#f0ebe3] px-1 text-xs">cs_horarios_disponiveis</code>.
-                  Confirme o seed/SQL, o <code className="rounded bg-[#f0ebe3] px-1 text-xs">clinic_id</code>{" "}
-                  dos profissionais, ou escolha <strong className="font-medium">outro dia</strong> acima.
+                  Não há horários úteis neste dia e não foi encontrada agenda nos próximos {MAX_DAYS_SCAN} dias. Verifique profissionais e horários na base, ou escolha <strong className="font-medium text-[var(--text)]">outro dia</strong> acima.
                 </>
               ) : (
                 <>
-                  Sem blocos de horário em{" "}
-                  <span className="font-medium">{activeDayKey}</span> na base{" "}
-                  <code className="rounded bg-[#f0ebe3] px-1 text-xs">cs_horarios_disponiveis</code>.
-                  Gere vagas pelo seed/SQL ou confirme se os profissionais têm{" "}
-                  <code className="rounded bg-[#f0ebe3] px-1 text-xs">clinic_id</code> igual à sua
-                  clínica.
+                  Sem blocos em <span className="font-medium text-[var(--text)]">{activeDayKey}</span>. Confirme profissionais activos e vínculo com a clínica, ou escolha outra data.
                 </>
               )}
             </p>
           ) : (
             <>
-              <div className="mb-4">
+              <div className="mb-3">
                 <label className="block max-w-xl">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[#8a8278]">
+                  <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                     Médico / médica
                   </span>
                   <select
@@ -684,7 +813,7 @@ export function SlotsManagerModal({
                       if (layoutWide) setDesktopProfFilter(v);
                       else setMobileProfId(v === "" ? null : v);
                     }}
-                    className="w-full rounded-xl border border-[#dcd5ca] bg-white px-3 py-2.5 text-sm font-medium text-[#2c2825] shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3d6b62] sm:max-w-md"
+                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm font-medium text-[var(--text)] shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] sm:max-w-md"
                   >
                     <option value="">Todos os profissionais</option>
                     {Array.from(byProf.entries()).map(([id, slots]) => {
@@ -700,45 +829,22 @@ export function SlotsManagerModal({
               </div>
               {!layoutWide ? (
                 <>
-                  <p className="mb-3 text-[10px] leading-snug text-[#5c5348]">
-                    <span className="mr-2 inline-block">
-                      <span
-                        className="mr-1 inline-block h-2.5 w-4 rounded border border-[#c5ddd4] bg-[#f0faf6] align-middle"
-                        aria-hidden
-                      />
-                      DISPONÍVEL
-                    </span>
-                    <span className="mr-2 inline-block">
-                      <span
-                        className="mr-1 inline-block h-2.5 w-4 rounded border border-[#b8c5e0] bg-[#eef2fb] align-middle"
-                        aria-hidden
-                      />
-                      COM CLIENTE
-                    </span>
-                    <span className="inline-block">
-                      <span
-                        className="mr-1 inline-block h-2.5 w-4 rounded border border-[#e8b4b4] bg-[#fef2f2] align-middle"
-                        aria-hidden
-                      />
-                      BLOQUEADO
-                    </span>
-                  </p>
-                  <ul className="flex flex-col gap-5" role="list">
+                  <SlotsLegend className="mb-2" />
+                  <ul className="flex flex-col gap-4" role="list">
                     {profEntriesForMobile.map(([profId, slots]) => {
                       const head = slots[0];
                       const procsAgend = uniqueProceduresFromSlots(slots);
                       const procsLine = procsAgend.join(" · ");
                       return (
                         <li key={profId} className="list-none">
-                          <h3 className="text-base font-semibold text-[#1f1c1a]">
-                            {head.profissional_nome}
-                          </h3>
-                          <p className="mt-0.5 text-xs text-[#8a8278]">
-                            {head.especialidade?.trim() || "Profissional"}
-                          </p>
+                          <ProfSectionHeader
+                            profId={profId}
+                            name={head.profissional_nome}
+                            specialty={head.especialidade}
+                          />
                           {procsLine ? (
                             <p
-                              className="mb-2 mt-1 line-clamp-2 text-sm font-medium text-[#2c3d6b]"
+                              className="mb-1.5 mt-2 line-clamp-2 text-xs font-medium text-teal-200/90"
                               title={procsLine}
                             >
                               {procsLine}
@@ -753,33 +859,13 @@ export function SlotsManagerModal({
                   </ul>
                 </>
               ) : (
-                <ul className="flex flex-col gap-6" role="list">
-                  <li className="list-none rounded-xl border border-[#ebe6dd] bg-[#faf8f5] px-3 py-2.5">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8a8278]">
+                <ul className="flex flex-col gap-5" role="list">
+                  <li className="list-none rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                       Legenda
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-xs text-[#5c5348]">
-                      <span className="inline-flex items-center gap-2">
-                        <span
-                          className="h-4 w-6 shrink-0 rounded-md border border-[#c5ddd4] bg-[#f0faf6]"
-                          aria-hidden
-                        />
-                        DISPONÍVEL — grade da clínica, vaga aberta ao agente
-                      </span>
-                      <span className="inline-flex items-center gap-2">
-                        <span
-                          className="h-4 w-6 shrink-0 rounded-md border border-[#b8c5e0] bg-[#eef2fb]"
-                          aria-hidden
-                        />
-                        COM CLIENTE — reserva ativa
-                      </span>
-                      <span className="inline-flex items-center gap-2">
-                        <span
-                          className="h-4 w-6 shrink-0 rounded-md border border-[#e8b4b4] bg-[#fef2f2]"
-                          aria-hidden
-                        />
-                        BLOQUEADO — bloqueio manual no painel
-                      </span>
+                    <div className="mt-1.5">
+                      <SlotsLegend />
                     </div>
                   </li>
                   {profEntriesForDesktop.map(([profId, slots]) => {
@@ -788,21 +874,20 @@ export function SlotsManagerModal({
                     const procsLine = procsAgend.join(" · ");
                     return (
                       <li key={profId} className="list-none">
-                        <h3 className="text-base font-semibold text-[#1f1c1a]">
-                          {head.profissional_nome}
-                        </h3>
-                        <p className="mt-0.5 text-xs text-[#8a8278]">
-                          {head.especialidade?.trim() || "Profissional"}
-                        </p>
+                        <ProfSectionHeader
+                          profId={profId}
+                          name={head.profissional_nome}
+                          specialty={head.especialidade}
+                        />
                         {procsLine ? (
                           <p
-                            className="mb-2 mt-1 text-sm font-medium text-[#2c3d6b]"
+                            className="mb-1.5 mt-2 text-xs font-medium text-teal-200/90"
                             title={procsLine}
                           >
                             {procsLine}
                           </p>
                         ) : null}
-                        <div className={procsLine ? "" : "mt-3"}>
+                        <div className={procsLine ? "" : "mt-2"}>
                           {renderSlotsRow(slots, false)}
                         </div>
                       </li>
@@ -814,15 +899,7 @@ export function SlotsManagerModal({
           )}
         </div>
 
-        <footer className="shrink-0 border-t border-[#ebe6dd] px-6 py-4">
-          <p className="hidden text-xs leading-relaxed text-[#8a8278] sm:block">
-            Blocos da grelha ={" "}
-            <code className="rounded bg-[#f0ebe3] px-1">clinics.agenda_visible_hours</code>; criados em{" "}
-            <code className="rounded bg-[#f0ebe3] px-1">painel_cs_ensure_slots_grid</code>. Só{" "}
-            <code className="rounded bg-[#f0ebe3] px-1">disponivel = true</code> entra em{" "}
-            <code className="rounded bg-[#f0ebe3] px-1">n8n_cs_consultar_vagas</code>.
-          </p>
-        </footer>
+
       </div>
   );
 
@@ -844,7 +921,7 @@ export function SlotsManagerModal({
     >
       <button
         type="button"
-        className="absolute inset-0 bg-[#1c1917]/40 backdrop-blur-[2px] transition-opacity"
+        className="absolute inset-0 bg-black/50 backdrop-blur-[2px] transition-opacity"
         aria-label="Fechar"
         onClick={onClose}
       />
