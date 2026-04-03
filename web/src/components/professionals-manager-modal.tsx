@@ -30,6 +30,7 @@ type Row = {
   panel_color: string | null;
   avatar_path: string | null;
   avatar_emoji: string | null;
+  agenda_hours: number[] | null;
 };
 
 function rowPaletteValue(r: Row): string {
@@ -232,7 +233,7 @@ export function ProfessionalsManagerModal({
     const { data, error: e } = await supabase
       .from("professionals")
       .select(
-        "id, name, specialty, is_active, sort_order, panel_color, avatar_path, avatar_emoji"
+        "id, name, specialty, is_active, sort_order, panel_color, avatar_path, avatar_emoji, agenda_hours"
       )
       .eq("clinic_id", clinicId)
       .order("sort_order", { ascending: true })
@@ -475,26 +476,14 @@ export function ProfessionalsManagerModal({
     setEditingId(r.id);
     setEditName(r.name);
     setEditSpecialty(r.specialty ?? "");
-    setEditAgendaCustom(false);
-    setEditAgendaHours(new Set());
     setError(null);
-    // Carrega agenda_hours do cs_profissionais por nome (link via nome normalizado)
-    const norm = (s: string) =>
-      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-    void supabase
-      .from("cs_profissionais")
-      .select("agenda_hours")
-      .eq("clinic_id", clinicId)
-      .then(({ data }) => {
-        if (!data) return;
-        const match = data.find(
-          (p) => norm((p as { nome?: string }).nome ?? "") === norm(r.name)
-        ) as { agenda_hours?: number[] | null } | undefined;
-        if (match?.agenda_hours && match.agenda_hours.length > 0) {
-          setEditAgendaCustom(true);
-          setEditAgendaHours(new Set(match.agenda_hours));
-        }
-      });
+    if (r.agenda_hours && r.agenda_hours.length > 0) {
+      setEditAgendaCustom(true);
+      setEditAgendaHours(new Set(r.agenda_hours));
+    } else {
+      setEditAgendaCustom(false);
+      setEditAgendaHours(new Set());
+    }
   }
 
   function cancelEditRow() {
@@ -517,44 +506,15 @@ export function ProfessionalsManagerModal({
       ? [...editAgendaHours].sort((a, b) => a - b)
       : null;
 
-    // Atualiza professionals
     const { error: u } = await supabase
       .from("professionals")
-      .update({ name: n, specialty: editSpecialty.trim() || null })
+      .update({ name: n, specialty: editSpecialty.trim() || null, agenda_hours: agendaHours })
       .eq("id", r.id)
       .eq("clinic_id", clinicId);
     if (u) {
       setBusy(null);
       setError(u.message);
       return;
-    }
-
-    // Sincroniza agenda_hours em cs_profissionais via RPC (evita cache do PostgREST)
-    const norm = (s: string) =>
-      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-    const { data: csProfs } = await supabase
-      .from("cs_profissionais")
-      .select("id, nome")
-      .eq("clinic_id", clinicId);
-    if (csProfs) {
-      const match = (csProfs as { id: string; nome: string }[]).find(
-        (p) => norm(p.nome) === norm(r.name)
-      );
-      if (match) {
-        const { error: rpcErr } = await supabase.rpc(
-          "painel_set_profissional_agenda_hours",
-          {
-            p_clinic_id: clinicId,
-            p_prof_id: match.id,
-            p_hours: agendaHours,
-          }
-        );
-        if (rpcErr) {
-          setBusy(null);
-          setError(`Horários não guardados: ${rpcErr.message}`);
-          return;
-        }
-      }
     }
 
     setBusy(null);

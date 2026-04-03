@@ -776,7 +776,8 @@ export function SlotsManagerModal({
       const h = parseSlotHour(s.horario);
       if (h >= 0) byHour.set(h, s);
     }
-    const allowed = new Set(clinicGridHours);
+    // Horários permitidos = clínica + horários personalizados retornados pela RPC para este profissional
+    const allowed = new Set([...clinicGridHours, ...byHour.keys()]);
     if (!dk) {
       const fallback = [...slots]
         .filter((s) => allowed.has(parseSlotHour(s.horario)))
