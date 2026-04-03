@@ -15,6 +15,11 @@ import {
   professionalAvatarPublicUrl,
   storagePathForProfessionalAvatar,
 } from "@/lib/professional-avatar";
+import {
+  FULL_CLINIC_AGENDA_HOURS,
+  formatAgendaHourLabel,
+  normalizeAgendaVisibleHours,
+} from "@/lib/clinic-agenda-hours";
 
 type Row = {
   id: string;
@@ -214,6 +219,8 @@ export function ProfessionalsManagerModal({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editSpecialty, setEditSpecialty] = useState("");
+  const [editAgendaCustom, setEditAgendaCustom] = useState(false);
+  const [editAgendaHours, setEditAgendaHours] = useState<Set<number>>(new Set());
 
   const revokePreview = useCallback((url: string | null) => {
     if (url) URL.revokeObjectURL(url);
@@ -468,13 +475,34 @@ export function ProfessionalsManagerModal({
     setEditingId(r.id);
     setEditName(r.name);
     setEditSpecialty(r.specialty ?? "");
+    setEditAgendaCustom(false);
+    setEditAgendaHours(new Set());
     setError(null);
+    // Carrega agenda_hours do cs_profissionais por nome (link via nome normalizado)
+    const norm = (s: string) =>
+      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    void supabase
+      .from("cs_profissionais")
+      .select("agenda_hours")
+      .eq("clinic_id", clinicId)
+      .then(({ data }) => {
+        if (!data) return;
+        const match = data.find(
+          (p) => norm((p as { nome?: string }).nome ?? "") === norm(r.name)
+        ) as { agenda_hours?: number[] | null } | undefined;
+        if (match?.agenda_hours && match.agenda_hours.length > 0) {
+          setEditAgendaCustom(true);
+          setEditAgendaHours(new Set(match.agenda_hours));
+        }
+      });
   }
 
   function cancelEditRow() {
     setEditingId(null);
     setEditName("");
     setEditSpecialty("");
+    setEditAgendaCustom(false);
+    setEditAgendaHours(new Set());
   }
 
   async function saveRowDetails(r: Row) {
@@ -485,19 +513,51 @@ export function ProfessionalsManagerModal({
     }
     setBusy(r.id);
     setError(null);
+    const agendaHours = editAgendaCustom && editAgendaHours.size > 0
+      ? [...editAgendaHours].sort((a, b) => a - b)
+      : null;
+
+    // Atualiza professionals
     const { error: u } = await supabase
       .from("professionals")
-      .update({
-        name: n,
-        specialty: editSpecialty.trim() || null,
-      })
+      .update({ name: n, specialty: editSpecialty.trim() || null })
       .eq("id", r.id)
       .eq("clinic_id", clinicId);
-    setBusy(null);
     if (u) {
+      setBusy(null);
       setError(u.message);
       return;
     }
+
+    // Sincroniza agenda_hours em cs_profissionais via RPC (evita cache do PostgREST)
+    const norm = (s: string) =>
+      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    const { data: csProfs } = await supabase
+      .from("cs_profissionais")
+      .select("id, nome")
+      .eq("clinic_id", clinicId);
+    if (csProfs) {
+      const match = (csProfs as { id: string; nome: string }[]).find(
+        (p) => norm(p.nome) === norm(r.name)
+      );
+      if (match) {
+        const { error: rpcErr } = await supabase.rpc(
+          "painel_set_profissional_agenda_hours",
+          {
+            p_clinic_id: clinicId,
+            p_prof_id: match.id,
+            p_hours: agendaHours,
+          }
+        );
+        if (rpcErr) {
+          setBusy(null);
+          setError(`Horários não guardados: ${rpcErr.message}`);
+          return;
+        }
+      }
+    }
+
+    setBusy(null);
     cancelEditRow();
     await load();
     onChanged();
@@ -729,6 +789,78 @@ export function ProfessionalsManagerModal({
                         busy={busy === r.id}
                         onPick={(v) => void updatePanelColor(r, v)}
                       />
+                      {/* Horários de atendimento */}
+                      <div className="mt-3 rounded-xl border border-[#e6e1d8] bg-[#faf8f4] p-3">
+                        <p className="text-xs font-semibold text-[#5c5348]">Horários de atendimento</p>
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            type="button"
+                            disabled={busy === r.id}
+                            onClick={() => setEditAgendaCustom(false)}
+                            className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-50 ${
+                              !editAgendaCustom
+                                ? "border-[#0f766e] bg-[#e6f5f3] text-[#0f766e]"
+                                : "border-[#d4cfc4] bg-white text-[#6b635a] hover:bg-[#f0ebe3]"
+                            }`}
+                          >
+                            Padrão da clínica
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy === r.id}
+                            onClick={() => {
+                              setEditAgendaCustom(true);
+                              if (editAgendaHours.size === 0) {
+                                setEditAgendaHours(new Set([8, 9, 10, 11, 14, 15, 16, 17]));
+                              }
+                            }}
+                            className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-50 ${
+                              editAgendaCustom
+                                ? "border-[#0f766e] bg-[#e6f5f3] text-[#0f766e]"
+                                : "border-[#d4cfc4] bg-white text-[#6b635a] hover:bg-[#f0ebe3]"
+                            }`}
+                          >
+                            Personalizado
+                          </button>
+                        </div>
+                        {editAgendaCustom && (
+                          <div className="mt-2 grid gap-1 [grid-template-columns:repeat(auto-fit,minmax(4.5rem,1fr))]">
+                            {FULL_CLINIC_AGENDA_HOURS.map((h) => {
+                              const on = editAgendaHours.has(h);
+                              return (
+                                <button
+                                  key={h}
+                                  type="button"
+                                  disabled={busy === r.id}
+                                  onClick={() => {
+                                    setEditAgendaHours((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(h)) {
+                                        if (next.size > 1) next.delete(h);
+                                      } else {
+                                        next.add(h);
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  className={`rounded-lg border py-1.5 text-xs font-semibold tabular-nums transition-colors disabled:opacity-50 ${
+                                    on
+                                      ? "border-teal-700/70 bg-teal-950/90 text-teal-100"
+                                      : "border-dashed border-[#d4cfc4] bg-white text-[#9a9288] line-through"
+                                  }`}
+                                >
+                                  {formatAgendaHourLabel(h)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {!editAgendaCustom && (
+                          <p className="mt-1.5 text-[11px] text-[#8a8278]">
+                            Usa os horários configurados em «Horários da clínica».
+                          </p>
+                        )}
+                      </div>
                     </>
                   ) : null}
                 </div>

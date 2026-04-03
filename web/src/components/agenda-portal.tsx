@@ -1245,13 +1245,13 @@ export function AgendaPortal() {
             type="button"
             onClick={() => setSidebarPage("slots")}
             className={sidebarNavClass("slots")}
-            aria-label="Horários por Dr ou Dra."
+            aria-label="Agendamentos"
           >
             <span className="shrink-0 text-[1.05rem] leading-none" aria-hidden>
               🩺
             </span>
             <span className="min-w-0 flex-1 whitespace-nowrap text-left">
-              Horários por Dr ou Dra.
+              Agendamentos
             </span>
           </button>
           <button
@@ -1474,14 +1474,14 @@ export function AgendaPortal() {
                 <button
                   type="button"
                   className={mobileNavRowClass("slots")}
-                  aria-label="Horários por Dr ou Dra."
+                  aria-label="Agendamentos"
                   onClick={() => goToSidebarPageAfterMobileMenuClose("slots")}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-lg leading-none">
                     🩺
                   </span>
                   <span className="min-w-0 flex-1 whitespace-nowrap text-left">
-                    Horários por Dr ou Dra.
+                    Agendamentos
                   </span>
                 </button>
                 <button

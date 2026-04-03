@@ -249,23 +249,41 @@ export function SlotsManagerModal({
     return () => clearInterval(id);
   }, []);
 
-  // Busca avatares dos profissionais quando as rows carregam
+  // Busca avatares dos profissionais quando as rows carregam.
+  // Faz match por nome normalizado pois cs_profissional_id pode não estar preenchido.
   useEffect(() => {
-    const profIds = [...new Set(rows.map((r) => r.profissional_id).filter(Boolean))];
-    if (!profIds.length) return;
+    if (!rows.length || !clinicId) return;
+    const profEntries = [...new Map(rows.map((r) => [r.profissional_id, r.profissional_nome])).entries()];
+    if (!profEntries.length) return;
+
     void supabase
       .from("professionals")
-      .select("id, avatar_path, avatar_emoji")
-      .in("id", profIds)
+      .select("name, avatar_path, avatar_emoji")
+      .eq("clinic_id", clinicId)
       .then(({ data }) => {
         if (!data) return;
+        // Prioriza registros que já têm avatar
+        const sorted = [...data].sort((a, b) => {
+          const aHas = !!((a as { avatar_emoji?: string | null }).avatar_emoji || (a as { avatar_path?: string | null }).avatar_path);
+          const bHas = !!((b as { avatar_emoji?: string | null }).avatar_emoji || (b as { avatar_path?: string | null }).avatar_path);
+          return Number(bHas) - Number(aHas);
+        });
+        const normalize = (s: string) =>
+          s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
         const map = new Map<string, { path: string | null; emoji: string | null }>();
-        for (const p of data) {
-          map.set(String(p.id), { path: (p as { avatar_path?: string | null }).avatar_path ?? null, emoji: (p as { avatar_emoji?: string | null }).avatar_emoji ?? null });
+        for (const [profId, profNome] of profEntries) {
+          const normNome = normalize(profNome);
+          const match = sorted.find((p) => normalize((p as { name: string }).name) === normNome);
+          if (match) {
+            map.set(profId, {
+              path: (match as { avatar_path?: string | null }).avatar_path ?? null,
+              emoji: (match as { avatar_emoji?: string | null }).avatar_emoji ?? null,
+            });
+          }
         }
         setProfAvatarMap(map);
       });
-  }, [rows, supabase]);
+  }, [rows, supabase, clinicId]);
 
   useEffect(() => {
     const q = window.matchMedia("(min-width: 640px)");
@@ -574,21 +592,26 @@ export function SlotsManagerModal({
     setConfirmError(null);
     setConfirmDone(false);
     try {
-      // Busca todos os agendamentos activos do dia e filtra pela hora local
-      // (starts_at é UTC; compara em hora local para evitar desfasamento de fuso)
       const slotHour = parseInt(slot.horario.slice(0, 2), 10);
-      const { data: rows } = await supabase
-        .from("appointments")
-        .select("id, patients(name, phone), service_name, source, starts_at, ends_at")
-        .eq("clinic_id", clinicId)
-        .neq("status", "cancelled")
-        .gte("starts_at", `${slot.data}T00:00:00`)
-        .lt("starts_at", `${slot.data}T23:59:59`)
-        .order("starts_at", { ascending: true });
-      const found = (rows ?? []).find((r) => {
-        const localHour = new Date(r.starts_at).getHours();
-        return localHour === slotHour;
-      });
+
+      // Busca em appointments (painel) e cs_agendamentos (IA) em paralelo
+      const [{ data: rows }, { data: csRaw }] = await Promise.all([
+        supabase
+          .from("appointments")
+          .select("id, patients(name, phone), service_name, source, starts_at, ends_at")
+          .eq("clinic_id", clinicId)
+          .neq("status", "cancelled")
+          .gte("starts_at", `${slot.data}T00:00:00`)
+          .lt("starts_at", `${slot.data}T23:59:59`)
+          .order("starts_at", { ascending: true }),
+        supabase.rpc("painel_list_cs_agendamentos", { p_clinic_id: clinicId }),
+      ]);
+
+      const matchHour = (startsAt: string) =>
+        new Date(startsAt).getHours() === slotHour;
+
+      // Tenta primeiro em appointments (painel)
+      const found = (rows ?? []).find((r) => matchHour(r.starts_at));
       if (found) {
         const p = Array.isArray(found.patients) ? found.patients[0] : found.patients;
         setConfirmAppt({
@@ -600,9 +623,30 @@ export function SlotsManagerModal({
           startsAt: found.starts_at,
           endsAt: found.ends_at,
         });
+        return;
+      }
+
+      // Tenta em cs_agendamentos (IA/WhatsApp)
+      const csRows = Array.isArray(csRaw) ? csRaw : [];
+      const csFound = (csRows as Record<string, unknown>[]).find(
+        (r) => typeof r.starts_at === "string" && matchHour(r.starts_at)
+      );
+      if (csFound) {
+        const p = Array.isArray(csFound.patients)
+          ? (csFound.patients as Record<string, unknown>[])[0]
+          : (csFound.patients as Record<string, unknown> | null);
+        setConfirmAppt({
+          id: String(csFound.id ?? ""),
+          patientName: (p?.name as string | null) ?? null,
+          phone: (p?.phone as string | null) ?? null,
+          serviceName: (csFound.service_name as string | null) ?? null,
+          source: (csFound.source as string | null) ?? "whatsapp",
+          startsAt: String(csFound.starts_at),
+          endsAt: String(csFound.ends_at ?? csFound.starts_at),
+        });
       }
     } catch {/* ignore — mostra o modal mesmo sem dados completos */}
-    setConfirmFetching(false);
+    finally { setConfirmFetching(false); }
   }
 
   async function execToggleSlot(slot: CsSlotRow) {
@@ -1001,6 +1045,8 @@ export function SlotsManagerModal({
                           profId={profId}
                           name={head.profissional_nome}
                           specialty={head.especialidade}
+                          photoUrl={professionalAvatarPublicUrl(supabase, profAvatarMap.get(profId)?.path)}
+                          emoji={profAvatarMap.get(profId)?.emoji}
                         />
                         {procsLine ? (
                           <p
@@ -1153,9 +1199,20 @@ export function SlotsManagerModal({
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.61 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.18 6.18l.96-.86a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 17.92z"/></svg>
                     Contacto
                   </div>
-                  <p className="text-sm font-bold text-[var(--text)]">
-                    {confirmFetching ? "…" : (appt?.phone ?? "—")}
-                  </p>
+                  {confirmFetching ? (
+                    <p className="text-sm font-bold text-[var(--text)]">…</p>
+                  ) : appt?.phone ? (
+                    <a
+                      href={`https://wa.me/${appt.phone.replace(/\D/g, "")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-bold text-[var(--primary)] hover:underline"
+                    >
+                      {appt.phone.replace(/@.*$/, "").replace(/\D/g, "")}
+                    </a>
+                  ) : (
+                    <p className="text-sm font-bold text-[var(--text)]">—</p>
+                  )}
                 </div>
               </div>
 
