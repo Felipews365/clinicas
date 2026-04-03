@@ -25,6 +25,8 @@ import { resolveProfessionalCardStyle } from "@/lib/professional-palette";
 import type { PainelCsSlotRow, PainelDashboardRpc } from "@/types/painel-dashboard";
 import {
   type AppointmentRow,
+  isClinicConfirmed,
+  serviceNamesFromAppointment,
   one,
 } from "@/types/appointments";
 
@@ -240,6 +242,7 @@ type ProfRosterEntry = {
   name: string;
   panel_color: string | null;
   cs_profissional_id?: string | null;
+  is_active?: boolean;
 };
 
 export type PainelDashboardProps = {
@@ -319,12 +322,11 @@ export function PainelDashboard({
   viewToggleIdle,
 }: PainelDashboardProps) {
   const router = useRouter();
-  const [nowTick, setNowTick] = useState(() => new Date());
 
-  useEffect(() => {
-    const id = window.setInterval(() => setNowTick(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const [gridModalAppt, setGridModalAppt] = useState<AppointmentRow | null>(null);
+  const [gridModalBusy, setGridModalBusy] = useState(false);
+  const [gridModalError, setGridModalError] = useState<string | null>(null);
+  const [gridModalCancelDone, setGridModalCancelDone] = useState(false);
 
   const { data: kpiData, isLoading: kpiLoading } = useQuery({
     queryKey: ["painel_dashboard_kpis", clinicId],
@@ -405,6 +407,49 @@ export function PainelDashboard({
     [dayRowsForGrid, dayKey, profRoster, slotLookup]
   );
 
+  const openGridModal = useCallback(
+    (profId: string, hour: number) => {
+      const ap = dayRowsForGrid.find(
+        (r) =>
+          rowMatchesProfessionalFilter(r, profId, profRoster) &&
+          overlapsLocalHour(r.starts_at, r.ends_at, dayKey, hour)
+      );
+      if (!ap) return;
+      setGridModalAppt(ap);
+      setGridModalError(null);
+      setGridModalCancelDone(false);
+    },
+    [dayRowsForGrid, dayKey, profRoster]
+  );
+
+  const handleGridCancel = useCallback(async () => {
+    if (!gridModalAppt) return;
+    setGridModalBusy(true);
+    setGridModalError(null);
+    const id = gridModalAppt.id;
+    let errMsg: string | null = null;
+    if (id.startsWith("cs:")) {
+      const { error } = await supabase.rpc("painel_cancel_cs_agendamento", {
+        p_clinic_id: clinicId,
+        p_cs_agendamento_id: id.slice(3),
+      });
+      if (error) errMsg = error.message;
+    } else {
+      const { error } = await supabase
+        .from("appointments")
+        .update({ status: "cancelled" })
+        .eq("id", id);
+      if (error) errMsg = error.message;
+    }
+    setGridModalBusy(false);
+    if (errMsg) {
+      setGridModalError(errMsg);
+      return;
+    }
+    setGridModalCancelDone(true);
+    await loadAppointments();
+  }, [gridModalAppt, supabase, clinicId, loadAppointments]);
+
   const meta = kpiData?.meta;
   const month = kpiData?.month;
   const insights = kpiData?.insights;
@@ -423,7 +468,7 @@ export function PainelDashboard({
     [topServices]
   );
 
-  const profFilterAsSelect = profRoster.length >= 5;
+  const profFilterAsSelect = true;
   const profFilterSelectValue =
     profFilterId &&
     profRoster.some((p) => p.id === profFilterId)
@@ -439,43 +484,220 @@ export function PainelDashboard({
         loadAppointments={loadAppointments}
       />
 
-      <div className="sticky top-0 z-10 -mx-4 mb-6 border-b border-[var(--border)] bg-[var(--bg)]/95 px-4 py-2 backdrop-blur-sm sm:-mx-7 sm:px-7">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--text-muted)]">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 font-medium text-emerald-500">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-              Sistema online
-            </span>
-            <span className="hidden sm:inline">|</span>
-            <span>
-              Profissionais activos:{" "}
-              <strong className="text-[var(--text)]">
-                {meta?.professionals_active ?? profRoster.length}
-              </strong>
-            </span>
-            {meta?.ia_active ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-teal-500/15 px-2 py-0.5 text-[11px] font-semibold text-teal-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-teal-400" />
-                IA activa
-              </span>
-            ) : (
-              <span className="text-[11px] text-[var(--text-muted)]">
-                IA inactiva
-              </span>
-            )}
+      {/* Modal de detalhe do agendamento (grid) */}
+      {gridModalAppt ? (() => {
+        const appt = gridModalAppt;
+        const patient = one(appt.patients);
+        const prof = one(appt.professionals);
+        const start = new Date(appt.starts_at);
+        const end = new Date(appt.ends_at);
+        const fmtTime = (d: Date) =>
+          new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(d);
+        const fmtDate = new Intl.DateTimeFormat("pt-BR", {
+          weekday: "short", day: "2-digit", month: "short",
+        }).format(start);
+        const isCs = appt.id.startsWith("cs:");
+        const confirmed = isClinicConfirmed(appt);
+        const services = serviceNamesFromAppointment(appt.service_name);
+        const initials = (patient?.name ?? "?")
+          .split(" ").slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
+        const originLabel = isCs ? "Agendamento IA" : appt.source === "painel" ? "Painel" : (appt.source ?? "—");
+        const originIsTeal = isCs;
+
+        return (
+          <div
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[3px]"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => { if (e.target === e.currentTarget && !gridModalBusy) setGridModalAppt(null); }}
+          >
+            <div className="w-full max-w-2xl rounded-2xl border border-[var(--border)] bg-[var(--surface-soft)] shadow-2xl overflow-hidden">
+
+              {gridModalCancelDone ? (
+                /* ── Ecrã de sucesso ── */
+                <div className="flex flex-col items-center gap-4 px-6 py-12 text-center">
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/15">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-emerald-500"><path d="M20 6 9 17l-5-5"/></svg>
+                  </span>
+                  <div>
+                    <p className="font-display text-lg font-semibold text-[var(--text)]">Agendamento cancelado</p>
+                    <p className="mt-1 text-sm text-[var(--text-muted)]">O horário foi liberado na agenda.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setGridModalAppt(null)}
+                    className="mt-1 rounded-xl bg-[var(--primary)] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[var(--primary-strong)]"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              ) : (
+                /* ── Card principal ── */
+                <div className="p-5 space-y-4">
+                  {/* Topo: avatar + nome + badges + fechar */}
+                  <div className="flex items-center gap-4">
+                    {/* Avatar */}
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)]/20 text-base font-bold text-[var(--primary)]">
+                      {initials}
+                    </div>
+                    {/* Nome */}
+                    <div className="min-w-0 flex-1">
+                      <p className="font-display text-lg font-semibold text-[var(--text)] truncate">
+                        {patient?.name ?? "—"}
+                      </p>
+                    </div>
+                    {/* Badges */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {prof?.name ? (
+                        <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs font-medium text-[var(--text-muted)]">
+                          {prof.name}
+                        </span>
+                      ) : null}
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+                        confirmed
+                          ? "bg-emerald-500/15 text-emerald-400"
+                          : "bg-amber-500/15 text-amber-400"
+                      }`}>
+                        {confirmed
+                          ? <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6 9 17l-5-5"/></svg>Confirmado</>
+                          : <>Pendente</>
+                        }
+                      </span>
+                      {/* Fechar */}
+                      <button
+                        type="button"
+                        onClick={() => setGridModalAppt(null)}
+                        disabled={gridModalBusy}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-[var(--surface-2)] disabled:opacity-50"
+                        aria-label="Fechar"
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Grid de info cards */}
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {/* DATA */}
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+                      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                        Data
+                      </div>
+                      <p className="text-sm font-bold text-[var(--text)]">{fmtDate}</p>
+                    </div>
+                    {/* HORÁRIO */}
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+                      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                        Horário
+                      </div>
+                      <p className="text-sm font-bold text-[var(--text)]">{fmtTime(start)}</p>
+                      <p className="text-[11px] text-[var(--text-muted)]">até {fmtTime(end)}</p>
+                    </div>
+                    {/* PROFISSIONAL */}
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+                      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        Profissional
+                      </div>
+                      <p className="text-sm font-bold text-[var(--text)]">{prof?.name ?? "—"}</p>
+                    </div>
+                    {/* ORIGEM */}
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+                      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        Origem
+                      </div>
+                      <p className={`text-sm font-bold ${originIsTeal ? "text-[var(--primary)]" : "text-[var(--text)]"}`}>
+                        {originLabel}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Segunda linha: procedimentos + contacto */}
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {/* PROCEDIMENTOS */}
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+                      <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                        Procedimentos
+                      </div>
+                      {services.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {services.map((s) => (
+                            <span key={s} className="inline-flex items-center gap-1 rounded-full bg-[var(--primary)]/15 px-2.5 py-0.5 text-[11px] font-semibold text-[var(--primary)]">
+                              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2a3 3 0 0 0-3 3v4H6a3 3 0 0 0-3 3v4a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-4a3 3 0 0 0-3-3h-3V5a3 3 0 0 0-3-3z"/></svg>
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-[var(--text-muted)]">—</p>
+                      )}
+                    </div>
+                    {/* CONTACTO */}
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+                      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.61 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.18 6.18l.96-.86a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 17.92z"/></svg>
+                        Contacto
+                      </div>
+                      <p className="text-sm font-bold text-[var(--text)]">{patient?.phone ?? "—"}</p>
+                    </div>
+                  </div>
+
+                  {/* Notas */}
+                  {appt.notes ? (
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Notas</p>
+                      <p className="text-sm text-[var(--text)]">{appt.notes}</p>
+                    </div>
+                  ) : null}
+
+                  {/* Aviso desmarcar */}
+                  <div className="rounded-xl border border-[var(--warning-border)] bg-[var(--warning-soft)] px-4 py-3 text-xs leading-relaxed text-[var(--warning-text)]">
+                    <p className="font-semibold mb-1">O que acontece ao desmarcar?</p>
+                    <ul className="list-disc pl-4 space-y-0.5">
+                      <li>O agendamento é marcado como <strong>cancelado</strong> no sistema.</li>
+                      <li>O horário fica <strong>disponível</strong> novamente na agenda.</li>
+                      {isCs ? <li>Como veio pelo WhatsApp/IA, o registo no agente também é cancelado.</li> : null}
+                      <li>O paciente <strong>não é notificado automaticamente</strong> — contacte-o se necessário.</li>
+                    </ul>
+                  </div>
+
+                  {gridModalError ? (
+                    <p className="rounded-lg bg-[var(--danger-soft)] px-3 py-2.5 text-xs text-[var(--danger-text)]">
+                      {gridModalError}
+                    </p>
+                  ) : null}
+
+                  {/* Acções */}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setGridModalAppt(null)}
+                      disabled={gridModalBusy}
+                      className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] py-2.5 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-soft)] disabled:opacity-50 transition-colors"
+                    >
+                      Fechar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleGridCancel()}
+                      disabled={gridModalBusy}
+                      className="flex items-center gap-2 rounded-xl bg-red-600/90 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50 transition-colors"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                      {gridModalBusy ? "A cancelar…" : "Desmarcar agendamento"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-          <time className="tabular-nums text-[var(--text)]" dateTime={nowTick.toISOString()}>
-            {new Intl.DateTimeFormat("pt-BR", {
-              weekday: "short",
-              day: "2-digit",
-              month: "short",
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            }).format(nowTick)}
-          </time>
-        </div>
-      </div>
+        );
+      })() : null}
+
 
       {kpiLoading && !kpiData ? (
         <DashboardSkeleton />
@@ -722,7 +944,7 @@ export function PainelDashboard({
             }}
             className="w-full max-w-md min-w-[12rem] rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 font-sans text-sm font-medium text-[var(--text)] shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]"
           >
-            <option value="__all__">Todos</option>
+            <option value="__all__">Todos os profissionais</option>
             {profRoster.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -992,11 +1214,16 @@ export function PainelDashboard({
                         : st === "bloqueado"
                           ? "Bloqueado"
                           : "Livre";
+                  const clickable = st === "agendado" || st === "curso";
                   return (
                     <div
                       key={h}
                       title={title}
-                      className={`h-8 w-10 shrink-0 rounded-md border border-[var(--border)]/40 ${bg}`}
+                      role={clickable ? "button" : undefined}
+                      tabIndex={clickable ? 0 : undefined}
+                      onClick={clickable ? () => openGridModal(p.id, h) : undefined}
+                      onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") openGridModal(p.id, h); } : undefined}
+                      className={`h-8 w-10 shrink-0 rounded-md border border-[var(--border)]/40 ${bg}${clickable ? " cursor-pointer transition-opacity hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white/70" : ""}`}
                     />
                   );
                 })}
@@ -1056,6 +1283,15 @@ export function PainelDashboard({
         />
       ) : null}
     </>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-2 text-sm">
+      <span className="w-24 shrink-0 text-[var(--text-muted)]">{label}</span>
+      <span className="flex-1 font-medium text-[var(--text)] break-words">{value}</span>
+    </div>
   );
 }
 

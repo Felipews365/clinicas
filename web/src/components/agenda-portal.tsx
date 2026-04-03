@@ -211,6 +211,7 @@ export function AgendaPortal() {
       name: string;
       panel_color: string | null;
       cs_profissional_id: string | null;
+      is_active: boolean;
     }[]
   >([]);
   const [viewMode, setViewMode] = useState<"calendar" | "list" | "grid">(
@@ -244,6 +245,8 @@ export function AgendaPortal() {
   );
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [humanQueueCount, setHumanQueueCount] = useState(0);
+  const [whatsappConnected, setWhatsappConnected] = useState(false);
+  const [nowTick, setNowTick] = useState(() => new Date());
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [access, setAccess] = useState<AccessState | null>(null);
   const locallyModified = useRef(new Set<string>());
@@ -303,6 +306,11 @@ export function AgendaPortal() {
   );
 
   useEffect(() => {
+    const id = window.setInterval(() => setNowTick(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
     const now = new Date();
     setDayKey(formatLocalYmd(now));
     setTodayLabel(
@@ -337,6 +345,20 @@ export function AgendaPortal() {
     if (access?.kind !== "onboarding" || !supabase) return;
     router.replace("/cadastro");
   }, [access?.kind, supabase, router]);
+
+  // Verifica status do WhatsApp para exibir "IA activa" no header.
+  useEffect(() => {
+    if (access?.kind !== "clinic") return;
+    const clinicId = access.clinicId;
+    let cancelled = false;
+    void fetch(`/api/whatsapp/status?clinicId=${clinicId}`)
+      .then((r) => r.json())
+      .then((json: { status?: string }) => {
+        if (!cancelled) setWhatsappConnected(json.status === "connected");
+      })
+      .catch(() => {/* ignore */});
+    return () => { cancelled = true; };
+  }, [access?.kind, access?.kind === "clinic" ? access.clinicId : null]);
 
   // Limpa inbox só ao mudar de clínica — não em cada refresh (para "Limpar" persistir).
   useEffect(() => {
@@ -385,7 +407,7 @@ export function AgendaPortal() {
       supabase.rpc("painel_list_cs_agendamentos", { p_clinic_id: clinicId }),
       supabase
         .from("professionals")
-        .select("id, name, panel_color, cs_profissional_id")
+        .select("id, name, panel_color, cs_profissional_id, is_active")
         .eq("clinic_id", clinicId)
         .order("sort_order", { ascending: true })
         .order("name", { ascending: true }),
@@ -397,6 +419,7 @@ export function AgendaPortal() {
         name: string;
         panel_color: string | null;
         cs_profissional_id: string | null;
+        is_active: boolean;
       }[]
     );
 
@@ -1275,26 +1298,7 @@ export function AgendaPortal() {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
             Relatório
           </button>
-          <button
-            type="button"
-            onClick={() => setSidebarPage("alerts")}
-            className={`relative ${sidebarNavClass("alerts")}`}
-          >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-            </svg>
-            <span className="min-w-0 flex-1 text-left">Alertas</span>
-            {agendaNotif.unreadCount > 0 ? (
-              <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                {agendaNotif.unreadCount > 99 ? "99+" : agendaNotif.unreadCount}
-              </span>
-            ) : null}
-          </button>
         </nav>
-        <div className="flex shrink-0 justify-center border-b border-[var(--border)] px-3 py-2.5">
-          <ThemeToggle />
-        </div>
         {/* Footer */}
         <div className="px-3 py-3 space-y-0.5">
           <p className="truncate px-3 py-1 text-[11px] text-[var(--text-muted)]">{session.user.email}</p>
@@ -1310,6 +1314,56 @@ export function AgendaPortal() {
         toasts={agendaNotif.toasts}
         dismissToast={agendaNotif.dismissToast}
       />
+      {/* Status bar desktop — fora do scroll, sempre fixo no topo */}
+      <div className="hidden sm:flex shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--bg)]/95 px-7 py-2 backdrop-blur-sm text-xs text-[var(--text-muted)]">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex items-center gap-1.5 font-medium text-emerald-500">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+            Sistema online
+          </span>
+          <span>|</span>
+          <span>
+            Profissionais activos:{" "}
+            <strong className="text-[var(--text)]">{profRoster.filter((p) => p.is_active !== false).length}</strong>
+          </span>
+          {whatsappConnected ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-teal-500/15 px-2 py-0.5 text-[11px] font-semibold text-teal-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-teal-400" />
+              IA activa
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSidebarPage("alerts")}
+            className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--text)]"
+            title="Alertas"
+            aria-label="Abrir alertas"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            {agendaNotif.unreadCount > 0 ? (
+              <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold text-white leading-none">
+                {agendaNotif.unreadCount > 99 ? "99+" : agendaNotif.unreadCount}
+              </span>
+            ) : null}
+          </button>
+          <ThemeToggle size="sm" />
+          <time className="tabular-nums text-[var(--text)]" dateTime={nowTick.toISOString()}>
+            {new Intl.DateTimeFormat("pt-BR", {
+              weekday: "short",
+              day: "2-digit",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            }).format(nowTick)}
+          </time>
+        </div>
+      </div>
       <header className={`sticky top-0 z-30 shrink-0 border-b border-[var(--border)] bg-[var(--surface)]/85 backdrop-blur-md sm:hidden ${mobileMenuOpen ? "z-[60]" : "z-30"}`}>
         <div className="flex items-center gap-2 px-4 py-3">
           <button
@@ -1625,6 +1679,7 @@ export function AgendaPortal() {
               <ConectarWhatsapp
                 clinicId={access.clinicId}
                 supabase={supabase}
+                onStatusChange={(s) => setWhatsappConnected(s === "connected")}
               />
             ) : null}
             {sidebarPage === "clinic-subscription" ? (

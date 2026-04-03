@@ -54,6 +54,19 @@ export function one<T>(x: T | T[] | null | undefined): T | null {
   return Array.isArray(x) ? (x[0] ?? null) : x;
 }
 
+
+/** Vários nomes a partir de `service_name` (separadores: `,` `;` `·` `/` ou quebra de linha). */
+export function serviceNamesFromAppointment(
+  service_name: string | null | undefined
+): string[] {
+  const raw = service_name?.trim();
+  if (!raw) return [];
+  return raw
+    .split(/\s*[,;/]\s*|\s*·\s*|\n+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
 export function formatRange(starts: string, ends: string) {
   const s = new Date(starts);
   const e = new Date(ends);

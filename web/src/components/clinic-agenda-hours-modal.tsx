@@ -86,8 +86,12 @@ export function ClinicAgendaHoursModal({
   }, [open, clinicId, supabase]);
 
   useEffect(() => {
-    if (open) void load();
-  }, [open, load]);
+    if (!open || !clinicId) return;
+    const id = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => clearTimeout(id);
+  }, [open, clinicId, load]);
 
   const sortedSelection = useMemo(
     () => [...selected].sort((a, b) => a - b),

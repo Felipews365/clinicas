@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { professionalCardCssVars } from "@/lib/professional-palette";
 import { useDataTheme } from "@/lib/use-data-theme";
 import {
@@ -8,9 +8,18 @@ import {
   isClinicConfirmed,
   isCsAgentBooking,
   one,
+  serviceNamesFromAppointment,
   statusLabel,
   type AppointmentRow,
 } from "@/types/appointments";
+
+function bookingOriginLabel(r: AppointmentRow): string {
+  if (isCsAgentBooking(r)) return "Agendamento IA";
+  if (r.source === "painel") return "Clínica no painel";
+  if (r.source === "whatsapp") return "Agente WhatsApp";
+  const t = r.source?.trim();
+  return t || "—";
+}
 
 function initials(name: string | null | undefined): string {
   if (!name?.trim()) return "?";
@@ -66,6 +75,13 @@ function formatPhoneDisplay(phone: string): string {
     return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
   }
   return phone || "—";
+}
+
+function telHref(raw: string): string | null {
+  const d = raw.replace(/\D/g, "");
+  if (d.length < 8) return null;
+  if (d.length <= 11 && !d.startsWith("55")) return "tel:+55" + d;
+  return "tel:+" + d;
 }
 
 function IconCalendar({ className }: { className?: string }) {
@@ -210,6 +226,76 @@ function IconHourglass({ className }: { className?: string }) {
   );
 }
 
+function IconOrigin({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
+}
+
+function IconProcedures({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 2H2v10l9.29 9.29c.94.94 2.46.94 3.4 0l6.6-6.6c.94-.94.94-2.46 0-3.4L12 2Z" />
+      <path d="M7 7h.01" />
+    </svg>
+  );
+}
+
+function AppointmentFieldSubCard({
+  icon,
+  label,
+  children,
+  className = "",
+}: {
+  icon: ReactNode;
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={
+        "flex gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3 transition-[background-color,box-shadow] duration-200 ease-out hover:bg-[var(--surface-soft)] hover:shadow-[0_8px_28px_-14px_rgba(15,23,23,0.22)] dark:hover:shadow-[0_10px_32px_-14px_rgba(0,0,0,0.55)] " +
+        className
+      }
+    >
+      <span className="mt-0.5 shrink-0 text-[var(--primary)] [&_svg]:h-[18px] [&_svg]:w-[18px] [&_svg]:shrink-0">
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <dt className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          {label}
+        </dt>
+        <dd className="mt-1.5 min-w-0">{children}</dd>
+      </div>
+    </div>
+  );
+}
+
 type Props = {
   rows: AppointmentRow[];
   busyId: string | null;
@@ -232,13 +318,14 @@ export function AppointmentCardList({
         const prof = one(r.professionals);
         const name = patient?.name ?? "Paciente";
         const phone = patient?.phone ?? "—";
+        const phoneHref = telHref(phone);
         const profName = prof?.name?.trim() || null;
-        const profSpecialty = prof?.specialty?.trim() || null;
         const pending = r.status === "scheduled" && awaitsConfirmation(r);
         const confirmed = r.status === "scheduled" && isClinicConfirmed(r);
         const fromAgentIa = isCsAgentBooking(r);
         const fromWhatsAppPending =
           pending && (r.source === "whatsapp" || r.id.startsWith("cs:"));
+        const serviceNames = serviceNamesFromAppointment(r.service_name);
 
         const avatarClass =
           r.status === "cancelled"
@@ -284,12 +371,6 @@ export function AppointmentCardList({
                             ? "Agendamento IA · aguarda confirmação da clínica"
                             : "Origem: WhatsApp · aguarda confirmação da clínica"}
                         </p>
-                      ) : r.status === "scheduled" &&
-                        confirmed &&
-                        (r.source === "whatsapp" || r.id.startsWith("cs:")) ? (
-                        <p className="mt-1 text-xs font-medium text-[var(--text-muted)]">
-                          {fromAgentIa ? "Agendamento IA" : "Origem: agente WhatsApp"}
-                        </p>
                       ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 lg:justify-end">
@@ -318,87 +399,86 @@ export function AppointmentCardList({
                   </div>
 
                   <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fill,minmax(200px,1fr))]">
-                    <div className="flex items-start gap-3 rounded-xl bg-[var(--surface-soft)] px-3 py-2.5">
-                      <span className="mt-0.5 text-[var(--primary)]">
-                        <IconCalendar className="opacity-90" />
+                    <AppointmentFieldSubCard icon={<IconCalendar />} label="Data">
+                      <span
+                        className="text-base font-bold leading-snug text-[var(--text)]"
+                        suppressHydrationWarning
+                      >
+                        {formatDateLine(r.starts_at)}
                       </span>
-                      <div>
-                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                          Data
-                        </dt>
-                        <dd className="text-sm font-medium text-[var(--text)]" suppressHydrationWarning>
-                          {formatDateLine(r.starts_at)}
-                        </dd>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3 rounded-xl bg-[var(--surface-soft)] px-3 py-2.5">
-                      <span className="mt-0.5 text-[var(--primary)]">
-                        <IconClock className="opacity-90" />
+                    </AppointmentFieldSubCard>
+                    <AppointmentFieldSubCard icon={<IconClock />} label="Horário">
+                      <span
+                        className="text-base font-bold tabular-nums leading-snug text-[var(--text)]"
+                        suppressHydrationWarning
+                      >
+                        {formatTimeLine(r.starts_at)}
                       </span>
-                      <div>
-                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                          Horário
-                        </dt>
-                        <dd className="text-sm font-medium tabular-nums text-[var(--text)]" suppressHydrationWarning>
-                          {formatTimeLine(r.starts_at)}
-                        </dd>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3 rounded-xl bg-[var(--surface-soft)] px-3 py-2.5 sm:col-span-2 lg:col-span-1">
-                      <span className="mt-0.5 shrink-0 text-[var(--primary)]">
-                        <IconStethoscope className="opacity-90" />
+                    </AppointmentFieldSubCard>
+                    <AppointmentFieldSubCard
+                      icon={<IconStethoscope />}
+                      label="Profissional"
+                      className="sm:col-span-2 lg:col-span-1"
+                    >
+                      <span className="block text-base font-bold leading-snug text-[var(--text)]">
+                        {profName ?? "Profissional"}
                       </span>
-                      <div className="min-w-0">
-                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                          Profissional e serviço
-                        </dt>
-                        <dd className="text-sm font-medium text-[var(--text)]">
-                          {fromAgentIa ? (
-                            <span className="mb-1 block text-xs font-semibold text-[var(--primary)]">
-                              Agendamento IA
+                    </AppointmentFieldSubCard>
+                    <AppointmentFieldSubCard icon={<IconOrigin />} label="Origem">
+                      <span
+                        className={
+                          "block text-base font-bold leading-snug " +
+                          (fromAgentIa ? "text-[var(--primary)]" : "text-[var(--text)]")
+                        }
+                      >
+                        {bookingOriginLabel(r)}
+                      </span>
+                    </AppointmentFieldSubCard>
+                    {serviceNames.length > 0 ? (
+                      <AppointmentFieldSubCard
+                        icon={<IconProcedures />}
+                        label="Procedimentos"
+                        className="sm:col-span-2 lg:col-span-1"
+                      >
+                        <div className="flex flex-wrap gap-1">
+                          {serviceNames.map((proc: string, idx: number) => (
+                            <span
+                              key={`${r.id}-svc-${idx}`}
+                              className="inline-flex items-center gap-1 rounded-md border border-teal-500/30 bg-teal-500/10 px-2 py-0.5 text-xs font-medium text-teal-400"
+                            >
+                              <span className="text-[10px] leading-none" aria-hidden>
+                                🦷
+                              </span>
+                              {proc}
                             </span>
-                          ) : null}
-                          {profName ?? "Profissional"}
-                          {profSpecialty && (
-                            <span className="mt-0.5 block text-xs font-normal text-[var(--text-muted)]">
-                              {profSpecialty}
-                            </span>
-                          )}
-                          {r.service_name && (
-                            <span className="mt-0.5 block text-xs font-semibold text-[var(--primary)]">
-                              {r.service_name}
-                            </span>
-                          )}
-                        </dd>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3 rounded-xl bg-[var(--surface-soft)] px-3 py-2.5">
-                      <span className="mt-0.5 text-[var(--primary)]">
-                        <IconPhone className="opacity-90" />
-                      </span>
-                      <div>
-                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                          Contacto
-                        </dt>
-                        <dd className="text-sm font-medium tabular-nums text-[var(--text)]">
-                          {formatPhoneDisplay(phone)}
-                        </dd>
-                      </div>
-                    </div>
-                    {r.notes ? (
-                      <div className="flex items-start gap-3 rounded-xl bg-[var(--surface-soft)] px-3 py-2.5 sm:col-span-2">
-                        <span className="mt-0.5 text-[var(--primary)]">
-                          <IconChat className="opacity-90" />
-                        </span>
-                        <div className="min-w-0">
-                          <dt className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                            Notas
-                          </dt>
-                          <dd className="line-clamp-3 text-sm leading-relaxed text-[var(--text-muted)]">
-                            {r.notes}
-                          </dd>
+                          ))}
                         </div>
-                      </div>
+                      </AppointmentFieldSubCard>
+                    ) : null}
+                    <AppointmentFieldSubCard icon={<IconPhone />} label="Contacto">
+                      {phoneHref ? (
+                        <a
+                          href={phoneHref}
+                          className="inline-block text-base font-bold tabular-nums leading-snug text-[var(--text)] transition-colors hover:text-[var(--primary)] hover:underline"
+                        >
+                          {formatPhoneDisplay(phone)}
+                        </a>
+                      ) : (
+                        <span className="text-base font-bold tabular-nums leading-snug text-[var(--text)]">
+                          {formatPhoneDisplay(phone)}
+                        </span>
+                      )}
+                    </AppointmentFieldSubCard>
+                    {r.notes ? (
+                      <AppointmentFieldSubCard
+                        icon={<IconChat />}
+                        label="Notas"
+                        className="sm:col-span-2"
+                      >
+                        <span className="line-clamp-3 text-sm font-normal leading-relaxed text-[var(--text-muted)]">
+                          {r.notes}
+                        </span>
+                      </AppointmentFieldSubCard>
                     ) : null}
                   </dl>
                 </div>
@@ -422,9 +502,9 @@ export function AppointmentCardList({
                     aria-label={`Cancelar agendamento de ${name}`}
                     disabled={busyId === r.id}
                     onClick={() => onRemove(r.id)}
-                    className="group inline-flex h-11 min-w-[2.75rem] items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] transition-colors hover:border-[var(--danger-text)] hover:bg-[var(--danger-soft)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--text-muted)] disabled:opacity-50"
+                    className="inline-flex h-11 min-w-[2.75rem] shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] transition-[background-color,border-color,color] duration-200 hover:border-red-500/40 hover:bg-red-500/20 hover:text-[var(--danger-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--text-muted)] disabled:opacity-50"
                   >
-                    <IconTrash className="text-[var(--text-muted)] transition-colors group-hover:text-[var(--danger-text)]" />
+                    <IconTrash className="h-[18px] w-[18px] shrink-0" />
                   </button>
                 </div>
               ) : null}

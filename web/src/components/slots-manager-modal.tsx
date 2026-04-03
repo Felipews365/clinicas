@@ -8,8 +8,9 @@ import {
   isYmdToday,
   parseLocalYmd,
 } from "@/lib/local-day";
-import { professionalInitials } from "@/lib/professional-avatar";
+import { professionalAvatarPublicUrl } from "@/lib/professional-avatar";
 import { resolveProfessionalCardStyle } from "@/lib/professional-palette";
+import { ProfessionalAvatar } from "@/components/professional-avatar";
 import { parseSlotHour } from "@/lib/slots-expediente";
 
 const DISPLAY_HOUR_START = 7;
@@ -144,22 +145,25 @@ function ProfSectionHeader({
   profId,
   name,
   specialty,
+  photoUrl,
+  emoji,
 }: {
   profId: string;
   name: string;
   specialty: string | null;
+  photoUrl?: string | null;
+  emoji?: string | null;
 }) {
-  const accent = resolveProfessionalCardStyle(null, profId).accent;
-  const initials = professionalInitials(name);
+  const panelColor = resolveProfessionalCardStyle(null, profId).accent;
   return (
     <div className="flex items-start gap-3">
-      <div
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[11px] font-bold tracking-tight text-white shadow-md ring-2 ring-white/10"
-        style={{ backgroundColor: accent }}
-        aria-hidden
-      >
-        {initials}
-      </div>
+      <ProfessionalAvatar
+        name={name}
+        photoUrl={photoUrl}
+        emoji={emoji}
+        panelColor={panelColor}
+        size="md"
+      />
       <div className="min-w-0 flex-1">
         <h3 className="text-base font-semibold text-[var(--text)]">{name}</h3>
         <p className="mt-0.5 text-xs text-[var(--text-muted)]">
@@ -208,6 +212,7 @@ export function SlotsManagerModal({
 }: Props) {
   void _clinicSlotsExpediente;
   const [rows, setRows] = useState<CsSlotRow[]>([]);
+  const [profAvatarMap, setProfAvatarMap] = useState<Map<string, { path: string | null; emoji: string | null }>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -222,10 +227,45 @@ export function SlotsManagerModal({
   const [layoutWide, setLayoutWide] = useState(false);
   const [, setClockTick] = useState(0);
 
+  // Modal de confirmação (substituí window.confirm)
+  const [confirmSlot, setConfirmSlot] = useState<CsSlotRow | null>(null);
+  const [confirmAppt, setConfirmAppt] = useState<{
+    id: string;
+    patientName: string | null;
+    phone: string | null;
+    serviceName: string | null;
+    source: string | null;
+    startsAt: string;
+    endsAt: string;
+  } | null>(null);
+  const [confirmFetching, setConfirmFetching] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [confirmDone, setConfirmDone] = useState(false);
+  const [confirmingLiberar, setConfirmingLiberar] = useState(false);
+
   useEffect(() => {
     const id = window.setInterval(() => setClockTick((t) => t + 1), 30_000);
     return () => clearInterval(id);
   }, []);
+
+  // Busca avatares dos profissionais quando as rows carregam
+  useEffect(() => {
+    const profIds = [...new Set(rows.map((r) => r.profissional_id).filter(Boolean))];
+    if (!profIds.length) return;
+    void supabase
+      .from("professionals")
+      .select("id, avatar_path, avatar_emoji")
+      .in("id", profIds)
+      .then(({ data }) => {
+        if (!data) return;
+        const map = new Map<string, { path: string | null; emoji: string | null }>();
+        for (const p of data) {
+          map.set(String(p.id), { path: (p as { avatar_path?: string | null }).avatar_path ?? null, emoji: (p as { avatar_emoji?: string | null }).avatar_emoji ?? null });
+        }
+        setProfAvatarMap(map);
+      });
+  }, [rows, supabase]);
 
   useEffect(() => {
     const q = window.matchMedia("(min-width: 640px)");
@@ -416,11 +456,7 @@ export function SlotsManagerModal({
   const isViewToday = Boolean(labelKey && isYmdToday(labelKey));
   const currentHour = new Date().getHours();
 
-  function renderSlotButton(
-    s: CsSlotRow,
-    compact: boolean,
-    slotHour: number
-  ): ReactNode {
+  function renderSlotButton(s: CsSlotRow, slotHour: number): ReactNode {
     const livre = s.disponivel;
     const porCliente = !livre && s.indisponivel_por === "cliente";
     const bloqueado = !livre && !porCliente;
@@ -444,10 +480,6 @@ export function SlotsManagerModal({
       chipLabel = "Agend.";
     }
 
-    const pad = compact ? "px-1.5 py-1 min-w-[3.25rem]" : "px-2 py-1 min-w-[3.75rem]";
-    const textMain = compact ? "text-[10px] leading-tight" : "text-[11px] leading-tight";
-    const textChip = compact ? "text-[7px]" : "text-[8px]";
-    const procSize = compact ? "text-[7px]" : "text-[8px]";
     const ariaProc = procLabel ? " Procedimento: " + procLabel + "." : "";
 
     const title = livre
@@ -460,32 +492,32 @@ export function SlotsManagerModal({
     let shell: string;
     if (bloqueado) {
       shell =
-        "border border-red-900/70 bg-red-950/75 text-red-100 shadow-sm hover:-translate-y-px focus-visible:outline-red-700 line-through decoration-red-300/60 hover:no-underline";
+        "border border-red-900/70 bg-red-950/75 text-red-300 shadow-sm hover:-translate-y-px focus-visible:outline-red-700";
     } else if (emCurso) {
       shell =
-        "border border-orange-500/80 bg-orange-500/25 text-orange-100 shadow-sm hover:-translate-y-px focus-visible:outline-orange-500";
+        "border-2 border-orange-400 bg-orange-500 text-white shadow-[0_0_12px_rgba(249,115,22,0.55)] hover:-translate-y-px hover:shadow-[0_0_18px_rgba(249,115,22,0.7)] focus-visible:outline-orange-400";
     } else if (porCliente) {
       shell =
-        "border border-teal-400/70 bg-teal-500/20 text-teal-50 shadow-sm hover:-translate-y-px focus-visible:outline-teal-400 line-through decoration-teal-600/45 hover:no-underline";
+        "border-2 border-teal-400 bg-teal-600 text-white shadow-[0_0_10px_rgba(45,212,191,0.4)] hover:-translate-y-px hover:bg-teal-500 hover:shadow-[0_0_16px_rgba(45,212,191,0.6)] focus-visible:outline-teal-400";
     } else {
       shell =
-        "border border-teal-800/80 bg-teal-950/90 text-teal-100 shadow-sm hover:-translate-y-px focus-visible:outline-[var(--primary)]";
+        "border border-teal-800/80 bg-teal-950/90 text-teal-400 shadow-sm hover:-translate-y-px focus-visible:outline-[var(--primary)]";
     }
 
     const chipTone = bloqueado
-      ? "text-red-200/95"
+      ? "text-red-400"
       : emCurso
-        ? "text-orange-200"
+        ? "text-orange-100 font-extrabold"
         : porCliente
-          ? "text-teal-200"
-          : "text-teal-200/90";
+          ? "text-teal-100 font-extrabold"
+          : "text-teal-600";
 
     const procTone =
       porCliente || emCurso
-        ? "text-teal-100/95"
+        ? "text-white/90"
         : livre
-          ? "text-teal-100/80"
-          : "text-red-100/90";
+          ? "text-teal-600/80"
+          : "text-red-300/90";
 
     return (
       <button
@@ -497,23 +529,34 @@ export function SlotsManagerModal({
         aria-label={s.horario + " — " + estadoLabel + "." + ariaProc + " Clicar para alternar."}
         title={title}
         className={
-          "flex " +
-          pad +
-          " flex-col items-stretch gap-0 rounded-lg font-semibold tabular-nums transition-[transform,box-shadow] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60 " +
-          textMain +
-          " " +
+          "relative flex h-12 w-full min-w-0 flex-col items-center justify-center gap-0 rounded-lg px-0.5 py-0 transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60 md:h-14 md:min-w-[72px] " +
           shell
         }
       >
-        <span>{busy ? "…" : s.horario}</span>
+        {/* Indicador de agendamento */}
+        {porCliente && !busy ? (
+          <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-white/80 shadow-sm" aria-hidden />
+        ) : null}
+        {emCurso && !busy ? (
+          <span className="absolute top-1 right-1 h-2 w-2 animate-pulse rounded-full bg-white shadow-sm" aria-hidden />
+        ) : null}
+        <span className="text-center text-xs font-bold tabular-nums md:text-sm">
+          {busy ? "…" : s.horario}
+        </span>
         <span
-          className={textChip + " font-bold uppercase tracking-wide not-italic no-underline " + chipTone}
+          className={
+            "text-center text-[10px] uppercase tracking-wide not-italic no-underline md:text-xs " +
+            chipTone
+          }
         >
           {chipLabel}
         </span>
         {procLabel ? (
           <span
-            className={procSize + " line-clamp-1 text-left font-medium normal-case leading-tight no-underline " + procTone}
+            className={
+              "line-clamp-1 max-w-full px-0.5 text-center text-[9px] font-medium normal-case leading-tight no-underline md:text-[10px] " +
+              procTone
+            }
             title={procLabel}
           >
             {procLabel}
@@ -523,17 +566,47 @@ export function SlotsManagerModal({
     );
   }
 
-  async function toggleSlot(slot: CsSlotRow) {
-    if (busyId) return;
+
+  async function openClienteModal(slot: CsSlotRow) {
+    setConfirmSlot(slot);
+    setConfirmAppt(null);
+    setConfirmFetching(true);
+    setConfirmError(null);
+    setConfirmDone(false);
+    try {
+      // Busca todos os agendamentos activos do dia e filtra pela hora local
+      // (starts_at é UTC; compara em hora local para evitar desfasamento de fuso)
+      const slotHour = parseInt(slot.horario.slice(0, 2), 10);
+      const { data: rows } = await supabase
+        .from("appointments")
+        .select("id, patients(name, phone), service_name, source, starts_at, ends_at")
+        .eq("clinic_id", clinicId)
+        .neq("status", "cancelled")
+        .gte("starts_at", `${slot.data}T00:00:00`)
+        .lt("starts_at", `${slot.data}T23:59:59`)
+        .order("starts_at", { ascending: true });
+      const found = (rows ?? []).find((r) => {
+        const localHour = new Date(r.starts_at).getHours();
+        return localHour === slotHour;
+      });
+      if (found) {
+        const p = Array.isArray(found.patients) ? found.patients[0] : found.patients;
+        setConfirmAppt({
+          id: String(found.id),
+          patientName: (p as { name?: string | null } | null)?.name ?? null,
+          phone: (p as { phone?: string | null } | null)?.phone ?? null,
+          serviceName: found.service_name ?? null,
+          source: found.source ?? null,
+          startsAt: found.starts_at,
+          endsAt: found.ends_at,
+        });
+      }
+    } catch {/* ignore — mostra o modal mesmo sem dados completos */}
+    setConfirmFetching(false);
+  }
+
+  async function execToggleSlot(slot: CsSlotRow) {
     const next = !slot.disponivel;
-    if (next && slot.indisponivel_por === "cliente") {
-      const ok = window.confirm(
-        "Este horário está indisponível porque um cliente agendou.\n\n" +
-          "Tem certeza de que quer tirar esta reserva da agenda (tornar a vaga disponível)? " +
-          "Isto não apaga o agendamento na base — se a consulta não vai realizar-se, cancele o agendamento no painel antes."
-      );
-      if (!ok) return;
-    }
     setBusyId(slot.horario_id);
     setError(null);
     const { data, error: e } = await supabase.rpc(
@@ -576,9 +649,84 @@ export function SlotsManagerModal({
     );
   }
 
+  async function toggleSlot(slot: CsSlotRow) {
+    if (busyId) return;
+    const next = !slot.disponivel;
+    if (next && slot.indisponivel_por === "cliente") {
+      // Abre modal estilizado em vez de window.confirm
+      await openClienteModal(slot);
+      return;
+    }
+    await execToggleSlot(slot);
+  }
 
-  function renderSlotsRow(slots: CsSlotRow[], compact: boolean) {
+  async function handleConfirmLiberarSlot() {
+    if (!confirmSlot) return;
+    setConfirmBusy(true);
+    setConfirmError(null);
+    // Cancela o agendamento (se encontrado) para o agente poder reutilizar o horário
+    if (confirmAppt) {
+      const id = confirmAppt.id;
+      let errMsg: string | null = null;
+      if (id.startsWith("cs:")) {
+        const { error } = await supabase.rpc("painel_cancel_cs_agendamento", {
+          p_clinic_id: clinicId,
+          p_cs_agendamento_id: id.slice(3),
+        });
+        if (error) errMsg = error.message;
+      } else {
+        const { error } = await supabase
+          .from("appointments")
+          .update({ status: "cancelled" })
+          .eq("id", id);
+        if (error) errMsg = error.message;
+      }
+      if (errMsg) {
+        setConfirmError(errMsg);
+        setConfirmBusy(false);
+        return;
+      }
+    }
+    await execToggleSlot(confirmSlot);
+    setConfirmBusy(false);
+    setConfirmDone(true);
+  }
+
+  async function handleConfirmCancelarAgendamento() {
+    if (!confirmSlot || !confirmAppt) return;
+    setConfirmBusy(true);
+    setConfirmError(null);
+    const id = confirmAppt.id;
+    let errMsg: string | null = null;
+    if (id.startsWith("cs:")) {
+      const { error } = await supabase.rpc("painel_cancel_cs_agendamento", {
+        p_clinic_id: clinicId,
+        p_cs_agendamento_id: id.slice(3),
+      });
+      if (error) errMsg = error.message;
+    } else {
+      const { error } = await supabase
+        .from("appointments")
+        .update({ status: "cancelled" })
+        .eq("id", id);
+      if (error) errMsg = error.message;
+    }
+    if (errMsg) {
+      setConfirmError(errMsg);
+      setConfirmBusy(false);
+      return;
+    }
+    // Libera o slot também
+    await execToggleSlot(confirmSlot);
+    setConfirmBusy(false);
+    setConfirmDone(true);
+  }
+
+  function renderSlotsRow(slots: CsSlotRow[], _compact: boolean) {
+    void _compact;
     const dk = labelKey || activeDayKey;
+    const gridClass =
+      "mt-2 grid w-full grid-cols-4 gap-1.5 sm:grid-cols-6 sm:gap-2 md:grid-cols-[repeat(auto-fill,minmax(72px,1fr))] md:gap-2";
     const byHour = new Map<number, CsSlotRow>();
     for (const s of slots) {
       const h = parseSlotHour(s.horario);
@@ -590,18 +738,13 @@ export function SlotsManagerModal({
         .filter((s) => allowed.has(parseSlotHour(s.horario)))
         .sort((a, b) => parseSlotHour(a.horario) - parseSlotHour(b.horario));
       return (
-        <div className={"flex flex-wrap gap-1.5 " + (compact ? "" : "")}>
-          {fallback.map((s) => renderSlotButton(s, compact, parseSlotHour(s.horario)))}
+        <div className={gridClass}>
+          {fallback.map((s) => renderSlotButton(s, parseSlotHour(s.horario)))}
         </div>
       );
     }
     const hint = (
-      <p
-        className={
-          "text-[10px] leading-snug text-[var(--text-muted)] " +
-          (compact ? "col-span-4 mb-1 sm:col-span-6" : "mb-1.5")
-        }
-      >
+      <p className="col-span-full text-[10px] leading-snug text-[var(--text-muted)]">
         Blocos conforme{" "}
         <strong className="font-medium text-[var(--text)]">Configurar horários da clínica</strong>. Toque
         para bloquear ou libertar vagas (exceto fora da configuração).
@@ -613,22 +756,15 @@ export function SlotsManagerModal({
       return (
         <div
           key={"outside-" + hour}
-          className={
-            "flex flex-col items-center justify-center gap-0 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-1 py-0.5 text-center opacity-75 " +
-            (compact ? "min-w-[3.25rem]" : "min-w-[3.75rem]")
-          }
+          className="flex h-12 w-full min-w-0 flex-col items-center justify-center gap-0 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-0.5 py-0 text-center opacity-75 md:h-14 md:min-w-[72px]"
           title="Fora dos horários que a clínica configurou para aparecer na agenda"
         >
-          <span
-            className={
-              compact
-                ? "text-[10px] font-semibold tabular-nums text-[var(--text-muted)]"
-                : "text-[11px] font-semibold tabular-nums text-[var(--text-muted)]"
-            }
-          >
+          <span className="text-center text-xs font-semibold tabular-nums text-[var(--text-muted)] md:text-sm">
             {label}
           </span>
-          <span className="text-[6px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">—</span>
+          <span className="text-center text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] md:text-xs">
+            —
+          </span>
         </div>
       );
     };
@@ -638,22 +774,15 @@ export function SlotsManagerModal({
       return (
         <div
           key={"missing-" + hour}
-          className={
-            "flex flex-col items-stretch gap-0 rounded-lg border border-dashed border-teal-800/50 bg-teal-950/50 px-1 py-1 text-center " +
-            (compact ? "min-w-[3.25rem]" : "min-w-[3.75rem]")
-          }
+          className="flex h-12 w-full min-w-0 flex-col items-center justify-center gap-0 rounded-lg border border-dashed border-teal-800/50 bg-teal-950/50 px-0.5 py-0 text-center md:h-14 md:min-w-[72px]"
           title="Horário da clínica — sincronização pendente."
         >
-          <span
-            className={
-              compact
-                ? "text-[10px] font-semibold tabular-nums text-teal-100"
-                : "text-[11px] font-semibold tabular-nums text-teal-100"
-            }
-          >
+          <span className="text-center text-xs font-semibold tabular-nums text-teal-100 md:text-sm">
             {label}
           </span>
-          <span className="text-[7px] font-bold uppercase tracking-wide text-teal-300/90">Livre</span>
+          <span className="text-center text-[10px] font-bold uppercase tracking-wide text-teal-300/90 md:text-xs">
+            Livre
+          </span>
         </div>
       );
     };
@@ -662,21 +791,13 @@ export function SlotsManagerModal({
       if (!allowed.has(h)) return outsideCell(h);
       const slot = byHour.get(h);
       if (!slot) return missingCell(h);
-      return renderSlotButton(slot, compact, h);
+      return renderSlotButton(slot, h);
     });
 
-    if (compact) {
-      return (
-        <div className="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-          {hint}
-          {hoursRow}
-        </div>
-      );
-    }
     return (
-      <div>
+      <div className={gridClass}>
         {hint}
-        <div className="flex flex-wrap gap-1.5">{hoursRow}</div>
+        {hoursRow}
       </div>
     );
   }
@@ -841,6 +962,8 @@ export function SlotsManagerModal({
                             profId={profId}
                             name={head.profissional_nome}
                             specialty={head.especialidade}
+                            photoUrl={professionalAvatarPublicUrl(supabase, profAvatarMap.get(profId)?.path)}
+                            emoji={profAvatarMap.get(profId)?.emoji}
                           />
                           {procsLine ? (
                             <p
@@ -903,29 +1026,250 @@ export function SlotsManagerModal({
       </div>
   );
 
+  /* ─── Modal de confirmação "cliente agendou" ─────────────────────────────── */
+  const clienteModal = confirmSlot ? (() => {
+    const slot = confirmSlot;
+    const appt = confirmAppt;
+    const fmtTime = (iso: string) =>
+      new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+    const fmtDate = (() => {
+      try {
+        return new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).format(
+          new Date(`${slot.data}T${slot.horario.slice(0, 5)}:00`)
+        );
+      } catch { return slot.data; }
+    })();
+    const initials = (appt?.patientName ?? "?")
+      .split(" ").slice(0, 2).map((w: string) => w[0]?.toUpperCase() ?? "").join("");
+    const isCs = appt?.id?.startsWith("cs:") ?? false;
+    const originLabel = isCs ? "Agendamento IA" : appt?.source === "painel" ? "Painel" : (appt?.source ?? "—");
+
+    return (
+      <div
+        className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[3px]"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => { if (e.target === e.currentTarget && !confirmBusy) { setConfirmSlot(null); setConfirmingLiberar(false); } }}
+      >
+        <div className="w-full max-w-2xl rounded-2xl border border-[var(--border)] bg-[var(--surface-soft)] shadow-2xl overflow-hidden">
+          {confirmDone ? (
+            /* Sucesso */
+            <div className="flex flex-col items-center gap-4 px-6 py-12 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/15">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-emerald-500"><path d="M20 6 9 17l-5-5"/></svg>
+              </span>
+              <div>
+                <p className="font-display text-lg font-semibold text-[var(--text)]">Operação concluída</p>
+                <p className="mt-1 text-sm text-[var(--text-muted)]">O horário foi atualizado na agenda.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setConfirmSlot(null); setConfirmingLiberar(false); }}
+                className="mt-1 rounded-xl bg-[var(--primary)] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[var(--primary-strong)]"
+              >
+                Fechar
+              </button>
+            </div>
+          ) : (
+            <div className="p-5 space-y-4">
+              {/* Topo: avatar + nome + badges + fechar */}
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)]/20 text-base font-bold text-[var(--primary)]">
+                  {confirmFetching ? "…" : initials}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-display text-lg font-semibold text-[var(--text)] truncate">
+                    {confirmFetching ? "A carregar…" : (appt?.patientName ?? "Paciente")}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs font-medium text-[var(--text-muted)]">
+                    {slot.profissional_nome}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setConfirmSlot(null); setConfirmingLiberar(false); }}
+                    disabled={confirmBusy}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-[var(--surface-2)] disabled:opacity-50"
+                    aria-label="Fechar"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid de info cards */}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+                  <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                    Data
+                  </div>
+                  <p className="text-sm font-bold text-[var(--text)]">{fmtDate}</p>
+                </div>
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+                  <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                    Horário
+                  </div>
+                  <p className="text-sm font-bold text-[var(--text)]">{slot.horario.slice(0, 5)}</p>
+                  {appt ? <p className="text-[11px] text-[var(--text-muted)]">até {fmtTime(appt.endsAt)}</p> : null}
+                </div>
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+                  <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    Profissional
+                  </div>
+                  <p className="text-sm font-bold text-[var(--text)]">{slot.profissional_nome}</p>
+                </div>
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+                  <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    Origem
+                  </div>
+                  <p className={`text-sm font-bold ${isCs ? "text-[var(--primary)]" : "text-[var(--text)]"}`}>
+                    {confirmFetching ? "…" : originLabel}
+                  </p>
+                </div>
+              </div>
+
+              {/* Procedimento + Contacto */}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+                  <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                    Procedimentos
+                  </div>
+                  {slot.nome_procedimento ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--primary)]/15 px-2.5 py-0.5 text-[11px] font-semibold text-[var(--primary)]">
+                      {slot.nome_procedimento}
+                    </span>
+                  ) : (
+                    <p className="text-xs text-[var(--text-muted)]">{confirmFetching ? "…" : (appt?.serviceName ?? "—")}</p>
+                  )}
+                </div>
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+                  <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.61 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.18 6.18l.96-.86a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 17.92z"/></svg>
+                    Contacto
+                  </div>
+                  <p className="text-sm font-bold text-[var(--text)]">
+                    {confirmFetching ? "…" : (appt?.phone ?? "—")}
+                  </p>
+                </div>
+              </div>
+
+              {/* Aviso */}
+              <div className="rounded-xl border border-[var(--warning-border)] bg-[var(--warning-soft)] px-4 py-3 text-xs leading-relaxed text-[var(--warning-text)]">
+                <p className="font-semibold mb-1">O que acontece ao desmarcar?</p>
+                <ul className="list-disc pl-4 space-y-0.5">
+                  <li>O agendamento é marcado como <strong>cancelado</strong> no sistema.</li>
+                  <li>O horário fica <strong>disponível</strong> novamente na agenda.</li>
+                  {isCs ? <li>Como veio pelo WhatsApp/IA, o registo no agente também é cancelado.</li> : null}
+                  <li>O paciente <strong>não é notificado automaticamente</strong> — contacte-o se necessário.</li>
+                </ul>
+              </div>
+
+              {confirmError ? (
+                <p className="rounded-lg bg-[var(--danger-soft)] px-3 py-2.5 text-xs text-[var(--danger-text)]">
+                  {confirmError}
+                </p>
+              ) : null}
+
+              {/* Acções */}
+              {confirmingLiberar ? (
+                /* Confirmação "Só liberar horário" */
+                <div className="rounded-xl border border-[var(--warning-border)] bg-[var(--warning-soft)] p-4 space-y-3">
+                  <p className="text-sm font-semibold text-[var(--warning-text)]">Tem a certeza?</p>
+                  <p className="text-xs text-[var(--warning-text)] leading-relaxed">
+                    O agendamento será <strong>cancelado</strong> e o horário ficará <strong>disponível</strong> para o agente fazer novos agendamentos. O paciente não será notificado automaticamente.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingLiberar(false)}
+                      disabled={confirmBusy}
+                      className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] py-2.5 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-soft)] disabled:opacity-50 transition-colors"
+                    >
+                      Voltar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleConfirmLiberarSlot()}
+                      disabled={confirmBusy}
+                      className="flex-1 rounded-xl bg-amber-600 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                    >
+                      {confirmBusy ? "A processar…" : "Sim, liberar para novos agendamentos"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => { setConfirmSlot(null); setConfirmingLiberar(false); }}
+                    disabled={confirmBusy}
+                    className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] py-2.5 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-soft)] disabled:opacity-50 transition-colors"
+                  >
+                    Fechar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingLiberar(true)}
+                    disabled={confirmBusy || confirmFetching}
+                    className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] py-2.5 text-sm font-medium text-[var(--text-muted)] hover:bg-[var(--surface-soft)] disabled:opacity-50 transition-colors"
+                  >
+                    Só liberar horário
+                  </button>
+                  {appt ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleConfirmCancelarAgendamento()}
+                      disabled={confirmBusy || confirmFetching}
+                      className="flex items-center justify-center gap-2 rounded-xl bg-red-600/90 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50 transition-colors"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                      {confirmBusy ? "A cancelar…" : "Cancelar agendamento"}
+                    </button>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  })() : null;
+
   if (isPanel) {
     return (
-      <div className="w-full min-w-0 max-w-none text-left" role="region" aria-label="Horários por médico">
-        {shell}
-      </div>
+      <>
+        {clienteModal}
+        <div className="w-full min-w-0 max-w-none text-left" role="region" aria-label="Horários por médico">
+          {shell}
+        </div>
+      </>
     );
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="slots-modal-title"
-      aria-describedby="slots-modal-desc"
-    >
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/50 backdrop-blur-[2px] transition-opacity"
-        aria-label="Fechar"
-        onClick={onClose}
-      />
-      {shell}
-    </div>
+    <>
+      {clienteModal}
+      <div
+        className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="slots-modal-title"
+        aria-describedby="slots-modal-desc"
+      >
+        <button
+          type="button"
+          className="absolute inset-0 bg-black/50 backdrop-blur-[2px] transition-opacity"
+          aria-label="Fechar"
+          onClick={onClose}
+        />
+        {shell}
+      </div>
+    </>
   );
 }

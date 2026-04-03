@@ -9,6 +9,8 @@
   --surface: #ffffff;
   --color-surface: var(--surface);
   --surface-soft: #eef7f6;
+  --surface-2: #e0efed;
+  --surface-offset: var(--surface-2);
   --text: #1f2a2a;
   --text-muted: #5f7474;
   --border: #d8e3e1;
@@ -32,6 +34,8 @@
   --surface: #162123;
   --color-surface: var(--surface);
   --surface-soft: #1b2a2c;
+  --surface-2: #131d1f;
+  --surface-offset: var(--surface-2);
   --text: #ecf3f2;
   --text-muted: #9fb2b0;
   --border: #2a3a3c;
@@ -64,6 +68,7 @@
   --color-p-bg: var(--bg);
   --color-p-surface: var(--surface);
   --color-p-surface-soft: var(--surface-soft);
+  --color-p-surface-2: var(--surface-2);
   --color-p-text: var(--text);
   --color-p-text-muted: var(--text-muted);
   --color-p-border: var(--border);

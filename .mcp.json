@@ -6,11 +6,15 @@
     },
     "n8n": {
       "command": "npx",
-      "args": ["-y", "n8n-mcp"],
+      "args": ["-y", "@leonardsellem/n8n-mcp-server@latest"],
       "env": {
-        "N8N_URL": "https://n8n.vps7846.panel.icontainer.cloud",
-        "N8N_API_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkODUwY2QwZi02YmZhLTRhNmQtYWI1YS01NTUyMWNmZDY4NTQiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiOWE2ZTliNzctZmFkNS00MmYzLWEwODktODk4YmJjOWQ4ZTRjIiwiaWF0IjoxNzc0ODAxOTg3fQ.mj9Oj8RNKw2Pb7rL15NDa2UTCImLaGPPWzGFrL6LoTw"
+        "N8N_API_URL": "https://n8n.vps7846.panel.icontainer.cloud/api/v1",
+        "N8N_API_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkODUwY2QwZi02YmZhLTRhNmQtYWI1YS01NTUyMWNmZDY4NTQiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiNzA4ZjE2M2MtMzY0Ni00NzUwLWE0YjItMWU1NzZiNjhiZTdkIiwiaWF0IjoxNzc0OTc0Mzg5fQ.vYYq7GyHE0SgsbLo1s8K0z5A1ycrElpk-M_FtAlER6I"
       }
     }
+  },
+  "playwright": {
+    "command": "npx",
+    "args": ["-y", "@playwright/mcp@latest"]
   }
 }
