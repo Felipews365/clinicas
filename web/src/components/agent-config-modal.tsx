@@ -10,7 +10,7 @@ import {
 } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { expandAgentIdentityPlaceholders } from "@/lib/agent-placeholders";
-import { buildAgentInstructionsMarkdown } from "@/lib/agent-instructions-markdown";
+import { buildAgentInstructionsMarkdown, type AgentExtraClinicInfo } from "@/lib/agent-instructions-markdown";
 import {
   type AgentSectionKey,
   type AgentSectionsState,
@@ -676,6 +676,8 @@ export function AgentConfigModal({
   const [error, setError] = useState<string | null>(null);
   const [openSection, setOpenSection] = useState<string | null>(null);
   const [clinicModel, setClinicModel] = useState<ClinicModelId>("clinica_geral");
+  const [aceitaConvenio, setAceitaConvenio] = useState<boolean | null>(null);
+  const [linkLocalizacao, setLinkLocalizacao] = useState<string>("");
 
   /** Acordeão: só uma secção aberta; clicar na aberta fecha. */
   function toggleAccordionSection(key: string) {
@@ -714,6 +716,8 @@ export function AgentConfigModal({
               ? parsed.lembrete_sugestoes_inteligentes
               : ""
           );
+          setAceitaConvenio(typeof parsed.aceita_convenio === "boolean" ? parsed.aceita_convenio : null);
+          setLinkLocalizacao(typeof parsed.link_localizacao === "string" ? parsed.link_localizacao : "");
         } catch {
           setClinicModel("clinica_geral");
           setLembreteMinutos(null);
@@ -721,6 +725,8 @@ export function AgentConfigModal({
           setLembreteSugestoesInteligentes("");
           setQuemSomos("");
           setEnderecoClinica("");
+          setAceitaConvenio(null);
+          setLinkLocalizacao("");
         }
       });
   }, [open, supabase, clinicId]);
@@ -760,17 +766,25 @@ export function AgentConfigModal({
       !!enderecoClinica.trim() ||
       !!lembreteSugestoesInteligentes.trim() ||
       lembreteMinutos != null ||
-      clinicModel !== "clinica_geral";
+      clinicModel !== "clinica_geral" ||
+      aceitaConvenio != null ||
+      !!linkLocalizacao.trim();
+    const extra: AgentExtraClinicInfo = {
+      aceitaConvenio,
+      linkLocalizacao: linkLocalizacao.trim() || null,
+    };
     const fullConfig = {
       ...config,
       clinic_model: clinicModel,
-      instructions_markdown: buildAgentInstructionsMarkdown(config, clinicModel),
+      instructions_markdown: buildAgentInstructionsMarkdown(config, clinicModel, extra),
       nome_agente: nomeAgente.trim() || null,
       quem_somos: quemSomos.trim() || null,
       endereco: enderecoClinica.trim() || null,
       lembrete_antecedencia_minutos: lembreteMinutos,
       lembrete_mensagem: lembreteMensagem || null,
       lembrete_sugestoes_inteligentes: lembreteSugestoesInteligentes.trim() || null,
+      aceita_convenio: aceitaConvenio,
+      link_localizacao: linkLocalizacao.trim() || null,
     };
     const { error: e } = await supabase
       .from("clinics")
@@ -856,31 +870,65 @@ export function AgentConfigModal({
                   correspondente (pode editar antes de guardar). «Outro» inicia em branco para
                   configuração totalmente manual.
                 </p>
-                <div
-                  className="clinic-model-grid mt-3 flex flex-wrap gap-2"
-                  role="radiogroup"
+
+                {/* Select do modelo */}
+                <select
                   aria-label="Modelo da clínica"
+                  value={clinicModel}
+                  onChange={(e) => selectClinicModel(e.target.value as ClinicModelId)}
+                  className="mt-3 w-full rounded-lg border border-[#d4cfc4] bg-white px-3 py-2.5 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-1"
                 >
-                  {CLINIC_MODEL_OPTIONS.map((opt) => {
-                    const active = clinicModel === opt.id;
-                    return (
+                  {CLINIC_MODEL_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.emoji} {opt.label}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Aceita convênio */}
+                <div className="mt-4">
+                  <p className="text-xs font-semibold text-[#1f1c1a]">Aceita convênio / plano de saúde?</p>
+                  <p className="mt-0.5 text-[11px] text-[#8a8278]">
+                    O agente informará ao paciente automaticamente quando perguntado.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    {([
+                      { value: null, label: "Não definido" },
+                      { value: true, label: "✅ Sim, aceita" },
+                      { value: false, label: "❌ Não aceita" },
+                    ] as { value: boolean | null; label: string }[]).map((opt) => (
                       <button
-                        key={opt.id}
+                        key={String(opt.value)}
                         type="button"
-                        role="radio"
-                        aria-checked={active}
-                        onClick={() => selectClinicModel(opt.id)}
-                        className={`model-chip inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border px-3 py-2 text-left text-sm font-medium transition-[background-color,border-color,box-shadow,color] duration-200 ${
-                          active
-                            ? "border-[#1f7a74] bg-[#1f7a74] text-white shadow-[0_2px_8px_rgba(31,122,116,0.35)] ring-2 ring-[#1f7a74]/25"
+                        onClick={() => { setAceitaConvenio(opt.value); setSaved(false); }}
+                        className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                          aceitaConvenio === opt.value
+                            ? "border-[#1f7a74] bg-[#1f7a74] text-white"
                             : "border-[#ddd8cf] bg-[#faf8f5] text-[#2c2825] hover:border-[#1f7a74]/45 hover:bg-[#f3faf9]"
                         }`}
                       >
-                        <span aria-hidden>{opt.emoji}</span>
-                        <span>{opt.label}</span>
+                        {opt.label}
                       </button>
-                    );
-                  })}
+                    ))}
+                  </div>
+                </div>
+
+                {/* Link de localização */}
+                <div className="mt-4">
+                  <label htmlFor="agent-link-localizacao" className="text-xs font-semibold text-[#1f1c1a]">
+                    Link de localização (Google Maps)
+                  </label>
+                  <p className="mt-0.5 text-[11px] text-[#8a8278]">
+                    Quando o paciente pedir o endereço, o agente enviará este link.
+                  </p>
+                  <input
+                    id="agent-link-localizacao"
+                    type="url"
+                    value={linkLocalizacao}
+                    onChange={(e) => { setLinkLocalizacao(e.target.value); setSaved(false); }}
+                    placeholder="https://maps.app.goo.gl/..."
+                    className="mt-2 w-full rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
+                  />
                 </div>
               </section>
 

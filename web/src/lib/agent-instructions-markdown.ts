@@ -43,18 +43,48 @@ export function configSectionsToMarkdown(cfg: AgentSectionsState): string {
     .join("\n\n");
 }
 
+export type AgentExtraClinicInfo = {
+  aceitaConvenio?: boolean | null;
+  linkLocalizacao?: string | null;
+};
+
 /**
  * Texto agregado para o LLM: perfil da clínica + secções configuráveis.
  * Deve ser guardado em `instructions_markdown` dentro do JSON de `agent_instructions`.
  */
 export function buildAgentInstructionsMarkdown(
   cfg: AgentSectionsState,
-  clinicModel: ClinicModelId
+  clinicModel: ClinicModelId,
+  extra?: AgentExtraClinicInfo
 ): string {
   const label = clinicModelLabel(clinicModel);
-  const profile = `### PERFIL DA CLÍNICA (MODELO)\nEsta clínica está configurada no perfil **${label}** (identificador: \`${clinicModel}\`). Adapte triagem, exemplos, tom e critérios de transferência para este tipo de atendimento. O detalhe operacional está nas secções seguintes.`;
+  const blocks: string[] = [];
+
+  blocks.push(
+    `### PERFIL DA CLÍNICA (MODELO)\nEsta clínica está configurada no perfil **${label}** (identificador: \`${clinicModel}\`). Adapte triagem, exemplos, tom e critérios de transferência para este tipo de atendimento. O detalhe operacional está nas secções seguintes.`
+  );
+
+  const infoLines: string[] = [];
+  if (extra?.aceitaConvenio != null) {
+    infoLines.push(
+      extra.aceitaConvenio
+        ? "- **Convênios/planos de saúde:** Esta clínica ACEITA convênios. Quando o paciente perguntar se aceita plano, confirme que sim e peça que entre em contato para verificar qual plano é aceito."
+        : "- **Convênios/planos de saúde:** Esta clínica NÃO aceita convênios. O atendimento é APENAS PARTICULAR. Informe isso ao paciente quando perguntar sobre planos."
+    );
+  }
+  if (extra?.linkLocalizacao?.trim()) {
+    infoLines.push(
+      `- **Localização:** Quando o paciente pedir o endereço ou como chegar, envie este link do mapa: ${extra.linkLocalizacao.trim()}`
+    );
+  }
+  if (infoLines.length) {
+    blocks.push(`### INFORMAÇÕES DA CLÍNICA\n${infoLines.join("\n")}`);
+  }
+
   const body = configSectionsToMarkdown(cfg).trim();
-  return body ? `${profile}\n\n${body}` : profile;
+  if (body) blocks.push(body);
+
+  return blocks.join("\n\n");
 }
 
 /**
