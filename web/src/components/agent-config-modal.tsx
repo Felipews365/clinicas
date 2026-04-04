@@ -885,52 +885,122 @@ export function AgentConfigModal({
                   ))}
                 </select>
 
-                {/* Aceita convênio */}
-                <div className="mt-4">
-                  <p className="text-xs font-semibold text-[#1f1c1a]">Aceita convênio / plano de saúde?</p>
-                  <p className="mt-0.5 text-[11px] text-[#8a8278]">
-                    O agente informará ao paciente automaticamente quando perguntado.
-                  </p>
-                  <div className="mt-2 flex gap-2">
-                    {([
-                      { value: null, label: "Não definido" },
-                      { value: true, label: "✅ Sim, aceita" },
-                      { value: false, label: "❌ Não aceita" },
-                    ] as { value: boolean | null; label: string }[]).map((opt) => (
-                      <button
-                        key={String(opt.value)}
-                        type="button"
-                        onClick={() => { setAceitaConvenio(opt.value); setSaved(false); }}
-                        className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                          aceitaConvenio === opt.value
-                            ? "border-[#1f7a74] bg-[#1f7a74] text-white"
-                            : "border-[#ddd8cf] bg-[#faf8f5] text-[#2c2825] hover:border-[#1f7a74]/45 hover:bg-[#f3faf9]"
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Link de localização */}
-                <div className="mt-4">
-                  <label htmlFor="agent-link-localizacao" className="text-xs font-semibold text-[#1f1c1a]">
-                    Link de localização (Google Maps)
-                  </label>
-                  <p className="mt-0.5 text-[11px] text-[#8a8278]">
-                    Quando o paciente pedir o endereço, o agente enviará este link.
-                  </p>
-                  <input
-                    id="agent-link-localizacao"
-                    type="url"
-                    value={linkLocalizacao}
-                    onChange={(e) => { setLinkLocalizacao(e.target.value); setSaved(false); }}
-                    placeholder="https://maps.app.goo.gl/..."
-                    className="mt-2 w-full rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
-                  />
-                </div>
               </section>
+
+              {/* Aceita convênio (acordeão) */}
+              <div className="overflow-hidden rounded-xl border border-[#e4ddd3] bg-white">
+                <button
+                  type="button"
+                  onClick={() => toggleAccordionSection("convenio")}
+                  className="flex w-full items-center gap-2.5 px-4 py-3.5 text-left transition-colors hover:bg-[#faf7f2]"
+                >
+                  <span className="text-base">🏥</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[#1f1c1a]">Convênio / plano de saúde</p>
+                    <p className="mt-0.5 text-xs text-[#8a8278]">
+                      O agente informará ao paciente automaticamente quando perguntado.
+                    </p>
+                  </div>
+                  {aceitaConvenio != null && (
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-[#3d6b62]" aria-label="configurado" />
+                  )}
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className={`h-4 w-4 shrink-0 text-[#8a8278] transition-transform duration-200 ${openSection === "convenio" ? "rotate-180" : ""}`}
+                  >
+                    <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                {openSection === "convenio" && (
+                  <div className="border-t border-[#ebe6dd] px-4 pb-4 pt-3">
+                    <p className="text-xs text-[#5c5348]">Aceita convênio / plano de saúde?</p>
+                    <div className="mt-2 flex gap-2">
+                      {([
+                        { value: null, label: "Não definido" },
+                        { value: true, label: "✅ Sim, aceita" },
+                        { value: false, label: "❌ Não aceita" },
+                      ] as { value: boolean | null; label: string }[]).map((opt) => (
+                        <button
+                          key={String(opt.value)}
+                          type="button"
+                          onClick={() => { setAceitaConvenio(opt.value); setSaved(false); }}
+                          className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                            aceitaConvenio === opt.value
+                              ? "border-[#1f7a74] bg-[#1f7a74] text-white"
+                              : "border-[#ddd8cf] bg-[#faf8f5] text-[#2c2825] hover:border-[#1f7a74]/45 hover:bg-[#f3faf9]"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Link de localização (acordeão) */}
+              <div className="overflow-hidden rounded-xl border border-[#e4ddd3] bg-white">
+                <button
+                  type="button"
+                  onClick={() => toggleAccordionSection("localizacao")}
+                  className="flex w-full items-center gap-2.5 px-4 py-3.5 text-left transition-colors hover:bg-[#faf7f2]"
+                >
+                  <span className="text-base">📍</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[#1f1c1a]">Link de localização (Google Maps)</p>
+                    <p className="mt-0.5 text-xs text-[#8a8278]">
+                      Quando o paciente pedir o endereço, o agente enviará este link.
+                    </p>
+                  </div>
+                  {!!linkLocalizacao.trim() && (
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-[#3d6b62]" aria-label="configurado" />
+                  )}
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className={`h-4 w-4 shrink-0 text-[#8a8278] transition-transform duration-200 ${openSection === "localizacao" ? "rotate-180" : ""}`}
+                  >
+                    <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                {openSection === "localizacao" && (
+                  <div className="border-t border-[#ebe6dd] px-4 pb-4 pt-3 space-y-3">
+                    {/* Passo a passo */}
+                    <div className="rounded-lg bg-[#f3faf9] border border-[#c8e0db] px-3 py-2.5">
+                      <p className="text-xs font-semibold text-[#1f7a74] mb-1.5">Como obter o link correto</p>
+                      <ol className="space-y-1 text-[11px] text-[#4a5e5b] list-none">
+                        <li className="flex gap-1.5"><span className="font-bold text-[#1f7a74] shrink-0">1.</span><span>Abra o <strong>Google Maps</strong> no celular ou computador.</span></li>
+                        <li className="flex gap-1.5"><span className="font-bold text-[#1f7a74] shrink-0">2.</span><span>Pesquise o nome ou endereço da sua clínica.</span></li>
+                        <li className="flex gap-1.5"><span className="font-bold text-[#1f7a74] shrink-0">3.</span><span>Clique em <strong>Compartilhar</strong> (ícone de seta ou três pontos → Compartilhar).</span></li>
+                        <li className="flex gap-1.5"><span className="font-bold text-[#1f7a74] shrink-0">4.</span><span>Selecione <strong>Copiar link</strong> — ele começa com <code className="rounded bg-[#dff0ed] px-1 py-0.5">https://maps.app.goo.gl/</code></span></li>
+                        <li className="flex gap-1.5"><span className="font-bold text-[#1f7a74] shrink-0">5.</span><span>Cole o link no campo abaixo e clique em <strong>Guardar</strong>.</span></li>
+                      </ol>
+                    </div>
+                    <input
+                      id="agent-link-localizacao"
+                      type="url"
+                      value={linkLocalizacao}
+                      onChange={(e) => { setLinkLocalizacao(e.target.value); setSaved(false); }}
+                      placeholder="https://maps.app.goo.gl/..."
+                      className="w-full rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
+                    />
+                    {linkLocalizacao.trim() && (
+                      <a
+                        href={linkLocalizacao.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#c8e0db] bg-[#f3faf9] px-3 py-1.5 text-xs font-medium text-[#1f7a74] transition-colors hover:bg-[#e0f2ef]"
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 shrink-0">
+                          <path fillRule="evenodd" d="M4.25 5.5a.75.75 0 0 0-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 0 0 .75-.75v-4a.75.75 0 0 1 1.5 0v4A2.25 2.25 0 0 1 12.75 17h-8.5A2.25 2.25 0 0 1 2 14.75v-8.5A2.25 2.25 0 0 1 4.25 4h5a.75.75 0 0 1 0 1.5h-5Zm6.75-3a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0V3.81l-6.22 6.22a.75.75 0 1 1-1.06-1.06L14.69 2.75H11a.75.75 0 0 1-.75-.75Z" clipRule="evenodd" />
+                        </svg>
+                        Verificar no Google Maps
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Lembrete de consulta (acordeão) */}
               <div className="overflow-hidden rounded-xl border border-[#e4ddd3] bg-white">

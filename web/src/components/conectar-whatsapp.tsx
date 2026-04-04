@@ -61,6 +61,7 @@ export function ConectarWhatsapp({ clinicId, supabase, onStatusChange }: Props) 
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stepProgressRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qrTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevStatusRef = useRef<StatusWhatsapp | null>(null);
   const ultimoConfeteEmRef = useRef(0);
   const botaoCancelarModalRef = useRef<HTMLButtonElement | null>(null);
@@ -136,6 +137,7 @@ export function ConectarWhatsapp({ clinicId, supabase, onStatusChange }: Props) 
       }
     }
     prevStatusRef.current = status;
+    statusRef.current = status;
   }, [status]);
 
   // ─── Foco no modal de desativar ────────────────────────────────────────────
@@ -156,6 +158,8 @@ export function ConectarWhatsapp({ clinicId, supabase, onStatusChange }: Props) 
   }, [modalDesativarAberto, desativando]);
 
   // ─── Polling: verifica status a cada 3 s ───────────────────────────────────
+  const statusRef = useRef<StatusWhatsapp | null>(null);
+
   const iniciarPolling = useCallback(() => {
     if (pollingRef.current) return;
     pollingRef.current = setInterval(() => {
@@ -168,6 +172,15 @@ export function ConectarWhatsapp({ clinicId, supabase, onStatusChange }: Props) 
           }
           const json = parsed.data;
           const nextStatus = normalizeStatus(json.status);
+
+          // Enquanto aguardando QR, ignora qualquer "disconnected" do poll —
+          // a Evolution retorna "close" normalmente durante o escaneamento.
+          // Só sai do estado waiting_qrcode via: connected, error, ou timeout de 60s.
+          if (statusRef.current === "waiting_qrcode" && nextStatus === "disconnected") {
+            if (json.qrcode) setQrCode(json.qrcode);
+            return;
+          }
+
           setStatus(nextStatus);
           setMensagem(json.message ?? null);
           setWebhookConfigured(Boolean(json.webhookConfigured));
@@ -178,6 +191,7 @@ export function ConectarWhatsapp({ clinicId, supabase, onStatusChange }: Props) 
             setQrCode(null);
             onStatusChange?.("connected");
             pararPolling();
+            pararQrTimeout();
           }
           if (nextStatus === "disconnected" || nextStatus === "error") {
             onStatusChange?.(nextStatus);
@@ -203,9 +217,17 @@ export function ConectarWhatsapp({ clinicId, supabase, onStatusChange }: Props) 
     }
   }
 
+  function pararQrTimeout() {
+    if (qrTimeoutRef.current) {
+      clearTimeout(qrTimeoutRef.current);
+      qrTimeoutRef.current = null;
+    }
+  }
+
   useEffect(() => () => {
     pararPolling();
     pararStepProgress();
+    pararQrTimeout();
   }, []);
 
   useEffect(() => {
@@ -216,15 +238,30 @@ export function ConectarWhatsapp({ clinicId, supabase, onStatusChange }: Props) 
       status === "configuring_webhook"
     ) {
       iniciarPolling();
+
+      if (status === "waiting_qrcode" && !qrTimeoutRef.current) {
+        qrTimeoutRef.current = setTimeout(() => {
+          pararPolling();
+          pararQrTimeout();
+          setStatus("disconnected");
+          setQrCode(null);
+          setErro("O QR Code expirou. Clique em Conectar WhatsApp para gerar um novo.");
+        }, 60_000);
+      }
+
       return;
     }
+
     pararPolling();
+    pararQrTimeout();
   }, [iniciarPolling, status]);
 
   // ─── Clicar em "Conectar WhatsApp" ─────────────────────────────────────────
   const handleConectar = async () => {
     setCarregando(true);
     setErro(null);
+    setQrCode(null);
+    pararQrTimeout();
     setMensagem("Validando configurações do servidor...");
     setStatus("checking_config");
     onStatusChange?.("checking_config");

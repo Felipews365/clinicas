@@ -1,5 +1,5 @@
 ﻿import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { obterConfigEvolutionServidor } from "@/lib/env/evolution-server";
 
 type EvolutionConnectionPayload = {
@@ -15,7 +15,7 @@ async function consultarEstadoEvolution(
   evoUrl: string,
   apiKey: string,
   instanceName: string
-): Promise<{ estado: string; telefone: string | null }> {
+): Promise<{ estado: string; telefone: string | null; instanciaExiste: boolean }> {
   const url = `${evoUrl}/instance/connectionState/${encodeURIComponent(instanceName)}`;
   const res = await fetch(url, {
     headers: cabecalhosEvo(apiKey),
@@ -23,7 +23,7 @@ async function consultarEstadoEvolution(
   });
 
   if (!res.ok) {
-    return { estado: "", telefone: null };
+    return { estado: "", telefone: null, instanciaExiste: res.status !== 404 };
   }
 
   const raw = (await res.json().catch(() => ({}))) as EvolutionConnectionPayload & Record<string, unknown>;
@@ -37,7 +37,7 @@ async function consultarEstadoEvolution(
     null;
   const telefone = jid ? (jid.split("@")[0] ?? jid) : null;
 
-  return { estado, telefone };
+  return { estado, telefone, instanciaExiste: true };
 }
 
 export async function GET(req: Request) {
@@ -48,13 +48,16 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "BAD_REQUEST", message: "clinicId é obrigatório." }, { status: 400 });
   }
 
-  const supabase = await createClient();
+  // Auth via sessão; leitura/escrita via service role (RLS bloqueia usuários normais)
+  const authClient = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await authClient.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "UNAUTHENTICATED", message: "Não autenticado." }, { status: 401 });
   }
+
+  const supabase = createServiceClient();
 
   const { data, error } = await supabase
     .from("clinic_whatsapp_integrations")
@@ -76,11 +79,20 @@ export async function GET(req: Request) {
 
   const evo = obterConfigEvolutionServidor();
   if (evo.valido && data.instance_name) {
-    const { estado, telefone } = await consultarEstadoEvolution(
+    const { estado, telefone, instanciaExiste } = await consultarEstadoEvolution(
       evo.config.url,
       evo.config.apiKey,
       data.instance_name
     );
+
+    // Instância foi deletada na Evolution — reseta para que o usuário gere um novo QR
+    if (!instanciaExiste && (statusAtual === "waiting_qrcode" || statusAtual === "connected")) {
+      await supabase
+        .from("clinic_whatsapp_integrations")
+        .update({ status: "disconnected", last_qr_code: null })
+        .eq("clinic_id", clinicId);
+      return NextResponse.json({ status: "disconnected", webhookConfigured: data.webhook_configured, qrcode: null });
+    }
 
     if (estado === "open") {
       const agora = new Date().toISOString();
@@ -98,7 +110,9 @@ export async function GET(req: Request) {
       lastQr = null;
       lastConnAt = novoLastConn;
     } else if (estado === "close" || estado === "closed") {
-      if (statusAtual === "connected" || statusAtual === "waiting_qrcode") {
+      // Só derruba para "disconnected" se estava "connected" — estado "close" é normal
+      // enquanto aguarda o escaneamento do QR code ("waiting_qrcode").
+      if (statusAtual === "connected") {
         await supabase
           .from("clinic_whatsapp_integrations")
           .update({ status: "disconnected", last_qr_code: null })

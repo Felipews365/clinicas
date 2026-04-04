@@ -100,6 +100,56 @@
                   },
                   {
                       "parameters":  {
+                                         "url":  "={{ 'https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/clinic_whatsapp_integrations?instance_name=eq.' + $('Webhook').first().json.body.instance + '&select=clinic_id' }}",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "apikey",
+                                                                                         "value":  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDUyNzUzMywiZXhwIjoyMDkwMTAzNTMzfQ._CoWPqn1bDqNRJ-g6EzGnqE86YI_LW5T_N6At3CPal4"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "Authorization",
+                                                                                         "value":  "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDUyNzUzMywiZXhwIjoyMDkwMTAzNTMzfQ._CoWPqn1bDqNRJ-g6EzGnqE86YI_LW5T_N6At3CPal4"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "options":  {}
+                                     },
+                      "id":  "buscar-clinic-id-001",
+                      "name":  "Buscar Clinic ID",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       -2720,
+                                       1432
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "clinicId-field-001",
+                                                                                     "name":  "clinicId",
+                                                                                     "value":  "={{ $json[0].clinic_id }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {}
+                                     },
+                      "id":  "set-clinic-id-001",
+                      "name":  "Set clinicId",
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       -2720,
+                                       1632
+                                   ]
+                  },
+                  {
+                      "parameters":  {
                                          "conditions":  {
                                                             "options":  {
                                                                             "caseSensitive":  true,
@@ -923,7 +973,7 @@
                   {
                       "parameters":  {
                                          "resource":  "messages-api",
-                                         "instanceName":  "={{ $(\u0027Webhook\u0027).first().json.body.instance || $env.EVOLUTION_INSTANCE || \u0027tvmundo\u0027 }}",
+                                         "instanceName":  "={{ $(\u0027Webhook\u0027).first().json.body.instance || $env.EVOLUTION_INSTANCE }}",
                                          "remoteJid":  "={{ $(\u0027Webhook\u0027).first().json.body.data.key.remoteJid }}",
                                          "messageText":  "={{ $(\u0027Separa 1 mensagem para enviar\u0027).item.json.answer }}",
                                          "options_message":  {
@@ -1274,7 +1324,7 @@
                   {
                       "parameters":  {
                                          "method":  "POST",
-                                         "url":  "={{ `https://evo.plataformabot.top/chat/getBase64FromMediaMessage/${$(\u0027Webhook\u0027).item.json.body.instance || $env.EVOLUTION_INSTANCE || \u0027tvmundo\u0027}` }}",
+                                         "url":  "={{ `https://evo.plataformabot.top/chat/getBase64FromMediaMessage/${$(\u0027Webhook\u0027).item.json.body.instance || $env.EVOLUTION_INSTANCE}` }}",
                                          "sendHeaders":  true,
                                          "headerParameters":  {
                                                                   "parameters":  [
@@ -1497,7 +1547,7 @@
                       "parameters":  {
                                          "toolDescription":  "Envia uma mensagem de reação como resposta a uma mensagem do usuário. Reação é sempre um emoji.",
                                          "method":  "POST",
-                                         "url":  "={{ \u0027https://evo.plataformabot.top/message/sendReaction/\u0027 + ($(\u0027Webhook\u0027).first().json.body.instance || $env.EVOLUTION_INSTANCE || \u0027tvmundo\u0027) }}",
+                                         "url":  "={{ \u0027https://evo.plataformabot.top/message/sendReaction/\u0027 + ($(\u0027Webhook\u0027).first().json.body.instance || $env.EVOLUTION_INSTANCE) }}",
                                          "authentication":  "predefinedCredentialType",
                                          "nodeCredentialType":  "evolutionApi",
                                          "sendBody":  true,
@@ -1594,7 +1644,7 @@
                       "parameters":  {
                                          "resource":  "messages-api",
                                          "operation":  "send-image",
-                                         "instanceName":  "={{ $(\u0027Webhook\u0027).first().json.body.instance || $env.EVOLUTION_INSTANCE || \u0027tvmundo\u0027 }}",
+                                         "instanceName":  "={{ $(\u0027Webhook\u0027).first().json.body.instance || $env.EVOLUTION_INSTANCE }}",
                                          "remoteJid":  "={{ $(\u0027Webhook\u0027).first().json.body.data.key.remoteJid }}",
                                          "media":  "={{ $json.imagem }}",
                                          "options_message":  {
@@ -1789,7 +1839,7 @@
                                                                },
                                          "sendBody":  true,
                                          "specifyBody":  "json",
-                                         "jsonBody":  "{\"p_clinic_id\":\"5c8f7a44-c6b3-4835-889b-7e9f9b009125\"}"
+                                         "jsonBody":  "={{ JSON.stringify({ p_clinic_id: $('Set clinicId').first().json.clinicId }) }}"
                                      },
                       "type":  "@n8n/n8n-nodes-langchain.toolHttpRequest",
                       "typeVersion":  1.1,
@@ -2088,13 +2138,17 @@
                   },
                   {
                       "parameters":  {
-                                         "url":  "https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/clinics?select=*",
+                                         "url":  "https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/clinics",
                                          "sendQuery":  true,
                                          "queryParameters":  {
                                                                  "parameters":  [
                                                                                     {
                                                                                         "name":  "select",
                                                                                         "value":  "id,name,phone,email,endereco"
+                                                                                    },
+                                                                                    {
+                                                                                        "name":  "id",
+                                                                                        "value":  "={{ 'eq.' + $('Set clinicId').first().json.clinicId }}"
                                                                                     }
                                                                                 ]
                                                              },
@@ -2123,7 +2177,6 @@
                                        -2912,
                                        2304
                                    ],
-                      "executeOnce":  true,
                       "alwaysOutputData":  true
                   },
                   {
@@ -2163,13 +2216,35 @@
                                                 "main":  [
                                                              [
                                                                  {
-                                                                     "node":  "A Empresa Assumiu o Atendimento?",
+                                                                     "node":  "Buscar Clinic ID",
                                                                      "type":  "main",
                                                                      "index":  0
                                                                  }
                                                              ]
                                                          ]
                                             },
+                        "Buscar Clinic ID":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Set clinicId",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Set clinicId":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "node":  "A Empresa Assumiu o Atendimento?",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
                         "A Empresa Assumiu o Atendimento?":  {
                                                                  "main":  [
                                                                               [
@@ -3847,7 +3922,7 @@
                                         {
                                             "parameters":  {
                                                                "resource":  "messages-api",
-                                                               "instanceName":  "={{ $(\u0027Webhook\u0027).first().json.body.instance || $env.EVOLUTION_INSTANCE || \u0027tvmundo\u0027 }}",
+                                                               "instanceName":  "={{ $(\u0027Webhook\u0027).first().json.body.instance || $env.EVOLUTION_INSTANCE }}",
                                                                "remoteJid":  "={{ $(\u0027Webhook\u0027).first().json.body.data.key.remoteJid }}",
                                                                "messageText":  "={{ $(\u0027Separa 1 mensagem para enviar\u0027).item.json.answer }}",
                                                                "options_message":  {
@@ -4198,7 +4273,7 @@
                                         {
                                             "parameters":  {
                                                                "method":  "POST",
-                                                               "url":  "={{ `https://evo.plataformabot.top/chat/getBase64FromMediaMessage/${$(\u0027Webhook\u0027).item.json.body.instance || $env.EVOLUTION_INSTANCE || \u0027tvmundo\u0027}` }}",
+                                                               "url":  "={{ `https://evo.plataformabot.top/chat/getBase64FromMediaMessage/${$(\u0027Webhook\u0027).item.json.body.instance || $env.EVOLUTION_INSTANCE}` }}",
                                                                "sendHeaders":  true,
                                                                "headerParameters":  {
                                                                                         "parameters":  [
@@ -4421,7 +4496,7 @@
                                             "parameters":  {
                                                                "toolDescription":  "Envia uma mensagem de reação como resposta a uma mensagem do usuário. Reação é sempre um emoji.",
                                                                "method":  "POST",
-                                                               "url":  "={{ \u0027https://evo.plataformabot.top/message/sendReaction/\u0027 + ($(\u0027Webhook\u0027).first().json.body.instance || $env.EVOLUTION_INSTANCE || \u0027tvmundo\u0027) }}",
+                                                               "url":  "={{ \u0027https://evo.plataformabot.top/message/sendReaction/\u0027 + ($(\u0027Webhook\u0027).first().json.body.instance || $env.EVOLUTION_INSTANCE) }}",
                                                                "authentication":  "predefinedCredentialType",
                                                                "nodeCredentialType":  "evolutionApi",
                                                                "sendBody":  true,
@@ -4518,7 +4593,7 @@
                                             "parameters":  {
                                                                "resource":  "messages-api",
                                                                "operation":  "send-image",
-                                                               "instanceName":  "={{ $(\u0027Webhook\u0027).first().json.body.instance || $env.EVOLUTION_INSTANCE || \u0027tvmundo\u0027 }}",
+                                                               "instanceName":  "={{ $(\u0027Webhook\u0027).first().json.body.instance || $env.EVOLUTION_INSTANCE }}",
                                                                "remoteJid":  "={{ $(\u0027Webhook\u0027).first().json.body.data.key.remoteJid }}",
                                                                "media":  "={{ $json.imagem }}",
                                                                "options_message":  {
@@ -4713,7 +4788,7 @@
                                                                                      },
                                                                "sendBody":  true,
                                                                "specifyBody":  "json",
-                                                               "jsonBody":  "{\"p_clinic_id\":\"5c8f7a44-c6b3-4835-889b-7e9f9b009125\"}"
+                                                               "jsonBody":  "={{ JSON.stringify({ p_clinic_id: $('Set clinicId').first().json.clinicId }) }}"
                                                            },
                                             "type":  "@n8n/n8n-nodes-langchain.toolHttpRequest",
                                             "typeVersion":  1.1,

@@ -350,13 +350,25 @@ async function handleEvolutionWebhook(req, res) {
 
     if (event === "CONNECTION_UPDATE") {
       const state = String(parseConnectionState(payload) || "").toLowerCase();
-      const mapped = state === "open" ? STATUS_MAP.connected : STATUS_MAP.disconnected;
-      updates.status = mapped;
-      updates.last_connection_at = mapped === STATUS_MAP.connected ? new Date().toISOString() : null;
-      if (mapped === STATUS_MAP.connected) {
+      if (state === "open") {
+        updates.status = STATUS_MAP.connected;
+        updates.last_connection_at = new Date().toISOString();
         updates.last_qr_code = null;
+        await syncLegacyClinicFields(clinicId, STATUS_MAP.connected, instanceName);
+      } else {
+        // Só derruba para disconnected se estava connected — estado "close" é esperado
+        // durante a exibição do QR code (waiting_qrcode) e não deve cancelá-lo.
+        const { data: current } = await supabase
+          .from("clinic_whatsapp_integrations")
+          .select("status")
+          .eq("clinic_id", clinicId)
+          .maybeSingle();
+        if (current?.status === STATUS_MAP.connected) {
+          updates.status = STATUS_MAP.disconnected;
+          updates.last_connection_at = null;
+          await syncLegacyClinicFields(clinicId, STATUS_MAP.disconnected, instanceName);
+        }
       }
-      await syncLegacyClinicFields(clinicId, mapped, instanceName);
     }
 
     if (event === "MESSAGES_UPSERT") {

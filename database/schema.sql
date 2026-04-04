@@ -217,13 +217,15 @@ EXECUTE FUNCTION atualizar_timestamp();
 -- RLS (Row Level Security)
 -- Ativar RLS nas tabelas para isolamento de dados
 -- ============================================================================
-ALTER TABLE clinicas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dados_clinica ENABLE ROW LEVEL SECURITY;
-ALTER TABLE conversas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE historico_pagamentos ENABLE ROW LEVEL SECURITY;
+-- Bloqueia acesso via anon key — service_role bypassa RLS automaticamente
+-- clinics, cs_*, clinic_members, clinic_procedures já têm RLS + políticas próprias
+ALTER TABLE clinic_whatsapp_integrations ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "whatsapp_integrations_service_only" ON clinic_whatsapp_integrations
+  FOR ALL USING (false);
 
--- Políticas serão configuradas de acordo com autenticação do usuário
--- (será implementado no backend com context de clinica_id)
+ALTER TABLE conversas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "conversas_service_only" ON conversas
+  FOR ALL USING (false);
 
 -- ============================================================================
 -- COMENTÁRIOS EXPLICATIVOS

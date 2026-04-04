@@ -246,6 +246,10 @@ export function AgendaPortal() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [humanQueueCount, setHumanQueueCount] = useState(0);
   const [whatsappConnected, setWhatsappConnected] = useState(false);
+  const handleWhatsappStatusChange = useCallback(
+    (s: string) => setWhatsappConnected(s === "connected"),
+    []
+  );
   const [nowTick, setNowTick] = useState(() => new Date());
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [access, setAccess] = useState<AccessState | null>(null);
@@ -1679,7 +1683,7 @@ export function AgendaPortal() {
               <ConectarWhatsapp
                 clinicId={access.clinicId}
                 supabase={supabase}
-                onStatusChange={(s) => setWhatsappConnected(s === "connected")}
+                onStatusChange={handleWhatsappStatusChange}
               />
             ) : null}
             {sidebarPage === "clinic-subscription" ? (

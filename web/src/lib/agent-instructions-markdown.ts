@@ -74,7 +74,7 @@ export function buildAgentInstructionsMarkdown(
   }
   if (extra?.linkLocalizacao?.trim()) {
     infoLines.push(
-      `- **Localização:** Quando o paciente pedir o endereço ou como chegar, envie este link do mapa: ${extra.linkLocalizacao.trim()}`
+      `- **Localização/Endereço:** Sempre que o paciente perguntar sobre localização, endereço, onde fica, como chegar, onde é a clínica ou pedir o mapa, envie OBRIGATORIAMENTE este link do Google Maps: ${extra.linkLocalizacao.trim()} — não invente nem descreva o endereço por extenso; envie sempre o link.`
     );
   }
   if (infoLines.length) {
