@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -16,9 +15,7 @@ import {
   type AgentSectionsState,
   CLINIC_MODEL_OPTIONS,
   type ClinicModelId,
-  getDefaultLembreteInteligente,
   getPresetForClinicModel,
-  getSuggestedProcedureIdeas,
   normalizeClinicModelId,
 } from "@/lib/agent-clinic-model";
 
@@ -242,7 +239,7 @@ const inputCls = "mt-0.5 w-full rounded-lg border border-[#d4cfc4] px-3 py-2 tex
 
 // ─── secção inline de procedimentos ──────────────────────────────────────────
 
-function ProceduresSectionInline({
+export function ProceduresSectionInline({
   supabase,
   clinicId,
   modalOpen,
@@ -640,11 +637,6 @@ function SectionCard({
   );
 }
 
-const LEMBRETE_MENSAGEM_PADRAO =
-  "Olá, {{nome}}! Lembramos que você tem uma consulta agendada para *{{data}}* às *{{hora}}*. Não se atrase! 😊 Caso precise remarcar, é só nos avisar.";
-
-const LEMBRETES_INTELIGENTES_PADRAO =
-  "Se o histórico mostrar que o paciente fez limpeza há mais de 6 meses, sugira agendar a próxima manutenção.\nSe o paciente usa aparelho ortodôntico e o último registro de manutenção for há mais de 35 dias, sugira agendar.";
 
 // ─── componente principal ─────────────────────────────────────────────────────
 
@@ -664,20 +656,15 @@ export function AgentConfigModal({
   const [config, setConfig] = useState<AgentConfig>({ ...EMPTY_CONFIG });
   const [nomeAgente, setNomeAgente] = useState<string>("");
   const [clinicName, setClinicName] = useState<string>("");
+  // quemSomos/enderecoClinica lidos do DB apenas para preview — editáveis em "Clínica / Perfil"
   const [quemSomos, setQuemSomos] = useState<string>("");
   const [enderecoClinica, setEnderecoClinica] = useState<string>("");
-  const [lembreteMinutos, setLembreteMinutos] = useState<number | null>(null);
-  const [lembreteMensagem, setLembreteMensagem] = useState<string>("");
-  /** Regras para o agente sugerir retornos / manutenção (vai para o system prompt). */
-  const [lembreteSugestoesInteligentes, setLembreteSugestoesInteligentes] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openSection, setOpenSection] = useState<string | null>(null);
   const [clinicModel, setClinicModel] = useState<ClinicModelId>("clinica_geral");
-  const [aceitaConvenio, setAceitaConvenio] = useState<boolean | null>(null);
-  const [linkLocalizacao, setLinkLocalizacao] = useState<string>("");
 
   /** Acordeão: só uma secção aberta; clicar na aberta fecha. */
   function toggleAccordionSection(key: string) {
@@ -707,26 +694,13 @@ export function AgentConfigModal({
           const parsed = raw ? JSON.parse(raw) : {};
           setClinicModel(normalizeClinicModelId(parsed.clinic_model));
           setNomeAgente(parsed.nome_agente ?? "");
+          // lidos apenas para preview na identidade
           setQuemSomos(typeof parsed.quem_somos === "string" ? parsed.quem_somos : "");
           setEnderecoClinica(typeof parsed.endereco === "string" ? parsed.endereco : "");
-          setLembreteMinutos(parsed.lembrete_antecedencia_minutos ?? null);
-          setLembreteMensagem(parsed.lembrete_mensagem ?? "");
-          setLembreteSugestoesInteligentes(
-            typeof parsed.lembrete_sugestoes_inteligentes === "string"
-              ? parsed.lembrete_sugestoes_inteligentes
-              : ""
-          );
-          setAceitaConvenio(typeof parsed.aceita_convenio === "boolean" ? parsed.aceita_convenio : null);
-          setLinkLocalizacao(typeof parsed.link_localizacao === "string" ? parsed.link_localizacao : "");
         } catch {
           setClinicModel("clinica_geral");
-          setLembreteMinutos(null);
-          setLembreteMensagem("");
-          setLembreteSugestoesInteligentes("");
           setQuemSomos("");
           setEnderecoClinica("");
-          setAceitaConvenio(null);
-          setLinkLocalizacao("");
         }
       });
   }, [open, supabase, clinicId]);
@@ -751,7 +725,6 @@ export function AgentConfigModal({
     if (id === clinicModel) return;
     setClinicModel(id);
     setConfig(getPresetForClinicModel(id));
-    setLembreteSugestoesInteligentes(getDefaultLembreteInteligente(id));
     setSaved(false);
   }
 
@@ -759,36 +732,30 @@ export function AgentConfigModal({
     if (!supabase) return;
     setSaving(true);
     setError(null);
-    const hasContent =
-      Object.values(config).some((v) => (v ?? "").trim()) ||
-      !!nomeAgente.trim() ||
-      !!quemSomos.trim() ||
-      !!enderecoClinica.trim() ||
-      !!lembreteSugestoesInteligentes.trim() ||
-      lembreteMinutos != null ||
-      clinicModel !== "clinica_geral" ||
-      aceitaConvenio != null ||
-      !!linkLocalizacao.trim();
+    // Read-modify-write: preserva campos de "Clínica / Perfil" (endereço, convênio, lembrete…)
+    const { data: current } = await supabase
+      .from("clinics")
+      .select("agent_instructions")
+      .eq("id", clinicId)
+      .single();
+    let existing: Record<string, unknown> = {};
+    try {
+      existing = current?.agent_instructions ? JSON.parse(current.agent_instructions as string) : {};
+    } catch { /* noop */ }
     const extra: AgentExtraClinicInfo = {
-      aceitaConvenio,
-      linkLocalizacao: linkLocalizacao.trim() || null,
+      aceitaConvenio: typeof existing.aceita_convenio === "boolean" ? existing.aceita_convenio : null,
+      linkLocalizacao: typeof existing.link_localizacao === "string" ? existing.link_localizacao : null,
     };
-    const fullConfig = {
+    const merged = {
+      ...existing,
       ...config,
       clinic_model: clinicModel,
       instructions_markdown: buildAgentInstructionsMarkdown(config, clinicModel, extra),
       nome_agente: nomeAgente.trim() || null,
-      quem_somos: quemSomos.trim() || null,
-      endereco: enderecoClinica.trim() || null,
-      lembrete_antecedencia_minutos: lembreteMinutos,
-      lembrete_mensagem: lembreteMensagem || null,
-      lembrete_sugestoes_inteligentes: lembreteSugestoesInteligentes.trim() || null,
-      aceita_convenio: aceitaConvenio,
-      link_localizacao: linkLocalizacao.trim() || null,
     };
     const { error: e } = await supabase
       .from("clinics")
-      .update({ agent_instructions: hasContent ? JSON.stringify(fullConfig) : null })
+      .update({ agent_instructions: JSON.stringify(merged) })
       .eq("id", clinicId);
     setSaving(false);
     if (e) { setError(e.message); return; }
@@ -802,8 +769,7 @@ export function AgentConfigModal({
 
   const isPanel = presentation === "panel";
 
-  // índice da secção "triagem" para inserir procedimentos a seguir
-  const triagemIdx = SECTIONS.findIndex((s) => s.key === "triagem");
+
 
   const shell = (
       <div
@@ -887,258 +853,9 @@ export function AgentConfigModal({
 
               </section>
 
-              {/* Aceita convênio (acordeão) */}
-              <div className="overflow-hidden rounded-xl border border-[#e4ddd3] bg-white">
-                <button
-                  type="button"
-                  onClick={() => toggleAccordionSection("convenio")}
-                  className="flex w-full items-center gap-2.5 px-4 py-3.5 text-left transition-colors hover:bg-[#faf7f2]"
-                >
-                  <span className="text-base">🏥</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-[#1f1c1a]">Convênio / plano de saúde</p>
-                    <p className="mt-0.5 text-xs text-[#8a8278]">
-                      O agente informará ao paciente automaticamente quando perguntado.
-                    </p>
-                  </div>
-                  {aceitaConvenio != null && (
-                    <span className="h-2 w-2 shrink-0 rounded-full bg-[#3d6b62]" aria-label="configurado" />
-                  )}
-                  <svg
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    className={`h-4 w-4 shrink-0 text-[#8a8278] transition-transform duration-200 ${openSection === "convenio" ? "rotate-180" : ""}`}
-                  >
-                    <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
-                  </svg>
-                </button>
-                {openSection === "convenio" && (
-                  <div className="border-t border-[#ebe6dd] px-4 pb-4 pt-3">
-                    <p className="text-xs text-[#5c5348]">Aceita convênio / plano de saúde?</p>
-                    <div className="mt-2 flex gap-2">
-                      {([
-                        { value: null, label: "Não definido" },
-                        { value: true, label: "✅ Sim, aceita" },
-                        { value: false, label: "❌ Não aceita" },
-                      ] as { value: boolean | null; label: string }[]).map((opt) => (
-                        <button
-                          key={String(opt.value)}
-                          type="button"
-                          onClick={() => { setAceitaConvenio(opt.value); setSaved(false); }}
-                          className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                            aceitaConvenio === opt.value
-                              ? "border-[#1f7a74] bg-[#1f7a74] text-white"
-                              : "border-[#ddd8cf] bg-[#faf8f5] text-[#2c2825] hover:border-[#1f7a74]/45 hover:bg-[#f3faf9]"
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Link de localização (acordeão) */}
-              <div className="overflow-hidden rounded-xl border border-[#e4ddd3] bg-white">
-                <button
-                  type="button"
-                  onClick={() => toggleAccordionSection("localizacao")}
-                  className="flex w-full items-center gap-2.5 px-4 py-3.5 text-left transition-colors hover:bg-[#faf7f2]"
-                >
-                  <span className="text-base">📍</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-[#1f1c1a]">Link de localização (Google Maps)</p>
-                    <p className="mt-0.5 text-xs text-[#8a8278]">
-                      Quando o paciente pedir o endereço, o agente enviará este link.
-                    </p>
-                  </div>
-                  {!!linkLocalizacao.trim() && (
-                    <span className="h-2 w-2 shrink-0 rounded-full bg-[#3d6b62]" aria-label="configurado" />
-                  )}
-                  <svg
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    className={`h-4 w-4 shrink-0 text-[#8a8278] transition-transform duration-200 ${openSection === "localizacao" ? "rotate-180" : ""}`}
-                  >
-                    <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
-                  </svg>
-                </button>
-                {openSection === "localizacao" && (
-                  <div className="border-t border-[#ebe6dd] px-4 pb-4 pt-3 space-y-3">
-                    {/* Passo a passo */}
-                    <div className="rounded-lg bg-[#f3faf9] border border-[#c8e0db] px-3 py-2.5">
-                      <p className="text-xs font-semibold text-[#1f7a74] mb-1.5">Como obter o link correto</p>
-                      <ol className="space-y-1 text-[11px] text-[#4a5e5b] list-none">
-                        <li className="flex gap-1.5"><span className="font-bold text-[#1f7a74] shrink-0">1.</span><span>Abra o <strong>Google Maps</strong> no celular ou computador.</span></li>
-                        <li className="flex gap-1.5"><span className="font-bold text-[#1f7a74] shrink-0">2.</span><span>Pesquise o nome ou endereço da sua clínica.</span></li>
-                        <li className="flex gap-1.5"><span className="font-bold text-[#1f7a74] shrink-0">3.</span><span>Clique em <strong>Compartilhar</strong> (ícone de seta ou três pontos → Compartilhar).</span></li>
-                        <li className="flex gap-1.5"><span className="font-bold text-[#1f7a74] shrink-0">4.</span><span>Selecione <strong>Copiar link</strong> — ele começa com <code className="rounded bg-[#dff0ed] px-1 py-0.5">https://maps.app.goo.gl/</code></span></li>
-                        <li className="flex gap-1.5"><span className="font-bold text-[#1f7a74] shrink-0">5.</span><span>Cole o link no campo abaixo e clique em <strong>Guardar</strong>.</span></li>
-                      </ol>
-                    </div>
-                    <input
-                      id="agent-link-localizacao"
-                      type="url"
-                      value={linkLocalizacao}
-                      onChange={(e) => { setLinkLocalizacao(e.target.value); setSaved(false); }}
-                      placeholder="https://maps.app.goo.gl/..."
-                      className="w-full rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
-                    />
-                    {linkLocalizacao.trim() && (
-                      <a
-                        href={linkLocalizacao.trim()}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#c8e0db] bg-[#f3faf9] px-3 py-1.5 text-xs font-medium text-[#1f7a74] transition-colors hover:bg-[#e0f2ef]"
-                      >
-                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 shrink-0">
-                          <path fillRule="evenodd" d="M4.25 5.5a.75.75 0 0 0-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 0 0 .75-.75v-4a.75.75 0 0 1 1.5 0v4A2.25 2.25 0 0 1 12.75 17h-8.5A2.25 2.25 0 0 1 2 14.75v-8.5A2.25 2.25 0 0 1 4.25 4h5a.75.75 0 0 1 0 1.5h-5Zm6.75-3a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0V3.81l-6.22 6.22a.75.75 0 1 1-1.06-1.06L14.69 2.75H11a.75.75 0 0 1-.75-.75Z" clipRule="evenodd" />
-                        </svg>
-                        Verificar no Google Maps
-                      </a>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Lembrete de consulta (acordeão) */}
-              <div className="overflow-hidden rounded-xl border border-[#e4ddd3] bg-white">
-                <button
-                  type="button"
-                  onClick={() => toggleAccordionSection("lembrete")}
-                  className="flex w-full items-center gap-2.5 px-4 py-3.5 text-left transition-colors hover:bg-[#faf7f2]"
-                >
-                  <span className="text-base">⏰</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-[#1f1c1a]">Lembrete de Consulta</p>
-                    <p className="mt-0.5 text-xs text-[#8a8278]">
-                      SMS antes da consulta, mensagem e lembretes inteligentes.
-                    </p>
-                  </div>
-                  {(lembreteMinutos != null ||
-                    lembreteSugestoesInteligentes.trim() ||
-                    lembreteMensagem.trim()) && (
-                    <span className="h-2 w-2 shrink-0 rounded-full bg-[#3d6b62]" aria-label="configurado" />
-                  )}
-                  <svg
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    className={`h-4 w-4 shrink-0 text-[#8a8278] transition-transform duration-200 ${openSection === "lembrete" ? "rotate-180" : ""}`}
-                  >
-                    <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
-                  </svg>
-                </button>
-                {openSection === "lembrete" && (
-                  <div className="space-y-4 border-t border-[#ebe6dd] px-4 pb-4 pt-3">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <label className="text-xs font-medium text-[#5c5348]" htmlFor="agent-lembrete-antecedencia">
-                        Enviar SMS quanto tempo antes
-                      </label>
-                      <select
-                        id="agent-lembrete-antecedencia"
-                        value={lembreteMinutos ?? ""}
-                        onChange={(e) => {
-                          setLembreteMinutos(e.target.value ? Number(e.target.value) : null);
-                          setSaved(false);
-                        }}
-                        className="w-full max-w-[14rem] rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-xs text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-1 sm:w-auto"
-                      >
-                        <option value="">Não enviar</option>
-                        <option value="30">30 min antes</option>
-                        <option value="60">1 hora antes</option>
-                        <option value="120">2 horas antes</option>
-                        <option value="180">3 horas antes</option>
-                        <option value="360">6 horas antes</option>
-                        <option value="720">12 horas antes</option>
-                        <option value="1440">24 horas antes</option>
-                        <option value="2880">48 horas antes</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold text-[#1f1c1a]">Lembretes inteligentes</p>
-                      <p className="text-xs text-[#8a8278]">
-                        Instruções para o agente <strong className="font-medium text-[#5c5348]">sugerir</strong>{" "}
-                        consultas de manutenção ou retorno com base no histórico (independente do SMS automático).
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        <span className="self-center text-xs text-[#8a8278]">Modelo:</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setLembreteSugestoesInteligentes(LEMBRETES_INTELIGENTES_PADRAO);
-                            setSaved(false);
-                          }}
-                          className="rounded-lg border border-[#d8cfe8] bg-[#f8f6fc] px-2.5 py-1 text-xs font-medium text-[#5c4d7a] transition-colors hover:bg-[#f0ebf8]"
-                        >
-                          Lembretes Inteligentes
-                        </button>
-                        {lembreteSugestoesInteligentes.trim() ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setLembreteSugestoesInteligentes("");
-                              setSaved(false);
-                            }}
-                            className="rounded-lg border border-[#e8c8c8] bg-[#fdf4f4] px-2.5 py-1 text-xs font-medium text-[#7a2a2a] transition-colors hover:bg-[#fce8e8]"
-                          >
-                            Limpar
-                          </button>
-                        ) : null}
-                      </div>
-                      <textarea
-                        value={lembreteSugestoesInteligentes}
-                        onChange={(e) => {
-                          setLembreteSugestoesInteligentes(e.target.value);
-                          setSaved(false);
-                        }}
-                        placeholder="Ex.: quando sugerir limpeza periódica, retorno pós-tratamento, manutenção de aparelho…"
-                        rows={4}
-                        className="w-full resize-y rounded-xl border border-[#ddd8d0] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#2c2825] placeholder-[#b8b0a6] shadow-inner outline-none transition-[border-color,box-shadow] focus:border-[#3d6b62] focus:shadow-[0_0_0_3px_rgba(61,107,98,0.12)]"
-                        spellCheck
-                      />
-                    </div>
-                    {lembreteMinutos != null && (
-                      <div className="space-y-2 border-t border-dashed border-[#e8e2d9] pt-4">
-                        <p className="text-xs text-[#8a8278]">
-                          Mensagem enviada ao cliente. Use{" "}
-                          <code className="rounded bg-[#f2ede6] px-1">{"{{nome}}"}</code>,{" "}
-                          <code className="rounded bg-[#f2ede6] px-1">{"{{data}}"}</code> e{" "}
-                          <code className="rounded bg-[#f2ede6] px-1">{"{{hora}}"}</code> como variáveis.
-                        </p>
-                        <textarea
-                          value={lembreteMensagem || LEMBRETE_MENSAGEM_PADRAO}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setLembreteMensagem(v === LEMBRETE_MENSAGEM_PADRAO ? "" : v);
-                            setSaved(false);
-                          }}
-                          rows={4}
-                          className="w-full resize-y rounded-xl border border-[#ddd8d0] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#2c2825] placeholder-[#b8b0a6] shadow-inner outline-none transition-[border-color,box-shadow] focus:border-[#3d6b62] focus:shadow-[0_0_0_3px_rgba(61,107,98,0.12)]"
-                          spellCheck={false}
-                        />
-                        {lembreteMensagem && lembreteMensagem !== LEMBRETE_MENSAGEM_PADRAO && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setLembreteMensagem("");
-                              setSaved(false);
-                            }}
-                            className="rounded-lg border border-[#e8c8c8] bg-[#fdf4f4] px-2.5 py-1 text-xs font-medium text-[#7a2a2a] transition-colors hover:bg-[#fce8e8]"
-                          >
-                            Restaurar mensagem padrão
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {SECTIONS.map((s, i) => (
-                <Fragment key={s.key}>
-                  <div>
-                    <SectionCard
+              {SECTIONS.map((s) => (
+                <div key={s.key}>
+                  <SectionCard
                       emoji={s.emoji}
                       title={s.title}
                       hint={s.hint}
@@ -1149,89 +866,32 @@ export function AgentConfigModal({
                       isOpen={openSection === s.key}
                       onToggle={() => toggleAccordionSection(s.key)}
                       showConfiguredDot={
-                        s.key === "identidade"
-                          ? Boolean(
-                              nomeAgente.trim() || quemSomos.trim() || enderecoClinica.trim()
-                            )
-                          : false
+                        s.key === "identidade" ? Boolean(nomeAgente.trim()) : false
                       }
                       beforeHint={
                         s.key === "identidade" ? (
-                          <div className="mb-1 space-y-4 rounded-xl border border-[#e8e4dc] bg-[#faf8f5] px-3 py-3">
-                            <div className="min-w-0">
-                              <label
-                                htmlFor="agent-config-nome-agente"
-                                className="text-xs font-semibold text-[#1f1c1a]"
-                              >
-                                Nome do Agente
-                              </label>
-                              <p className="mt-0.5 text-[11px] text-[#8a8278]">
-                                Como o agente se identifica para os pacientes no WhatsApp. Usado em{" "}
-                                <code className="rounded bg-[#f0ebe3] px-0.5">{"{{name}}"}</code> na
-                                identidade.
-                              </p>
-                              <input
-                                id="agent-config-nome-agente"
-                                type="text"
-                                value={nomeAgente}
-                                onChange={(e) => {
-                                  setNomeAgente(e.target.value);
-                                  setSaved(false);
-                                }}
-                                placeholder="Ex: Ana, Sofia, Carlos…"
-                                className="mt-2 w-full max-w-md rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
-                              />
-                            </div>
-                            <div className="min-w-0">
-                              <label
-                                htmlFor="agent-config-quem-somos"
-                                className="text-xs font-semibold text-[#1f1c1a]"
-                              >
-                                Quem somos
-                              </label>
-                              <p className="mt-0.5 text-[11px] text-[#8a8278]">
-                                Breve apresentação da clínica para o agente citar. Marcadores:{" "}
-                                <code className="rounded bg-[#f0ebe3] px-0.5">{"{{quem_somos}}"}</code>,{" "}
-                                <code className="rounded bg-[#f0ebe3] px-0.5">{"{{sobre}}"}</code>.
-                              </p>
-                              <textarea
-                                id="agent-config-quem-somos"
-                                value={quemSomos}
-                                onChange={(e) => {
-                                  setQuemSomos(e.target.value);
-                                  setSaved(false);
-                                }}
-                                placeholder="Ex.: Clínica familiar, 15 anos ao serviço da comunidade, equipa multidisciplinar…"
-                                rows={3}
-                                className="mt-2 w-full resize-y rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-2 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
-                                spellCheck
-                              />
-                            </div>
-                            <div className="min-w-0">
-                              <label
-                                htmlFor="agent-config-endereco"
-                                className="text-xs font-semibold text-[#1f1c1a]"
-                              >
-                                Endereço
-                              </label>
-                              <p className="mt-0.5 text-[11px] text-[#8a8278]">
-                                Morada para indicar ao paciente. Marcadores:{" "}
-                                <code className="rounded bg-[#f0ebe3] px-0.5">{"{{endereco}}"}</code>,{" "}
-                                <code className="rounded bg-[#f0ebe3] px-0.5">{"{{morada}}"}</code>.
-                              </p>
-                              <textarea
-                                id="agent-config-endereco"
-                                value={enderecoClinica}
-                                onChange={(e) => {
-                                  setEnderecoClinica(e.target.value);
-                                  setSaved(false);
-                                }}
-                                placeholder="Ex.: Rua das Flores, 123 — Centro — CEP 01234-567"
-                                rows={2}
-                                className="mt-2 w-full resize-y rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-2 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
-                                spellCheck
-                              />
-                            </div>
+                          <div className="mb-1 rounded-xl border border-[#e8e4dc] bg-[#faf8f5] px-3 py-3">
+                            <label
+                              htmlFor="agent-config-nome-agente"
+                              className="text-xs font-semibold text-[#1f1c1a]"
+                            >
+                              Nome do Agente
+                            </label>
+                            <p className="mt-0.5 text-[11px] text-[#8a8278]">
+                              Como o agente se identifica para os pacientes no WhatsApp. Usado em{" "}
+                              <code className="rounded bg-[#f0ebe3] px-0.5">{"{{name}}"}</code> na identidade.
+                            </p>
+                            <input
+                              id="agent-config-nome-agente"
+                              type="text"
+                              value={nomeAgente}
+                              onChange={(e) => {
+                                setNomeAgente(e.target.value);
+                                setSaved(false);
+                              }}
+                              placeholder="Ex: Ana, Sofia, Carlos…"
+                              className="mt-2 w-full max-w-md rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
+                            />
                           </div>
                         ) : undefined
                       }
@@ -1240,18 +900,11 @@ export function AgentConfigModal({
                           <div className="space-y-2 pt-1">
                             <p className="text-xs leading-relaxed text-[#8a8278]">
                               Marcadores:{" "}
-                              <code className="rounded bg-[#f2ede6] px-1">{"{{name}}"}</code> /{" "}
-                              <code className="rounded bg-[#f2ede6] px-1">{"{{nome_agente}}"}</code> (nome do
-                              agente),{" "}
-                              <code className="rounded bg-[#f2ede6] px-1">{"{{clinica}}"}</code> /{" "}
-                              <code className="rounded bg-[#f2ede6] px-1">{"{{nome_clinica}}"}</code> (nome da
-                              clínica no cadastro),{" "}
-                              <code className="rounded bg-[#f2ede6] px-1">{"{{quem_somos}}"}</code> /{" "}
-                              <code className="rounded bg-[#f2ede6] px-1">{"{{sobre}}"}</code> (texto «Quem
-                              somos»),{" "}
-                              <code className="rounded bg-[#f2ede6] px-1">{"{{endereco}}"}</code> /{" "}
-                              <code className="rounded bg-[#f2ede6] px-1">{"{{morada}}"}</code> («Endereço»). O
-                              texto guardado mantém os marcadores; o n8n substitui pelos valores.
+                              <code className="rounded bg-[#f2ede6] px-1">{"{{name}}"}</code> (nome do agente),{" "}
+                              <code className="rounded bg-[#f2ede6] px-1">{"{{clinica}}"}</code> (nome da clínica),{" "}
+                              <code className="rounded bg-[#f2ede6] px-1">{"{{quem_somos}}"}</code>,{" "}
+                              <code className="rounded bg-[#f2ede6] px-1">{"{{endereco}}"}</code> — configure em{" "}
+                              <strong className="font-medium text-[#5c5348]">Clínica / Perfil</strong>.
                             </p>
                             {(config.identidade ?? "").trim() ? (
                               <div className="rounded-xl border border-[#e6e1d8] bg-[#faf8f5] px-3 py-2.5">
@@ -1267,37 +920,7 @@ export function AgentConfigModal({
                         ) : undefined
                       }
                     />
-                  </div>
-                  {i === triagemIdx && (
-                    <div className="overflow-hidden rounded-xl border border-[#e4ddd3] bg-white">
-                      <button
-                        type="button"
-                        onClick={() => toggleAccordionSection("procedimentos")}
-                        className="flex w-full items-center gap-2.5 px-4 py-3.5 text-left transition-colors hover:bg-[#faf7f2]"
-                      >
-                        <span className="text-base">📋</span>
-                        <p className="flex-1 text-sm font-semibold text-[#1f1c1a]">Tipos de Procedimento / Consulta</p>
-                        <svg
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                          className={`h-4 w-4 shrink-0 text-[#8a8278] transition-transform duration-200 ${openSection === "procedimentos" ? "rotate-180" : ""}`}
-                        >
-                          <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-                      {openSection === "procedimentos" && (
-                        <div className="border-t border-[#ebe6dd]">
-                          <ProceduresSectionInline
-                            supabase={supabase}
-                            clinicId={clinicId}
-                            modalOpen={open}
-                            procedureIdeas={getSuggestedProcedureIdeas(clinicModel)}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </Fragment>
+                </div>
               ))}
             </div>
           )}

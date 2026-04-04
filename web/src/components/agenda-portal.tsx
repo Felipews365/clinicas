@@ -12,6 +12,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { WhatsappHumanModal } from "@/components/whatsapp-human-modal";
 import { ReportModal } from "@/components/report-modal";
 import { AgentConfigModal } from "@/components/agent-config-modal";
+import { ClinicProfilePanel } from "@/components/clinic-profile-panel";
 import { ClinicSubscriptionPanel } from "@/components/clinic-subscription-panel";
 import { ConectarWhatsapp } from "@/components/conectar-whatsapp";
 import {
@@ -223,6 +224,7 @@ export function AgendaPortal() {
     | "dashboard"
     | "professionals"
     | "slots"
+    | "clinic-profile"
     | "clinic-hours"
     | "whatsapp-human"
     | "whatsapp-connect"
@@ -1234,16 +1236,12 @@ export function AgendaPortal() {
           </button>
           <button
             type="button"
-            onClick={() => setSidebarPage("clinic-hours")}
-            className={sidebarNavClass("clinic-hours")}
-            aria-label="Horários da clínica"
+            onClick={() => setSidebarPage("clinic-profile")}
+            className={sidebarNavClass("clinic-profile")}
+            aria-label="Clínica / Perfil"
           >
-            <span className="shrink-0 text-[1.05rem] leading-none" aria-hidden>
-              📅
-            </span>
-            <span className="min-w-0 flex-1 whitespace-nowrap text-left">
-              Horários da clínica
-            </span>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h11l5 5v9a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Clínica / Perfil
           </button>
           <button
             type="button"
@@ -1464,15 +1462,15 @@ export function AgendaPortal() {
                 </button>
                 <button
                   type="button"
-                  className={mobileNavRowClass("clinic-hours")}
-                  aria-label="Horários da clínica"
-                  onClick={() => goToSidebarPageAfterMobileMenuClose("clinic-hours")}
+                  className={mobileNavRowClass("clinic-profile")}
+                  aria-label="Clínica / Perfil"
+                  onClick={() => goToSidebarPageAfterMobileMenuClose("clinic-profile")}
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-lg leading-none">
-                    📅
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h11l5 5v9a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                   </span>
                   <span className="min-w-0 flex-1 whitespace-nowrap text-left">
-                    Horários da clínica
+                    Clínica / Perfil
                   </span>
                 </button>
                 <button
@@ -1648,6 +1646,15 @@ export function AgendaPortal() {
                 onDayKeyChange={setDayKey}
                 clinicVisibleHours={clinicAgendaHours}
                 clinicSlotsExpediente={clinicSlotsExpediente}
+              />
+            ) : null}
+            {sidebarPage === "clinic-profile" ? (
+              <ClinicProfilePanel
+                presentation="panel"
+                open
+                onClose={() => setSidebarPage("dashboard")}
+                supabase={supabase}
+                clinicId={access.clinicId}
               />
             ) : null}
             {sidebarPage === "clinic-hours" ? (
