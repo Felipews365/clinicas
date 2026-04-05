@@ -25,6 +25,7 @@ type Row = {
   id: string;
   name: string;
   specialty: string | null;
+  whatsapp: string | null;
   is_active: boolean;
   sort_order: number;
   panel_color: string | null;
@@ -212,6 +213,7 @@ export function ProfessionalsManagerModal({
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [specialty, setSpecialty] = useState("");
+  const [newWhatsapp, setNewWhatsapp] = useState("");
   const [newColor, setNewColor] = useState(DEFAULT_PROFESSIONAL_PANEL_COLOR);
   const [newEmoji, setNewEmoji] = useState("");
   const [newPhotoFile, setNewPhotoFile] = useState<File | null>(null);
@@ -220,6 +222,7 @@ export function ProfessionalsManagerModal({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editSpecialty, setEditSpecialty] = useState("");
+  const [editWhatsapp, setEditWhatsapp] = useState("");
   const [editAgendaCustom, setEditAgendaCustom] = useState(false);
   const [editAgendaHours, setEditAgendaHours] = useState<Set<number>>(new Set());
 
@@ -233,7 +236,7 @@ export function ProfessionalsManagerModal({
     const { data, error: e } = await supabase
       .from("professionals")
       .select(
-        "id, name, specialty, is_active, sort_order, panel_color, avatar_path, avatar_emoji, agenda_hours"
+        "id, name, specialty, whatsapp, is_active, sort_order, panel_color, avatar_path, avatar_emoji, agenda_hours"
       )
       .eq("clinic_id", clinicId)
       .order("sort_order", { ascending: true })
@@ -261,6 +264,7 @@ export function ProfessionalsManagerModal({
     setEditingId(null);
     setName("");
     setSpecialty("");
+    setNewWhatsapp("");
     setNewColor(DEFAULT_PROFESSIONAL_PANEL_COLOR);
     setNewEmoji("");
     setNewPhotoFile(null);
@@ -301,6 +305,7 @@ export function ProfessionalsManagerModal({
         clinic_id: clinicId,
         name: n,
         specialty: specialty.trim() || null,
+        whatsapp: newWhatsapp.trim() || null,
         is_active: true,
         sort_order: maxSort + 1,
         panel_color: newColor,
@@ -346,6 +351,7 @@ export function ProfessionalsManagerModal({
     }
     setName("");
     setSpecialty("");
+    setNewWhatsapp("");
     setNewColor(DEFAULT_PROFESSIONAL_PANEL_COLOR);
     setNewEmoji("");
     setNewPhotoFile(null);
@@ -476,6 +482,7 @@ export function ProfessionalsManagerModal({
     setEditingId(r.id);
     setEditName(r.name);
     setEditSpecialty(r.specialty ?? "");
+    setEditWhatsapp(r.whatsapp ?? "");
     setError(null);
     if (r.agenda_hours && r.agenda_hours.length > 0) {
       setEditAgendaCustom(true);
@@ -490,6 +497,7 @@ export function ProfessionalsManagerModal({
     setEditingId(null);
     setEditName("");
     setEditSpecialty("");
+    setEditWhatsapp("");
     setEditAgendaCustom(false);
     setEditAgendaHours(new Set());
   }
@@ -508,7 +516,7 @@ export function ProfessionalsManagerModal({
 
     const { error: u } = await supabase
       .from("professionals")
-      .update({ name: n, specialty: editSpecialty.trim() || null, agenda_hours: agendaHours })
+      .update({ name: n, specialty: editSpecialty.trim() || null, whatsapp: editWhatsapp.trim() || null, agenda_hours: agendaHours })
       .eq("id", r.id)
       .eq("clinic_id", clinicId);
     if (u) {
@@ -577,6 +585,16 @@ export function ProfessionalsManagerModal({
         onChange={(e) => setSpecialty(e.target.value)}
         className="w-full rounded-xl border border-[#d4cfc4] px-3 py-2.5 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
       />
+      <div>
+        <p className="mb-1 text-xs font-semibold text-[#5c5348]">WhatsApp para notificações (opcional)</p>
+        <input
+          placeholder="Ex.: 5511999999999"
+          value={newWhatsapp}
+          onChange={(e) => setNewWhatsapp(e.target.value)}
+          className="w-full rounded-xl border border-[#d4cfc4] px-3 py-2.5 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
+        />
+        <p className="mt-1 text-[11px] text-[#8a8278]">Código do país + DDD + número, sem espaços ou traços.</p>
+      </div>
       <div className="rounded-2xl border border-[#e6e1d8] bg-[#faf8f4] p-4">
         <p className="text-xs font-semibold text-[#5c5348]">Avatar</p>
         <p className="mt-0.5 text-[11px] leading-relaxed text-[#8a8278]">
@@ -692,12 +710,25 @@ export function ProfessionalsManagerModal({
                         onChange={(e) => setEditSpecialty(e.target.value)}
                         className="w-full rounded-xl border border-[#d4cfc4] px-3 py-2 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
                       />
+                      <div>
+                        <p className="text-[11px] font-semibold text-[#5c5348]">WhatsApp para notificações</p>
+                        <input
+                          aria-label="WhatsApp do profissional"
+                          placeholder="5511999999999"
+                          value={editWhatsapp}
+                          onChange={(e) => setEditWhatsapp(e.target.value)}
+                          className="mt-1 w-full rounded-xl border border-[#d4cfc4] px-3 py-2 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
+                        />
+                      </div>
                     </div>
                   ) : (
                     <>
                       <p className="font-medium text-[#2c2825]">{r.name}</p>
                       {r.specialty ? (
                         <p className="text-xs text-[#7a7268]">{r.specialty}</p>
+                      ) : null}
+                      {r.whatsapp ? (
+                        <p className="mt-0.5 text-[11px] text-[#0f766e]">📲 {r.whatsapp}</p>
                       ) : null}
                     </>
                   )}

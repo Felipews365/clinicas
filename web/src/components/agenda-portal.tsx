@@ -15,6 +15,7 @@ import { AgentConfigModal } from "@/components/agent-config-modal";
 import { ClinicProfilePanel } from "@/components/clinic-profile-panel";
 import { ClinicSubscriptionPanel } from "@/components/clinic-subscription-panel";
 import { ConectarWhatsapp } from "@/components/conectar-whatsapp";
+import { WhatsappInbox } from "@/components/whatsapp-inbox";
 import {
   addDaysToYmd,
   formatLocalYmd,
@@ -228,6 +229,7 @@ export function AgendaPortal() {
     | "clinic-hours"
     | "whatsapp-human"
     | "whatsapp-connect"
+    | "whatsapp-inbox"
     | "clinic-subscription"
     | "agent"
     | "report"
@@ -1269,6 +1271,10 @@ export function AgendaPortal() {
               </span>
             )}
           </button>
+          <button type="button" onClick={() => setSidebarPage("whatsapp-inbox")} className={sidebarNavClass("whatsapp-inbox")}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8M8 14h5"/></svg>
+            Inbox WhatsApp
+          </button>
           <button type="button" onClick={() => setSidebarPage("agent")} className={sidebarNavClass("agent")}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 15h.01M12 15h.01M16 15h.01"/></svg>
             Agente IA
@@ -1497,6 +1503,14 @@ export function AgendaPortal() {
                 </button>
                 <button
                   type="button"
+                  className={mobileNavRowClass("whatsapp-inbox")}
+                  onClick={() => goToSidebarPageAfterMobileMenuClose("whatsapp-inbox")}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8M8 14h5"/></svg></span>
+                  Inbox WhatsApp
+                </button>
+                <button
+                  type="button"
                   className={mobileNavRowClass("agent")}
                   onClick={() => goToSidebarPageAfterMobileMenuClose("agent")}
                 >
@@ -1685,6 +1699,11 @@ export function AgendaPortal() {
                 supabase={supabase}
                 clinicId={access.clinicId}
               />
+            ) : null}
+            {sidebarPage === "whatsapp-inbox" ? (
+              <div className="flex h-[calc(100vh-120px)] min-h-0 w-full p-2">
+                <WhatsappInbox supabase={supabase} clinicId={access.clinicId} />
+              </div>
             ) : null}
             {sidebarPage === "whatsapp-connect" ? (
               <ConectarWhatsapp
