@@ -72,10 +72,15 @@ export async function POST(req: Request) {
     body: message,
   });
 
-  // Atualiza preview da sessão
+  // Atualiza preview + marca que equipa está a atender (pausa o bot)
   await svc
     .from("whatsapp_sessions")
-    .update({ last_message_preview: message, updated_at: new Date().toISOString() })
+    .update({
+      last_message_preview: message,
+      updated_at: new Date().toISOString(),
+      staff_handling: true,
+      needs_human: false,
+    })
     .eq("id", sessionId);
 
   return NextResponse.json({ ok: true });
