@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
+import AOSProvider from "@/components/AOSProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -40,7 +41,7 @@ export default function RootLayout({
         <Script id="painel-theme-init" strategy="beforeInteractive">
           {`(function(){try{var k="painel-theme";var s=localStorage.getItem(k);var t=s==="dark"||s==="light"?s:(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.setAttribute("data-theme",t);document.documentElement.style.colorScheme=t==="dark"?"dark":"light";}catch(e){}})()`}
         </Script>
-        {children}
+        <AOSProvider>{children}</AOSProvider>
       </body>
     </html>
   );

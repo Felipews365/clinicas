@@ -176,7 +176,7 @@ export default function LandingPage() {
             pointer-events: none;
             background:
               radial-gradient(ellipse 85% 70% at 50% -15%, var(--spotlight) 0%, transparent 55%),
-              linear-gradient(180deg, rgba(10, 14, 16, 0.86) 0%, rgba(10, 14, 16, 0.9) 45%, rgba(10, 14, 16, 0.93) 100%);
+              linear-gradient(180deg, rgba(10, 14, 16, 0.50) 0%, rgba(10, 14, 16, 0.58) 45%, rgba(10, 14, 16, 0.65) 100%);
           }
 
           html.light .hero.spotlight-hero::after {
@@ -186,7 +186,7 @@ export default function LandingPage() {
             z-index: 0;
             pointer-events: none;
             background:
-              linear-gradient(180deg, rgba(255, 255, 255, 0.76) 0%, rgba(248, 247, 245, 0.84) 45%, rgba(255, 255, 255, 0.87) 100%);
+              linear-gradient(180deg, rgba(255, 255, 255, 0.45) 0%, rgba(248, 247, 245, 0.52) 45%, rgba(255, 255, 255, 0.58) 100%);
           }
 
           .hero.spotlight-hero > .container {
@@ -1363,7 +1363,146 @@ export default function LandingPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.4, ease: 'easeOut' as const }}
               >
-                <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 400' width='100%' height='auto'%3E%3Crect width='800' height='400' fill='%23f8f7f5'/%3E%3Crect x='50' y='50' width='700' height='300' rx='8' fill='white' stroke='%23e8e8e8' stroke-width='2'/%3E%3Crect x='70' y='70' width='660' height='40' fill='%230d6b7a' opacity='0.1' rx='4'/%3E%3Crect x='70' y='130' width='300' height='20' fill='%230d6b7a' opacity='0.2' rx='2'/%3E%3Crect x='70' y='160' width='250' height='120' fill='%230d6b7a' opacity='0.05' rx='4'/%3E%3Crect x='430' y='130' width='300' height='150' fill='%232d8a6b' opacity='0.1' rx='4'/%3E%3C/svg%3E" alt="Interface do sistema de agendamento" />
+                {/* Dashboard mockup */}
+                <div style={{
+                  background: 'rgba(255,255,255,0.92)',
+                  backdropFilter: 'blur(12px)',
+                  borderRadius: '16px',
+                  border: '1px solid rgba(13,107,122,0.15)',
+                  boxShadow: '0 24px 64px rgba(0,0,0,0.18), 0 4px 16px rgba(13,107,122,0.12)',
+                  overflow: 'hidden',
+                  width: '100%',
+                  fontFamily: 'var(--font-geist-sans, sans-serif)',
+                }}>
+                  {/* Topbar */}
+                  <div style={{
+                    background: '#0d6b7a',
+                    padding: '10px 18px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <svg viewBox="0 0 16 16" fill="white" style={{ width: '14px', height: '14px' }}><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
+                      </div>
+                      <span style={{ color: 'white', fontWeight: 600, fontSize: '13px', letterSpacing: '-0.01em' }}>AgendaClinic</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '11px' }}>Seg, 07 Abr 2026</span>
+                      <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ color: 'white', fontSize: '10px', fontWeight: 700 }}>DR</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Stats row */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0', borderBottom: '1px solid #e8f0f1' }}>
+                    {[
+                      { label: 'Hoje', value: '14', sub: 'consultas', color: '#0d6b7a' },
+                      { label: 'Confirmados', value: '11', sub: '79%', color: '#2d8a6b' },
+                      { label: 'Pendentes', value: '3', sub: 'aguardando', color: '#e08a00' },
+                      { label: 'Faltas hoje', value: '0', sub: '−60% vs ant.', color: '#16a34a' },
+                    ].map((stat, i) => (
+                      <div key={i} style={{
+                        padding: '10px 14px',
+                        borderRight: i < 3 ? '1px solid #e8f0f1' : 'none',
+                      }}>
+                        <p style={{ margin: 0, fontSize: '10px', color: '#6b8a8f', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{stat.label}</p>
+                        <p style={{ margin: '2px 0 0', fontSize: '22px', fontWeight: 700, color: stat.color, lineHeight: 1 }}>{stat.value}</p>
+                        <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#9ab0b4' }}>{stat.sub}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Main content: calendar + list */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 200px', minHeight: '220px' }}>
+                    {/* Calendar grid */}
+                    <div style={{ padding: '12px 14px', borderRight: '1px solid #e8f0f1' }}>
+                      {/* Day headers */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '38px repeat(5, 1fr)', gap: '4px', marginBottom: '6px' }}>
+                        <div />
+                        {['Seg 7', 'Ter 8', 'Qua 9', 'Qui 10', 'Sex 11'].map((d, i) => (
+                          <div key={i} style={{
+                            textAlign: 'center', fontSize: '10px', fontWeight: i === 0 ? 700 : 500,
+                            color: i === 0 ? '#0d6b7a' : '#9ab0b4',
+                            background: i === 0 ? 'rgba(13,107,122,0.08)' : 'transparent',
+                            borderRadius: '6px', padding: '3px 0',
+                          }}>{d}</div>
+                        ))}
+                      </div>
+                      {/* Hour rows */}
+                      {[
+                        { hour: '08:00', slots: [{ col: 0, label: 'M. Santos', color: '#0d6b7a' }, { col: 2, label: 'R. Lima', color: '#2d8a6b' }] },
+                        { hour: '09:00', slots: [{ col: 0, label: 'C. Ferreira', color: '#0d6b7a' }, { col: 1, label: 'P. Alves', color: '#7c3aed' }, { col: 4, label: 'J. Costa', color: '#2d8a6b' }] },
+                        { hour: '10:00', slots: [{ col: 1, label: 'L. Rocha', color: '#7c3aed' }, { col: 3, label: 'T. Neves', color: '#0d6b7a' }] },
+                        { hour: '11:00', slots: [{ col: 0, label: 'F. Dias', color: '#2d8a6b' }, { col: 2, label: 'A. Melo', color: '#e08a00' }, { col: 4, label: 'K. Ramos', color: '#0d6b7a' }] },
+                      ].map((row, ri) => (
+                        <div key={ri} style={{ display: 'grid', gridTemplateColumns: '38px repeat(5, 1fr)', gap: '4px', marginBottom: '4px' }}>
+                          <div style={{ fontSize: '9px', color: '#9ab0b4', paddingTop: '4px', textAlign: 'right', paddingRight: '6px' }}>{row.hour}</div>
+                          {[0, 1, 2, 3, 4].map((col) => {
+                            const slot = row.slots.find(s => s.col === col);
+                            return (
+                              <div key={col} style={{
+                                height: '26px',
+                                borderRadius: '5px',
+                                background: slot ? slot.color : 'rgba(13,107,122,0.04)',
+                                border: slot ? 'none' : '1px dashed rgba(13,107,122,0.12)',
+                                display: 'flex', alignItems: 'center', padding: slot ? '0 6px' : '0',
+                                overflow: 'hidden',
+                              }}>
+                                {slot && <span style={{ fontSize: '9px', color: 'white', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{slot.label}</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Right panel: upcoming list */}
+                    <div style={{ padding: '12px 12px' }}>
+                      <p style={{ margin: '0 0 8px', fontSize: '10px', fontWeight: 700, color: '#0d6b7a', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Próximas</p>
+                      {[
+                        { time: '08:00', name: 'M. Santos', status: 'confirmado', color: '#16a34a' },
+                        { time: '08:30', name: 'R. Lima', status: 'confirmado', color: '#16a34a' },
+                        { time: '09:00', name: 'C. Ferreira', status: 'confirmado', color: '#16a34a' },
+                        { time: '09:30', name: 'P. Alves', status: 'pendente', color: '#e08a00' },
+                        { time: '10:00', name: 'L. Rocha', status: 'confirmado', color: '#16a34a' },
+                        { time: '10:30', name: 'T. Neves', status: 'pendente', color: '#e08a00' },
+                      ].map((appt, i) => (
+                        <div key={i} style={{
+                          display: 'flex', alignItems: 'center', gap: '8px',
+                          padding: '5px 6px', borderRadius: '7px', marginBottom: '3px',
+                          background: i === 0 ? 'rgba(13,107,122,0.07)' : 'transparent',
+                        }}>
+                          <span style={{ fontSize: '9px', color: '#6b8a8f', minWidth: '30px', fontWeight: 600 }}>{appt.time}</span>
+                          <span style={{ fontSize: '10px', color: '#1a2e31', fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{appt.name}</span>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: appt.color, flexShrink: 0 }} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Bottom bar */}
+                  <div style={{
+                    borderTop: '1px solid #e8f0f1',
+                    padding: '7px 18px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    background: 'rgba(13,107,122,0.03)',
+                  }}>
+                    <div style={{ display: 'flex', gap: '14px' }}>
+                      {['Agenda', 'Pacientes', 'Relatórios', 'WhatsApp'].map((item, i) => (
+                        <span key={i} style={{ fontSize: '10px', color: i === 0 ? '#0d6b7a' : '#9ab0b4', fontWeight: i === 0 ? 700 : 400, cursor: 'pointer' }}>{item}</span>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />
+                      <span style={{ fontSize: '9px', color: '#6b8a8f' }}>WhatsApp conectado</span>
+                    </div>
+                  </div>
+                </div>
               </motion.div>
 
               <motion.div
@@ -1843,31 +1982,31 @@ export default function LandingPage() {
                 Contrato, cancelamento, suporte e dados — direto ao ponto.
               </motion.p>
               <div style={{ maxWidth: '42rem', margin: '0 auto' }}>
-                <details>
+                <details data-aos="fade-up" data-aos-delay="100">
                   <summary>Existe fidelidade ou contrato longo?</summary>
                   <p>
                     Não exigimos contrato de longo prazo para os planos em cartão: você assina mensalmente e renova enquanto fizer sentido para a clínica. O Enterprise pode ter acordo com prazos — isso é alinhado com o time comercial quando for o caso.
                   </p>
                 </details>
-                <details>
+                <details data-aos="fade-up" data-aos-delay="200">
                   <summary>Como funciona o cancelamento?</summary>
                   <p>
                     Você cancela pelo painel ou falando com o suporte antes da próxima cobrança. Durante o teste de 7 dias não há cobrança; depois disso, o que já foi faturado segue o ciclo vigente até o fim do período pago, conforme a política exibida na contratação.
                   </p>
                 </details>
-                <details>
+                <details data-aos="fade-up" data-aos-delay="300">
                   <summary>Qual o tempo de resposta do suporte?</summary>
                   <p>
                     No plano Básico priorizamos email em horário comercial. No Profissional há canal por WhatsApp combinado com a equipe. No Enterprise há fila prioritária e SLA definido no contrato.
                   </p>
                 </details>
-                <details>
+                <details data-aos="fade-up" data-aos-delay="400">
                   <summary>O WhatsApp da clínica fica na plataforma?</summary>
                   <p>
                     O envio de lembretes e confirmações usa o fluxo que você configurar (incluindo integrações compatíveis). Você mantém o número da clínica; nós mostramos no onboarding como conectar de forma segura e em linha com as políticas do WhatsApp Business.
                   </p>
                 </details>
-                <details>
+                <details data-aos="fade-up" data-aos-delay="500">
                   <summary>Meus dados e de pacientes estão protegidos (LGPD)?</summary>
                   <p>
                     Tratamos dados de operação com base em contrato e política de privacidade: acesso restrito à sua equipe, registro de operações necessárias e opções de exportação ou exclusão conforme solicitado e lei aplicável. Detalhes completos estão nos documentos legais do site.
@@ -1967,14 +2106,14 @@ export default function LandingPage() {
         <footer>
           <div className="container">
             <div className="footer-content">
-              <div className="footer-section">
+              <div className="footer-section" data-aos="fade-up" data-aos-delay="100">
                 <h4>AgendaClinic</h4>
                 <p style={{fontSize: '0.9rem', color: 'var(--text-light)', margin: 0}}>
                   A plataforma mais inteligente para gerenciar agendamentos de clínicas e consultórios.
                 </p>
               </div>
 
-              <div className="footer-section">
+              <div className="footer-section" data-aos="fade-up" data-aos-delay="200">
                 <h4>Produto</h4>
                 <ul>
                   <li><a href="#solucao">Como funciona</a></li>
@@ -1985,7 +2124,7 @@ export default function LandingPage() {
                 </ul>
               </div>
 
-              <div className="footer-section">
+              <div className="footer-section" data-aos="fade-up" data-aos-delay="300">
                 <h4>Suporte</h4>
                 <ul>
                   <li><a href="https://wa.me/5511999999999">WhatsApp</a></li>
@@ -1994,7 +2133,7 @@ export default function LandingPage() {
                 </ul>
               </div>
 
-              <div className="footer-section">
+              <div className="footer-section" data-aos="fade-up" data-aos-delay="400">
                 <h4>Legal</h4>
                 <ul>
                   <li><a href="#">Termos de Uso</a></li>
