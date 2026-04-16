@@ -21,7 +21,9 @@
       "Bash(xargs -I {} basename {})",
       "mcp__claude_ai_Supabase__get_project_url",
       "Bash(split -b 50000 \"/c/Users/felip/.claude/projects/e--projeto-2026-consultorio/a8a8b7c9-320d-4090-ad13-766d3ea49b22/tool-results/mcp-n8n-get_workflow-1775253245051.txt\" \"/c/Users/felip/.claude/projects/e--projeto-2026-consultorio/a8a8b7c9-320d-4090-ad13-766d3ea49b22/tool-results/part_\")",
-      "Bash(grep -o 'function\\\\\\\\s*\\([^{]*{[^}]*split[^}]*}')"
+      "Bash(grep -o 'function\\\\\\\\s*\\([^{]*{[^}]*split[^}]*}')",
+      "Bash(curl -s 'https://n8n.vps7846.panel.icontainer.cloud/api/v1/workflows?limit=20' -H 'X-N8N-API-KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkODUwY2QwZi02YmZhLTRhNmQtYWI1YS01NTUyMWNmZDY4NTQiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiMWFkZDg2M2UtOTQ5OC00YmRlLWI5YzQtNDZlYzA0MDJmMTM5IiwiaWF0IjoxNzc1MzM1MzM2fQ.FhHzhSbzBHU9TchtkN-zD1W2tCwZQaz8zjtK7pmQXjs')",
+      "Bash(node -e ' *)"
     ]
   }
 }

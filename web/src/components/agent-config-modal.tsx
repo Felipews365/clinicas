@@ -655,6 +655,8 @@ export function AgentConfigModal({
 }) {
   const [config, setConfig] = useState<AgentConfig>({ ...EMPTY_CONFIG });
   const [nomeAgente, setNomeAgente] = useState<string>("");
+  const [saudacaoNovo, setSaudacaoNovo] = useState<string>("");
+  const [saudacaoRetorno, setSaudacaoRetorno] = useState<string>("");
   const [clinicName, setClinicName] = useState<string>("");
   // quemSomos/enderecoClinica lidos do DB apenas para preview — editáveis em "Clínica / Perfil"
   const [quemSomos, setQuemSomos] = useState<string>("");
@@ -694,6 +696,8 @@ export function AgentConfigModal({
           const parsed = raw ? JSON.parse(raw) : {};
           setClinicModel(normalizeClinicModelId(parsed.clinic_model));
           setNomeAgente(parsed.nome_agente ?? "");
+          setSaudacaoNovo(typeof parsed.saudacao_novo === "string" ? parsed.saudacao_novo : "");
+          setSaudacaoRetorno(typeof parsed.saudacao_retorno === "string" ? parsed.saudacao_retorno : "");
           // lidos apenas para preview na identidade
           setQuemSomos(typeof parsed.quem_somos === "string" ? parsed.quem_somos : "");
           setEnderecoClinica(typeof parsed.endereco === "string" ? parsed.endereco : "");
@@ -752,6 +756,8 @@ export function AgentConfigModal({
       clinic_model: clinicModel,
       instructions_markdown: buildAgentInstructionsMarkdown(config, clinicModel, extra),
       nome_agente: nomeAgente.trim() || null,
+      saudacao_novo: saudacaoNovo.trim() || null,
+      saudacao_retorno: saudacaoRetorno.trim() || null,
     };
     const { error: e } = await supabase
       .from("clinics")
@@ -892,6 +898,51 @@ export function AgentConfigModal({
                               placeholder="Ex: Ana, Sofia, Carlos…"
                               className="mt-2 w-full max-w-md rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
                             />
+
+                            {/* Saudação — cliente novo */}
+                            <div className="mt-3 border-t border-[#ede9e2] pt-3">
+                              <label
+                                htmlFor="agent-config-saudacao-novo"
+                                className="text-xs font-semibold text-[#1f1c1a]"
+                              >
+                                Saudação — cliente novo
+                              </label>
+                              <p className="mt-0.5 text-[11px] text-[#8a8278]">
+                                Mensagem enviada ao primeiro contato. Deixe vazio para usar o padrão.
+                                Use <code className="rounded bg-[#f0ebe3] px-0.5">{"{{name}}"}</code> e{" "}
+                                <code className="rounded bg-[#f0ebe3] px-0.5">{"{{clinica}}"}</code>.
+                              </p>
+                              <textarea
+                                id="agent-config-saudacao-novo"
+                                rows={3}
+                                value={saudacaoNovo}
+                                onChange={(e) => { setSaudacaoNovo(e.target.value); setSaved(false); }}
+                                placeholder={`Olá! Sou {{name}}, da {{clinica}}. Estou aqui para ajudar com agendamentos e dúvidas. Como posso te ajudar hoje? 😊`}
+                                className="mt-2 w-full rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
+                              />
+                            </div>
+
+                            {/* Saudação — cliente de retorno */}
+                            <div className="mt-3">
+                              <label
+                                htmlFor="agent-config-saudacao-retorno"
+                                className="text-xs font-semibold text-[#1f1c1a]"
+                              >
+                                Saudação — cliente de retorno
+                              </label>
+                              <p className="mt-0.5 text-[11px] text-[#8a8278]">
+                                Mensagem para quem já foi atendido antes. Deixe vazio para usar o padrão.
+                                Use <code className="rounded bg-[#f0ebe3] px-0.5">{"{{nome_cliente}}"}</code> para incluir o nome salvo.
+                              </p>
+                              <input
+                                id="agent-config-saudacao-retorno"
+                                type="text"
+                                value={saudacaoRetorno}
+                                onChange={(e) => { setSaudacaoRetorno(e.target.value); setSaved(false); }}
+                                placeholder={`Olá, {{nome_cliente}}! Como posso te ajudar hoje? 😊`}
+                                className="mt-2 w-full max-w-md rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
+                              />
+                            </div>
                           </div>
                         ) : undefined
                       }
