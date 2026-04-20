@@ -37,7 +37,8 @@ web/
 ### Workflow n8n
 - O arquivo `workflow-kCX2-live.json` tem **dois blocos** de nodes: `nodes[]` (top-level) e `activeVersion.nodes[]` — ambos devem ser atualizados juntos
 - Após editar o JSON local, sempre subir via API (não copiar/colar na UI)
-- Workflow tem dois agentes AI idênticos (`AI Agent` e cópia em `activeVersion`) — manter ambos sincronizados
+- Para sincronizar local ← n8n (após editar na UI): `GET /api/v1/workflows/kCX2LfxJrdYWB0vk` e salvar em `workflow-kCX2-live.json`
+- O node `AI Agent` (monolítico antigo) está **desconectado** no workflow — mantido apenas como rollback. Não editar nem reconectar sem intenção explícita
 
 ### Supabase / Banco
 - Toda alteração de schema via `mcp__supabase__apply_migration` E criar arquivo `.sql` em `supabase/migrations/`
@@ -57,9 +58,14 @@ web/
 - **Toda query ao banco DEVE incluir `clinic_id`** para garantir isolamento entre clínicas
 - Cada clínica tem sua própria configuração em `clinics.agent_instructions` (JSON):
   - `nome_agente`: nome do assistente virtual da clínica
-  - `saudacao_novo`: template de boas-vindas para cliente novo
-  - `saudacao_retorno`: template de boas-vindas para cliente de retorno
-  - `identidade`, `triagem`, `tom`, `orientacoes`, `transferir`, `outros`: instruções específicas
+  - `saudacao_novo`: template de boas-vindas para cliente novo (suporta `{{name}}`, `{{clinica}}`, `{{periodo}}`)
+  - `saudacao_retorno`: template de boas-vindas para cliente de retorno (suporta `{{nome_cliente}}`)
+  - `identidade`: quem é o agente e como se apresenta
+  - `triagem`: regras de triagem e urgências — salvo como lista `- item\n- item`
+  - `tom`: tom e linguagem — salvo como `✅ USAR SEMPRE:\n- item\n\n❌ NUNCA FAZER:\n- item` (NÃO editar como texto livre; gerado pelo painel)
+  - `orientacoes`: orientações ao paciente — salvo como lista `- item\n- item`
+  - `transferir`: quando transferir para humano — salvo como lista `- item\n- item`
+  - ~~`outros`~~: campo removido do painel (dados legados no banco podem ainda existir mas não são exibidos)
 - `cs_clientes`, `cs_agendamentos`, slots, serviços, profissionais — tudo filtrado por `clinic_id`
 - Ao criar RPCs novas, sempre receber `p_clinic_id uuid` como primeiro parâmetro
 
@@ -71,25 +77,53 @@ web/
 5. `Verificar se cliente está cadastrado`: se não existe → `Create Cliente` com `nome = ''`
 6. `Bot inativo` verifica se atendimento humano assumiu
 7. Fila Redis (debounce 6s) agrupa mensagens rápidas
-8. `Monta Contexto` monta payload para o AI Agent:
+8. `Monta Contexto` monta payload para os agentes:
    - injeta `clinic_name`, `nome_agente`, `agent_instructions`, `saudacao_novo/retorno`
-   - `nome_cliente` vazio = cliente novo → agente pergunta o nome
-   - `nome_cliente` preenchido = cliente de retorno → agente saúda pelo nome
-9. AI Agent responde usando tools RPC do Supabase (todas recebem `p_clinic_id`)
+   - injeta `clinic_id`, `remoteJid`, `instanceName` (usados pelos agentes e handoff)
+   - injeta `instr_triagem`, `instr_faq`, `instr_transferir` (seções de `agent_instructions`)
+   - `instr_outros` ainda pode existir no Code node por compatibilidade com dados legados, mas não é alimentado pelo painel
+   - `nome_cliente` vazio = cliente novo → agente qualificador pergunta o nome
+   - `nome_cliente` preenchido = cliente de retorno → agente qualificador saúda pelo nome
+9. **Sistema multi-agente** roteia para o agente especializado correto (ver seção abaixo)
 10. Resposta enviada via Evolution API (WhatsApp)
 
-### Tools do AI Agent
-| Tool | RPC / Destino |
-|---|---|
-| `cs_salvar_nome` | `n8n_cs_salvar_nome` — salva nome confirmado pelo cliente |
-| `cs_consultar_servicos` | lista procedimentos |
-| `cs_consultar_profissionais` | lista profissionais |
-| `cs_consultar_vagas` | horários disponíveis |
-| `cs_agendar` | cria agendamento — retorna `profissional_whatsapp` |
-| `cs_buscar_agendamentos` | consulta agendamentos do cliente |
-| `cs_reagendar` | reagenda — retorna `profissional_whatsapp` |
-| `cs_cancelar` | cancela — retorna `profissional_whatsapp` |
-| `cs_notificar_profissional` | Evolution API — envia WhatsApp ao profissional |
+### Arquitetura Multi-Agente
+
+O fluxo de IA usa **4 agentes especializados + 1 handoff determinístico** para reduzir alucinação:
+
+```
+Monta Contexto
+  → agente_atende_qualifica  (temp 0.4) — saudação, coleta nome, classifica intenção
+  → Code Extrair Rota        — extrai tag [ROTA: X] e repassa contexto completo
+  → Switch Rota
+       agendamento   → agente_agendador               (temp 0.1)
+       faq           → agente_faq                     (temp 0.5)
+       procedimentos → agente_especialista_procedimentos (temp 0.4)
+       humano        → Code Preparar Handoff → Update bot_ativo=false → Evolution send
+       concluido     → Edit Fields (resposta direta do qualificador)
+  → Edit Fields → dispatch WhatsApp
+```
+
+Todos os agentes compartilham a mesma **Postgres Chat Memory** (session: `clinic_id:remoteJid`, 50 msgs).
+
+### Tools por Agente
+
+| Tool (node n8n) | Agente | RPC / Destino |
+|---|---|---|
+| `qualifica_cs_salvar_nome` | qualifica | `n8n_cs_salvar_nome` — salva nome confirmado |
+| `agd_cs_consultar_servicos` | agendador | `n8n_clinic_procedimentos` — lista procedimentos |
+| `agd_cs_consultar_profissionais` | agendador | `cs_profissionais` — lista profissionais |
+| `agd_cs_consultar_vagas` | agendador | `n8n_cs_consultar_vagas` — horários disponíveis |
+| `agd_cs_agendar` | agendador | `n8n_cs_agendar` — cria agendamento |
+| `agd_cs_buscar_agendamentos` | agendador | `n8n_cs_buscar_agendamentos` — consulta agendamentos |
+| `agd_cs_reagendar` | agendador | `n8n_cs_reagendar` — reagenda |
+| `agd_cs_cancelar` | agendador | `n8n_cs_cancelar` — cancela |
+| `agd_cs_notificar_profissional` | agendador | Evolution API — envia WhatsApp ao profissional |
+| `faq_cs_consultar_servicos` | faq | `n8n_clinic_procedimentos` — lista serviços |
+| `esp_cs_consultar_servicos` | especialista | `n8n_clinic_procedimentos` — detalhes do procedimento |
+
+> Cada agente tem também um **Refletir** (Think tool) para raciocínio antes de responder.
+> Os nodes `agd_*`, `faq_*`, `esp_*` são cópias independentes — não compartilhar entre agentes.
 
 ### Notificação de profissionais
 - Após `cs_agendar`, `cs_reagendar` ou `cs_cancelar`, o agente chama `cs_notificar_profissional` se `profissional_whatsapp` não for nulo

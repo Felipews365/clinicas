@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -23,13 +24,15 @@ import {
 
 type AgentConfig = AgentSectionsState;
 
+const DEFAULT_SAUDACAO_NOVO =
+  "Olá! {{periodo}}! Sou {{name}}, da {{clinica}}. Como posso te chamar? 😊";
+
 const EMPTY_CONFIG: AgentConfig = {
   identidade: "",
   triagem: "",
   tom: "",
   orientacoes: "",
   transferir: "",
-  outros: "",
 };
 
 const SECTIONS: {
@@ -78,18 +81,6 @@ const SECTIONS: {
     ],
   },
   {
-    key: "tom",
-    emoji: "💬",
-    title: "Tom e Linguagem",
-    hint: "Como o agente deve se comunicar. Palavras a usar ou evitar, nível de formalidade, emojis, etc.",
-    placeholder: "Ex: Use tom acolhedor e informal (tutear). Evite termos técnicos. Prefira 'desconforto' a 'dor', 'remover' a 'arrancar'. Use emojis com moderação...",
-    templates: [
-      { label: "Odontologia", value: "Tom: acolhedor, empático e tranquilizador. Muitos pacientes têm medo de dentista.\n\n✅ Use:\n- 'remover o dente' em vez de 'arrancar'\n- 'desconforto' em vez de 'dor'\n- 'tratamento de canal' em vez de 'desvitalização'\n- 'dormência local' em vez de 'anestesia'\n\n❌ Evite:\n- Palavras que causam ansiedade: 'doer', 'perfurar', 'arrancar', 'agulha'\n- Tom muito formal ou frio\n- Minimizar a dor do paciente\n\nUse emojis com moderação (🦷 ✅ ⏰)." },
-      { label: "Formal / Profissional", value: "Tom: profissional, cordial e objetivo.\nTrate o paciente por 'você'. Evite gírias.\nSeja direto e claro, sem ser frio.\nNão use emojis em excesso — apenas para listas ou destaques." },
-      { label: "Descontraído", value: "Tom: leve, amigável e próximo.\nTutear é encorajado. Use emojis para deixar a conversa mais humana.\nSeja breve e direto — ninguém quer ler parágrafos longos no WhatsApp.\nDê um toque de personalidade, mas mantenha o profissionalismo." },
-    ],
-  },
-  {
     key: "orientacoes",
     emoji: "📌",
     title: "Orientações ao Paciente",
@@ -109,16 +100,6 @@ const SECTIONS: {
     templates: [
       { label: "Odontologia", value: "Transferir IMEDIATAMENTE para humano:\n- Dor 10/10 ou trauma com dente quebrado/perdido\n- Criança com menos de 3 anos\n- Reclamação sobre atendimento anterior\n- Orçamento complexo (tratamento completo / reabilitação)\n- Negociação de valores ou formas de pagamento\n- Paciente confuso ou em estado emocional alterado\n- Pedido de segunda opinião clínica" },
       { label: "Geral", value: "Transferir para humano quando:\n- O paciente insistir em falar com uma pessoa\n- Situação de emergência médica\n- Reclamação ou insatisfação com o serviço\n- Pedido de desconto ou negociação de pagamento\n- Dúvidas clínicas específicas (diagnóstico, medicação, exames)\n- Orçamento personalizado ou pacote de tratamentos" },
-    ],
-  },
-  {
-    key: "outros",
-    emoji: "⚙️",
-    title: "Outras Instruções",
-    hint: "Qualquer outra regra, comportamento ou informação que o agente deva saber.",
-    placeholder: "Ex: A clínica não atende convénios. O estacionamento é gratuito. Confirmar sempre o número de telefone do paciente antes de finalizar o agendamento...",
-    templates: [
-      { label: "Informações da Clínica", value: "Endereço: [preencher]\nHorário: Segunda a Sexta 8h–20h | Sábado 8h–12h\nEstacionamento: [gratuito / pago / rua]\nConvénios aceites: [listar ou 'não aceitamos convénios']\nFormas de pagamento: dinheiro, cartão, Pix" },
     ],
   },
 ];
@@ -145,7 +126,7 @@ function parseConfig(raw: string | null): AgentConfig {
     const { procedimentos: _drop, ...rest } = parsed as Record<string, unknown>;
     return normalizeAgentConfig({ ...EMPTY_CONFIG, ...rest });
   } catch {
-    return { ...EMPTY_CONFIG, outros: raw };
+    return { ...EMPTY_CONFIG };
   }
 }
 
@@ -542,6 +523,96 @@ export function ProceduresSectionInline({
 
 // ─── sub-componente: card de secção ──────────────────────────────────────────
 
+// ─── SectionListEditor ────────────────────────────────────────────────────────
+function SectionListEditor({
+  items,
+  inputValue,
+  onInputChange,
+  onAdd,
+  onRemove,
+  suggestions,
+}: {
+  items: string[];
+  inputValue: string;
+  onInputChange: (v: string) => void;
+  onAdd: (item: string) => void;
+  onRemove: (i: number) => void;
+  suggestions: string[];
+}) {
+  return (
+    <div className="space-y-3">
+      {/* Tags ativas */}
+      {items.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {items.map((item, i) => (
+            <span
+              key={i}
+              className="flex items-center gap-1.5 rounded-lg border border-[#d8cfe8] bg-white px-3 py-1.5 text-sm text-[#3d2f6a] shadow-sm"
+            >
+              {item}
+              <button
+                type="button"
+                onClick={() => onRemove(i)}
+                className="flex h-4 w-4 items-center justify-center rounded-full text-[#6a5a9a] opacity-50 hover:bg-[#ede8f8] hover:opacity-100"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Sugestões rápidas */}
+      {suggestions.filter((s) => !items.includes(s)).length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {suggestions
+            .filter((s) => !items.includes(s))
+            .map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => onAdd(s)}
+                className="rounded-lg border border-dashed border-[#c4b8e8] bg-white px-2.5 py-1 text-xs text-[#5c4d7a] hover:border-[#7c5cbf] hover:bg-[#f4f0fc]"
+              >
+                + {s}
+              </button>
+            ))}
+        </div>
+      )}
+
+      {/* Input personalizado */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={inputValue}
+          onChange={(e) => onInputChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && inputValue.trim()) {
+              e.preventDefault();
+              onAdd(inputValue.trim());
+              onInputChange("");
+            }
+          }}
+          placeholder="Adicionar item personalizado…"
+          className="flex-1 rounded-lg border border-[#d4cfc4] bg-white px-3 py-1.5 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none focus:border-[#7c5cbf] focus:ring-1 focus:ring-[#7c5cbf]"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            if (!inputValue.trim()) return;
+            onAdd(inputValue.trim());
+            onInputChange("");
+          }}
+          className="rounded-lg border border-[#7c5cbf] bg-white px-4 py-1.5 text-sm font-medium text-[#7c5cbf] hover:bg-[#7c5cbf] hover:text-white"
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── SectionCard ──────────────────────────────────────────────────────────────
 function SectionCard({
   emoji,
   title,
@@ -554,6 +625,7 @@ function SectionCard({
   onToggle,
   beforeHint,
   afterTextarea,
+  listContent,
   showConfiguredDot,
 }: {
   emoji: string;
@@ -568,6 +640,8 @@ function SectionCard({
   /** Conteúdo no topo da área expandida (ex.: nome do agente em Identidade). */
   beforeHint?: ReactNode;
   afterTextarea?: ReactNode;
+  /** Quando fornecido, substitui a textarea por um editor de lista. */
+  listContent?: ReactNode;
   /** Mostrar ponto «configurado» mesmo sem texto na textarea (ex.: só nome do agente). */
   showConfiguredDot?: boolean;
 }) {
@@ -622,14 +696,24 @@ function SectionCard({
             </div>
           )}
 
-          <textarea
-            value={value ?? ""}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            rows={4}
-            className="w-full resize-y rounded-xl border border-[#ddd8d0] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#2c2825] placeholder-[#b8b0a6] shadow-inner outline-none transition-[border-color,box-shadow] focus:border-[#3d6b62] focus:shadow-[0_0_0_3px_rgba(61,107,98,0.12)]"
-            spellCheck={false}
-          />
+          {listContent ?? (
+            <textarea
+              value={value ?? ""}
+              onChange={(e) => onChange(e.target.value)}
+              placeholder={placeholder}
+              rows={1}
+              ref={(el) => {
+                if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
+              }}
+              onInput={(e) => {
+                const t = e.currentTarget;
+                t.style.height = "auto";
+                t.style.height = t.scrollHeight + "px";
+              }}
+              className="w-full resize-none overflow-hidden rounded-xl border border-[#ddd8d0] bg-white px-3 py-2.5 text-sm leading-relaxed text-[#2c2825] placeholder-[#b8b0a6] shadow-inner outline-none transition-[border-color,box-shadow] focus:border-[#3d6b62] focus:shadow-[0_0_0_3px_rgba(61,107,98,0.12)]"
+              spellCheck={false}
+            />
+          )}
           {afterTextarea}
         </div>
       )}
@@ -667,6 +751,19 @@ export function AgentConfigModal({
   const [error, setError] = useState<string | null>(null);
   const [openSection, setOpenSection] = useState<string | null>(null);
   const [clinicModel, setClinicModel] = useState<ClinicModelId>("clinica_geral");
+  const [tomUsar, setTomUsar] = useState<string[]>([]);
+  const [tomEvitar, setTomEvitar] = useState<string[]>([]);
+  const [tomUsarInput, setTomUsarInput] = useState("");
+  const [tomEvitarInput, setTomEvitarInput] = useState("");
+  const tomFromUI = useRef(false);
+
+  const [triagemItems, setTriagemItems] = useState<string[]>([]);
+  const [triagemInput, setTriagemInput] = useState("");
+  const [orientacoesItems, setOrientacoesItems] = useState<string[]>([]);
+  const [orientacoesInput, setOrientacoesInput] = useState("");
+  const [transferirItems, setTransferirItems] = useState<string[]>([]);
+  const [transferirInput, setTransferirInput] = useState("");
+  const listSectionFromUI = useRef<Record<string, boolean>>({});
 
   /** Acordeão: só uma secção aberta; clicar na aberta fecha. */
   function toggleAccordionSection(key: string) {
@@ -696,7 +793,18 @@ export function AgentConfigModal({
           const parsed = raw ? JSON.parse(raw) : {};
           setClinicModel(normalizeClinicModelId(parsed.clinic_model));
           setNomeAgente(parsed.nome_agente ?? "");
-          setSaudacaoNovo(typeof parsed.saudacao_novo === "string" ? parsed.saudacao_novo : "");
+          const hasSaudacao = typeof parsed.saudacao_novo === "string" && parsed.saudacao_novo.trim();
+          setSaudacaoNovo(hasSaudacao ? parsed.saudacao_novo : DEFAULT_SAUDACAO_NOVO);
+          // Auto-salva o padrão no banco se ainda não havia valor definido
+          if (!hasSaudacao) {
+            supabase
+              .from("clinics")
+              .update({
+                agent_instructions: JSON.stringify({ ...parsed, saudacao_novo: DEFAULT_SAUDACAO_NOVO }),
+              })
+              .eq("id", clinicId)
+              .then(() => {});
+          }
           setSaudacaoRetorno(typeof parsed.saudacao_retorno === "string" ? parsed.saudacao_retorno : "");
           // lidos apenas para preview na identidade
           setQuemSomos(typeof parsed.quem_somos === "string" ? parsed.quem_somos : "");
@@ -709,6 +817,89 @@ export function AgentConfigModal({
       });
   }, [open, supabase, clinicId]);
 
+  // ─── Tom e Linguagem: helpers de lista estruturada ───────────────────────
+  function parseTomToLists(tom: string): { usar: string[]; evitar: string[] } {
+    const usar: string[] = [];
+    const evitar: string[] = [];
+    let section: "usar" | "evitar" | null = null;
+    for (const line of tom.split("\n")) {
+      if (/✅/.test(line)) { section = "usar"; continue; }
+      if (/❌/.test(line)) { section = "evitar"; continue; }
+      const m = line.match(/^[-•]\s*(.+)/);
+      if (m) {
+        const val = m[1].trim();
+        if (section === "usar") usar.push(val);
+        else if (section === "evitar") evitar.push(val);
+      }
+    }
+    return { usar, evitar };
+  }
+
+  function buildTomFromLists(usar: string[], evitar: string[]): string {
+    const parts: string[] = [];
+    if (usar.length) parts.push("✅ USAR SEMPRE:\n" + usar.map((i) => `- ${i}`).join("\n"));
+    if (evitar.length) parts.push("❌ NUNCA FAZER:\n" + evitar.map((i) => `- ${i}`).join("\n"));
+    return parts.join("\n\n");
+  }
+
+  function applyTomLists(usar: string[], evitar: string[]) {
+    setTomUsar(usar);
+    setTomEvitar(evitar);
+    tomFromUI.current = true;
+    updateSection("tom", buildTomFromLists(usar, evitar));
+    setSaved(false);
+  }
+
+  useEffect(() => {
+    if (tomFromUI.current) { tomFromUI.current = false; return; }
+    const { usar, evitar } = parseTomToLists(config.tom);
+    setTomUsar(usar);
+    setTomEvitar(evitar);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.tom]);
+
+  // ─── Seções de lista (triagem / orientacoes / transferir) ────────────────
+  function parseTextToItems(text: string): string[] {
+    return text
+      .split("\n")
+      .map((l) => l.replace(/^[-•*]\s*/, "").trim())
+      .filter(Boolean);
+  }
+
+  function buildTextFromItems(items: string[]): string {
+    return items.map((i) => `- ${i}`).join("\n");
+  }
+
+  function applyListSection(
+    key: "triagem" | "orientacoes" | "transferir",
+    items: string[],
+  ) {
+    listSectionFromUI.current[key] = true;
+    if (key === "triagem") setTriagemItems(items);
+    if (key === "orientacoes") setOrientacoesItems(items);
+    if (key === "transferir") setTransferirItems(items);
+    updateSection(key, buildTextFromItems(items));
+    setSaved(false);
+  }
+
+  useEffect(() => {
+    if (listSectionFromUI.current.triagem) { listSectionFromUI.current.triagem = false; return; }
+    setTriagemItems(parseTextToItems(config.triagem));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.triagem]);
+
+  useEffect(() => {
+    if (listSectionFromUI.current.orientacoes) { listSectionFromUI.current.orientacoes = false; return; }
+    setOrientacoesItems(parseTextToItems(config.orientacoes));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.orientacoes]);
+
+  useEffect(() => {
+    if (listSectionFromUI.current.transferir) { listSectionFromUI.current.transferir = false; return; }
+    setTransferirItems(parseTextToItems(config.transferir));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.transferir]);
+
   const identidadePreview = useMemo(
     () =>
       expandAgentIdentityPlaceholders(config.identidade ?? "", {
@@ -719,6 +910,18 @@ export function AgentConfigModal({
       }),
     [config.identidade, nomeAgente, clinicName, quemSomos, enderecoClinica]
   );
+
+  const saudacaoNovoPreview = useMemo(
+    () =>
+      expandAgentIdentityPlaceholders(saudacaoNovo, {
+        nomeAgente,
+        nomeClinica: clinicName,
+        quemSomos,
+        endereco: enderecoClinica,
+      }),
+    [saudacaoNovo, nomeAgente, clinicName, quemSomos, enderecoClinica]
+  );
+
 
   function updateSection(key: AgentSectionKey, value: string) {
     setConfig((prev) => ({ ...prev, [key]: value }));
@@ -756,7 +959,7 @@ export function AgentConfigModal({
       clinic_model: clinicModel,
       instructions_markdown: buildAgentInstructionsMarkdown(config, clinicModel, extra),
       nome_agente: nomeAgente.trim() || null,
-      saudacao_novo: saudacaoNovo.trim() || null,
+      saudacao_novo: saudacaoNovo.trim() || DEFAULT_SAUDACAO_NOVO,
       saudacao_retorno: saudacaoRetorno.trim() || null,
     };
     const { error: e } = await supabase
@@ -874,6 +1077,36 @@ export function AgentConfigModal({
                       showConfiguredDot={
                         s.key === "identidade" ? Boolean(nomeAgente.trim()) : false
                       }
+                      listContent={
+                        s.key === "triagem" ? (
+                          <SectionListEditor
+                            items={triagemItems}
+                            inputValue={triagemInput}
+                            onInputChange={setTriagemInput}
+                            onAdd={(item) => applyListSection("triagem", [...triagemItems, item])}
+                            onRemove={(i) => applyListSection("triagem", triagemItems.filter((_, j) => j !== i))}
+                            suggestions={["Dor intensa ou trauma", "Sangramento que não para", "Inchaço severo ou abscesso", "Criança com menos de 3 anos", "Caso de emergência médica", "Febre alta persistente", "Dificuldade respiratória grave"]}
+                          />
+                        ) : s.key === "orientacoes" ? (
+                          <SectionListEditor
+                            items={orientacoesItems}
+                            inputValue={orientacoesInput}
+                            onInputChange={setOrientacoesInput}
+                            onAdd={(item) => applyListSection("orientacoes", [...orientacoesItems, item])}
+                            onRemove={(i) => applyListSection("orientacoes", orientacoesItems.filter((_, j) => j !== i))}
+                            suggestions={["Trazer exames recentes", "Chegar 10 min antes", "Trazer documento de identidade", "Roupas confortáveis", "Jejum se orientado pela clínica", "Trazer cartão de vacinas", "Não usar maquilhagem na área"]}
+                          />
+                        ) : s.key === "transferir" ? (
+                          <SectionListEditor
+                            items={transferirItems}
+                            inputValue={transferirInput}
+                            onInputChange={setTransferirInput}
+                            onAdd={(item) => applyListSection("transferir", [...transferirItems, item])}
+                            onRemove={(i) => applyListSection("transferir", transferirItems.filter((_, j) => j !== i))}
+                            suggestions={["Paciente pedir para falar com humano", "Emergência médica", "Reclamação ou insatisfação", "Negociação de valores ou desconto", "Orçamento complexo", "Menores sem responsável", "Pedido de diagnóstico ou receita"]}
+                          />
+                        ) : undefined
+                      }
                       beforeHint={
                         s.key === "identidade" ? (
                           <div className="mb-1 rounded-xl border border-[#e8e4dc] bg-[#faf8f5] px-3 py-3">
@@ -908,18 +1141,37 @@ export function AgentConfigModal({
                                 Saudação — cliente novo
                               </label>
                               <p className="mt-0.5 text-[11px] text-[#8a8278]">
-                                Mensagem enviada ao primeiro contato. Deixe vazio para usar o padrão.
-                                Use <code className="rounded bg-[#f0ebe3] px-0.5">{"{{name}}"}</code> e{" "}
-                                <code className="rounded bg-[#f0ebe3] px-0.5">{"{{clinica}}"}</code>.
+                                Mensagem enviada ao primeiro contato. Pode editar conforme quiser.
+                                Use <code className="rounded bg-[#f0ebe3] px-0.5">{"{{name}}"}</code>,{" "}
+                                <code className="rounded bg-[#f0ebe3] px-0.5">{"{{clinica}}"}</code> e{" "}
+                                <code className="rounded bg-[#f0ebe3] px-0.5">{"{{periodo}}"}</code>{" "}
+                                (substitui por Bom dia / Boa tarde / Boa noite automaticamente).
                               </p>
                               <textarea
                                 id="agent-config-saudacao-novo"
-                                rows={3}
+                                rows={1}
                                 value={saudacaoNovo}
                                 onChange={(e) => { setSaudacaoNovo(e.target.value); setSaved(false); }}
-                                placeholder={`Olá! Sou {{name}}, da {{clinica}}. Estou aqui para ajudar com agendamentos e dúvidas. Como posso te ajudar hoje? 😊`}
-                                className="mt-2 w-full rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
+                                ref={(el) => {
+                                  if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
+                                }}
+                                onInput={(e) => {
+                                  const t = e.currentTarget;
+                                  t.style.height = "auto";
+                                  t.style.height = t.scrollHeight + "px";
+                                }}
+                                className="mt-2 w-full resize-none overflow-hidden rounded-lg border border-[#d4cfc4] bg-white px-2.5 py-1.5 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none ring-[#4D6D66] focus:ring-1"
                               />
+                              {saudacaoNovo.trim() ? (
+                                <div className="mt-2 rounded-xl border border-[#e6e1d8] bg-[#faf8f5] px-3 py-2.5">
+                                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8a8278]">
+                                    Pré-visualização
+                                  </p>
+                                  <p className="mt-1.5 text-sm leading-relaxed text-[#2c2825]">
+                                    {saudacaoNovoPreview}
+                                  </p>
+                                </div>
+                              ) : null}
                             </div>
 
                             {/* Saudação — cliente de retorno */}
@@ -967,6 +1219,162 @@ export function AgentConfigModal({
                                 </p>
                               </div>
                             ) : null}
+
+                            {/* Tom e Linguagem — embutido em Identidade */}
+                            <div className="mt-4 border-t border-[#ede9e2] pt-4">
+                              <p className="text-sm font-semibold text-[#1f1c1a]">💬 Tom e Linguagem</p>
+                              <p className="mt-1 text-xs text-[#8a8278]">
+                                Defina o estilo de comunicação do agente. Use os atalhos ou adicione itens personalizados.
+                              </p>
+
+                              {/* Atalhos de modelo */}
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <span className="text-xs text-[#8a8278]">Modelo:</span>
+                                {[
+                                  { label: "Odontologia", usar: ["Tom acolhedor e tranquilizador", "Dizer 'remover' em vez de 'arrancar'", "Dizer 'desconforto' em vez de 'dor'", "Dizer 'dormência local' em vez de 'anestesia'", "Emojis com moderação (🦷 ✅)"], evitar: ["Palavras que causam ansiedade: 'doer', 'perfurar', 'agulha'", "Tom frio ou distante", "Minimizar a dor do paciente"] },
+                                  { label: "Formal", usar: ["Tom profissional e cordial", "Tratar por 'você'", "Ser direto e claro"], evitar: ["Gírias ou informalidades", "Emojis em excesso"] },
+                                  { label: "Descontraído", usar: ["Tom leve e amigável", "Tutear o paciente", "Emojis para humanizar a conversa", "Mensagens curtas e diretas"], evitar: ["Parágrafos longos", "Tom muito formal"] },
+                                ].map((t) => (
+                                  <button
+                                    key={t.label}
+                                    type="button"
+                                    onClick={() => applyTomLists(t.usar, t.evitar)}
+                                    className="rounded-full border border-[#d4cfc4] bg-white px-3 py-1 text-xs text-[#5c5348] transition-colors hover:border-[#3d6b62] hover:text-[#3d6b62]"
+                                  >
+                                    {t.label}
+                                  </button>
+                                ))}
+                                {(tomUsar.length > 0 || tomEvitar.length > 0) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => applyTomLists([], [])}
+                                    className="rounded-full border border-[#f0c4c4] bg-white px-3 py-1 text-xs text-[#c0392b] transition-colors hover:bg-[#fdf0ef]"
+                                  >
+                                    Limpar
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Lista ✅ Usar */}
+                              <div className="mt-4 rounded-xl border border-[#c8e6d4] bg-[#f4fbf7] p-3">
+                                <p className="mb-2 text-xs font-semibold text-[#2d6a46]">✅ Usar</p>
+
+                                {/* Tags ativas */}
+                                {tomUsar.length > 0 && (
+                                  <div className="mb-3 flex flex-wrap gap-2">
+                                    {tomUsar.map((item, i) => (
+                                      <span key={i} className="flex items-center gap-1.5 rounded-lg border border-[#a8d9bc] bg-white px-3 py-1 text-sm text-[#2d6a46] shadow-sm">
+                                        {item}
+                                        <button
+                                          type="button"
+                                          onClick={() => applyTomLists(tomUsar.filter((_, j) => j !== i), tomEvitar)}
+                                          className="flex h-4 w-4 items-center justify-center rounded-full text-[#2d6a46] opacity-50 hover:bg-[#d4f0e0] hover:opacity-100"
+                                        >×</button>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Sugestões rápidas */}
+                                {["Linguagem simples", "Tom empático", "Emojis com moderação", "Tutear (você)", "Mensagens curtas"].filter(s => !tomUsar.includes(s)).length > 0 && (
+                                  <div className="mb-3 flex flex-wrap gap-1.5">
+                                    {["Linguagem simples", "Tom empático", "Emojis com moderação", "Tutear (você)", "Mensagens curtas"].filter(s => !tomUsar.includes(s)).map(s => (
+                                      <button key={s} type="button"
+                                        onClick={() => applyTomLists([...tomUsar, s], tomEvitar)}
+                                        className="rounded-lg border border-dashed border-[#90c8a8] bg-white px-2.5 py-1 text-xs text-[#3a7a52] hover:border-[#2d6a46] hover:bg-[#edf8f2]"
+                                      >+ {s}</button>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Input personalizado */}
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    value={tomUsarInput}
+                                    onChange={(e) => setTomUsarInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" && tomUsarInput.trim()) {
+                                        e.preventDefault();
+                                        applyTomLists([...tomUsar, tomUsarInput.trim()], tomEvitar);
+                                        setTomUsarInput("");
+                                      }
+                                    }}
+                                    placeholder="Adicionar item personalizado…"
+                                    className="flex-1 rounded-lg border border-[#b8ddc8] bg-white px-3 py-1.5 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none focus:border-[#3d6b62] focus:ring-1 focus:ring-[#3d6b62]"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!tomUsarInput.trim()) return;
+                                      applyTomLists([...tomUsar, tomUsarInput.trim()], tomEvitar);
+                                      setTomUsarInput("");
+                                    }}
+                                    className="rounded-lg border border-[#3d6b62] bg-white px-4 py-1.5 text-sm font-medium text-[#3d6b62] hover:bg-[#3d6b62] hover:text-white"
+                                  >+</button>
+                                </div>
+                              </div>
+
+                              {/* Lista ❌ Evitar */}
+                              <div className="mt-3 rounded-xl border border-[#f0c8c8] bg-[#fdf5f5] p-3">
+                                <p className="mb-2 text-xs font-semibold text-[#b04040]">❌ Evitar</p>
+
+                                {/* Tags ativas */}
+                                {tomEvitar.length > 0 && (
+                                  <div className="mb-3 flex flex-wrap gap-2">
+                                    {tomEvitar.map((item, i) => (
+                                      <span key={i} className="flex items-center gap-1.5 rounded-lg border border-[#f0b8b8] bg-white px-3 py-1 text-sm text-[#b04040] shadow-sm">
+                                        {item}
+                                        <button
+                                          type="button"
+                                          onClick={() => applyTomLists(tomUsar, tomEvitar.filter((_, j) => j !== i))}
+                                          className="flex h-4 w-4 items-center justify-center rounded-full text-[#b04040] opacity-50 hover:bg-[#fde0e0] hover:opacity-100"
+                                        >×</button>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Sugestões rápidas */}
+                                {["Jargão técnico", "Respostas longas", "Tom frio", "Gírias", "Prometer diagnóstico"].filter(s => !tomEvitar.includes(s)).length > 0 && (
+                                  <div className="mb-3 flex flex-wrap gap-1.5">
+                                    {["Jargão técnico", "Respostas longas", "Tom frio", "Gírias", "Prometer diagnóstico"].filter(s => !tomEvitar.includes(s)).map(s => (
+                                      <button key={s} type="button"
+                                        onClick={() => applyTomLists(tomUsar, [...tomEvitar, s])}
+                                        className="rounded-lg border border-dashed border-[#f0a8a8] bg-white px-2.5 py-1 text-xs text-[#b04040] hover:border-[#b04040] hover:bg-[#fdf0f0]"
+                                      >+ {s}</button>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Input personalizado */}
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    value={tomEvitarInput}
+                                    onChange={(e) => setTomEvitarInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" && tomEvitarInput.trim()) {
+                                        e.preventDefault();
+                                        applyTomLists(tomUsar, [...tomEvitar, tomEvitarInput.trim()]);
+                                        setTomEvitarInput("");
+                                      }
+                                    }}
+                                    placeholder="Adicionar item personalizado…"
+                                    className="flex-1 rounded-lg border border-[#f0b8b8] bg-white px-3 py-1.5 text-sm text-[#1a1a1a] placeholder-[#b8b0a6] outline-none focus:border-[#b04040] focus:ring-1 focus:ring-[#b04040]"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!tomEvitarInput.trim()) return;
+                                      applyTomLists(tomUsar, [...tomEvitar, tomEvitarInput.trim()]);
+                                      setTomEvitarInput("");
+                                    }}
+                                    className="rounded-lg border border-[#c0392b] bg-white px-4 py-1.5 text-sm font-medium text-[#c0392b] hover:bg-[#c0392b] hover:text-white"
+                                  >+</button>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         ) : undefined
                       }

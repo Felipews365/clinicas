@@ -12,7 +12,6 @@ const SECTION_LABELS: Record<AgentSectionKey, string> = {
   tom: "TOM E LINGUAGEM",
   orientacoes: "ORIENTAÇÕES AO PACIENTE",
   transferir: "QUANDO TRANSFERIR PARA HUMANO",
-  outros: "OUTRAS INSTRUÇÕES",
 };
 
 const EMPTY_SECTIONS: AgentSectionsState = {
@@ -21,7 +20,6 @@ const EMPTY_SECTIONS: AgentSectionsState = {
   tom: "",
   orientacoes: "",
   transferir: "",
-  outros: "",
 };
 
 function normalizeSections(

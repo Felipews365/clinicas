@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-04-20T18:18:11.257Z",
+  "updatedAt": "2026-04-04T22:36:07.492Z",
   "createdAt": "2026-04-01T14:42:18.222Z",
   "id": "kCX2LfxJrdYWB0vk",
   "name": "Clinica atualizada",
@@ -90,8 +90,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -240,
-        -1408
+        -976,
+        -1328
       ],
       "id": "fe44522f-b176-432f-a49c-84f44ca6cd98",
       "name": "Campos iniciais"
@@ -124,8 +124,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -16,
-        -1392
+        -592,
+        -1360
       ],
       "id": "1fbaa50e-967e-4fc0-8f3a-f15ae04a349f",
       "name": "A Empresa Assumiu o Atendimento?"
@@ -289,8 +289,8 @@
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        640,
-        -1632
+        -192,
+        -1456
       ],
       "id": "57727933-6690-4e41-a0d5-03990fe2d51e",
       "name": "Get Empresa1",
@@ -332,8 +332,8 @@
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        864,
-        -1632
+        32,
+        -1456
       ],
       "id": "c051c224-d6e2-4935-b6a7-cfccc7469bd7",
       "name": "Update Cliente",
@@ -385,7 +385,8 @@
         "fieldsUi": {
           "fieldValues": [
             {
-              "fieldId": "nome"
+              "fieldId": "nome",
+              "fieldValue": ""
             },
             {
               "fieldId": "telefone",
@@ -478,8 +479,8 @@
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        1264,
-        -1840
+        432,
+        -1664
       ],
       "id": "ebd8eb34-fecf-4627-985b-a5422513c136",
       "name": "Get Empresa2",
@@ -521,8 +522,8 @@
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        1472,
-        -1840
+        640,
+        -1664
       ],
       "id": "d620c05c-dd0b-4d6c-aa48-6392b51db85d",
       "name": "Update Cliente1",
@@ -539,8 +540,8 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        1664,
-        -1840
+        832,
+        -1664
       ],
       "id": "f7f8dc42-e33e-4528-84d7-032a4312ef79",
       "name": "No Operation, do nothing4"
@@ -553,8 +554,8 @@
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        1056,
-        -1840
+        224,
+        -1664
       ],
       "id": "005b63ea-c2fa-4e95-ba0f-c9e3e2b857ad",
       "name": "esperar 10 minutos",
@@ -562,114 +563,35 @@
     },
     {
       "parameters": {
-        "content": "⚠️ **AI Agent legado**\nDesconectado — mantido como fallback de rollback.\nPara reativar: reconectar `Monta Contexto → AI Agent`.",
-        "height": 150,
-        "width": 340,
-        "color": 2
-      },
-      "id": "sn-legacy",
-      "name": "SN Legacy AI Agent",
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        -2944,
-        144
-      ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {
-        "content": "### 🙋 ENCAMINHAR PARA ATENDENTE HUMANO\n**Sem LLM — fluxo 100% determinístico**\n\n1. **Code Preparar Handoff:** lê `instr_transferir` da clínica ou usa mensagem padrão\n2. **Update bot_ativo false:** seta `cs_clientes.bot_ativo = false` via Supabase\n3. **Evolution Handoff:** envia a mensagem de transferência via WhatsApp\n\nBot reativa automaticamente após **10 minutos** (fluxo existente `esperar 10 minutos`).\nPara reativar manualmente, a clínica pode usar o painel.",
-        "height": 444,
-        "width": 1310,
-        "color": 2
-      },
-      "id": "sn-humano",
-      "name": "SN Humano",
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        1104,
-        1232
-      ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {
-        "content": "### 🔬 ESPECIALISTA EM PROCEDIMENTOS\n**agente_especialista_procedimentos** (temp 0.4)\n\n**Função:** Explica procedimentos em detalhe: o que é, como funciona, preparo pré e pós, duração da sessão.\n\n**Tool:** cs_consultar_servicos → usa a descrição cadastrada como base. NUNCA inventa benefícios médicos.\n\nAo terminar, pergunta: *\"Gostaria de agendar este procedimento?\"*\n\n**Conteúdo:** cadastrado no painel web em Procedimentos (campo descrição).",
-        "height": 578,
-        "width": 940
-      },
-      "id": "sn-especialista",
-      "name": "SN Especialista",
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        1408,
-        624
-      ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {
-        "content": "### ❓ AGENTE FAQ\n**agente_faq** (temp 0.5)\n\n**Função:** Responde dúvidas gerais da clínica:\nendereço, horários de funcionamento, formas de pagamento, convênios, estacionamento, documentos necessários.\n\n**Fonte das respostas:** campo `orientacoes` de `clinics.agent_instructions` (configurado no painel web em Configurações do Agente).\n\n**Tool disponível:** cs_consultar_servicos (para \"quais serviços vocês oferecem?\")\n\nSe não souber: *\"Não tenho essa informação. Recomendo contatar a clínica diretamente.\"*",
-        "height": 632,
-        "width": 940,
+        "content": "# Reativa bot para o cliente",
+        "height": 260,
+        "width": 780,
         "color": 4
       },
-      "id": "sn-faq",
-      "name": "SN FAQ",
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        1408,
-        -48
+        -992,
+        -2400
       ],
-      "typeVersion": 1
+      "typeVersion": 1,
+      "id": "492535e8-ccef-4c0b-87ad-f6a627e6a89a",
+      "name": "Sticky Note"
     },
     {
       "parameters": {
-        "content": "### 📅 AGENTE AGENDADOR\n**agente_agendador** (temp **0.1** — precisão transacional)\n\n**Função:** Único agente que cria, edita e cancela consultas.\n\n**Fluxo obrigatório:**\n1. cs_consultar_servicos → lista serviços\n2. cs_consultar_profissionais → lista profissionais\n3. cs_consultar_vagas → verifica disponibilidade (YYYY-MM-DD)\n4. Confirmação explícita do cliente\n5. cs_agendar / cs_reagendar / cs_cancelar\n6. cs_notificar_profissional (se profissional_whatsapp ≠ null)\n\n**Temperatura 0.1** para nunca inventar horários, serviços ou datas.",
-        "height": 880,
-        "width": 1858,
-        "color": 6
+        "content": "# Desabilita o bot a intera??o do usu?rio.\n",
+        "height": 260,
+        "width": 780,
+        "color": 3
       },
-      "id": "sn-agendador",
-      "name": "SN Agendador",
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        2848,
-        -448
+        -128,
+        -2368
       ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {
-        "content": "### 🎙️ QUALIFICAÇÃO & ROTEAMENTO\n**agente_atende_qualifica** (temp 0.4)\n\n**Função:** Saúda o cliente, coleta o nome (cs_salvar_nome), identifica a intenção e coloca uma tag `[ROTA: X]` no fim da resposta.\n\n**Rotas possíveis:**\n→ `agendamento` — quer agendar / cancelar / reagendar\n→ `faq` — dúvida geral (horário, endereço, pagamento)\n→ `procedimentos` — quer saber como funciona um procedimento\n→ `humano` — pediu atendente ou urgência\n→ `concluido` — já respondido, sem ação adicional\n\n**Code Extrair Rota:** limpa a tag e repassa todo o contexto.\n**Switch Rota:** distribui para o agente correto.",
-        "height": 656,
-        "width": 1178,
-        "color": 5
-      },
-      "id": "sn-qualifica",
-      "name": "SN Qualifica",
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        -1280,
-        -448
-      ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {
-        "content": "## 🤖 SISTEMA MULTI-AGENTE\nFluxo com **4 agentes especializados** + handoff humano para reduzir alucinação.\n\n**Roteamento:** `agente_atende_qualifica` classifica a intenção e emite `[ROTA: X]` → `Code Extrair Rota` → `Switch Rota` → agente correto.\nTodos os agentes compartilham a **mesma memória Postgres** (session: clinic_id:remoteJid, 50 msgs) garantindo continuidade da conversa.",
-        "height": 2876,
-        "width": 4004,
-        "color": 7
-      },
-      "id": "sn-master-banner",
-      "name": "SN Master Banner",
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        1040,
-        -1104
-      ],
-      "typeVersion": 1
+      "typeVersion": 1,
+      "id": "93e89a87-c332-4df4-af3c-f76e1d32a1e7",
+      "name": "Sticky Note1"
     },
     {
       "parameters": {
@@ -698,8 +620,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        288,
-        -1744
+        -544,
+        -1568
       ],
       "id": "ed47e02f-cfec-4c24-8bd8-43f112fef439",
       "name": "Se existe o emoji ??"
@@ -723,12 +645,12 @@
       "parameters": {
         "content": "# Verificar se cliente est? cadastrado\n",
         "height": 580,
-        "width": 856,
+        "width": 840,
         "color": 5
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        -2944,
+        -2928,
         -1104
       ],
       "typeVersion": 1,
@@ -760,12 +682,42 @@
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        -2928,
-        -1728
+        -3920,
+        -1712
       ],
       "typeVersion": 1,
       "id": "8b53977c-949e-4cca-bd98-f57c0452a3cf",
       "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "content": "## Atendimento Ia ou Empresa\n",
+        "height": 320
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -976,
+        -1984
+      ],
+      "typeVersion": 1,
+      "id": "24cc42c6-dc55-4ecd-9449-807ee78c16e0",
+      "name": "Sticky Note9"
+    },
+    {
+      "parameters": {
+        "content": "# Ativar ou Desabilitar o bot\n",
+        "height": 260,
+        "width": 440,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -624,
+        -1936
+      ],
+      "typeVersion": 1,
+      "id": "4b20ea78-be03-44c5-9ca1-c5281c4e813a",
+      "name": "Sticky Note10"
     },
     {
       "parameters": {
@@ -962,8 +914,8 @@
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
       "position": [
-        3072,
-        -928
+        -1728,
+        -336
       ],
       "id": "7c811de3-7bc3-4f2e-a8fa-3a354c056c2e",
       "name": "Quebra a mensagem em v?rias mensagens"
@@ -975,8 +927,8 @@
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        3568,
-        -816
+        -1056,
+        -208
       ],
       "id": "9a611fb7-abdf-45f0-a602-ad33842576a7",
       "name": "Separa 1 mensagem para enviar"
@@ -987,8 +939,8 @@
       "name": "Repete",
       "typeVersion": 1,
       "position": [
-        4688,
-        -784
+        64,
+        -176
       ],
       "id": "460901cd-9923-4101-aa4b-b3f4d1a89fb0"
     },
@@ -999,8 +951,8 @@
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        4688,
-        -1024
+        64,
+        -416
       ],
       "id": "275b01b5-2040-41ac-bc1c-0b3cd42dab7e",
       "name": "Aguarda 1 segundo",
@@ -1031,8 +983,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4432,
-        -784
+        -192,
+        -176
       ],
       "id": "7c3e8e4c-4f61-4820-acc3-9c5f50df3451",
       "name": "Evolution API"
@@ -1055,8 +1007,8 @@
     },
     {
       "parameters": {
-        "content": "# Passo 04: Montagem de Contexto\nBusca configuração da clínica (`Buscar Config Clínica`) + histórico de chat (`Check First Contact`) + monta o payload completo com `clinic_id`, `remoteJid`, instruções da clínica e dados do cliente → `Monta Contexto`.\n\nO output alimenta os **4 agentes especializados** da seção à direita.",
-        "height": 504,
+        "content": "# Passo 04: Processa Resposta do Agente + Tools de Agendamento",
+        "height": 476,
         "width": 1600,
         "color": 4
       },
@@ -1078,8 +1030,8 @@
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        3344,
-        -1072
+        -1280,
+        -464
       ],
       "typeVersion": 1,
       "id": "dfa7d0dd-57f5-4b40-a5be-64f3b7176853",
@@ -1088,14 +1040,14 @@
     {
       "parameters": {
         "content": "# ?? Cl?nica Sa?de - Tools (RPC Supabase)\ncs_buscar_agendamentos | cs_consultar_vagas | cs_consultar_servicos | cs_agendar | cs_reagendar | cs_cancelar",
-        "height": 296,
+        "height": 408,
         "width": 1340,
         "color": 2
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        -2752,
-        528
+        -2672,
+        64
       ],
       "typeVersion": 1,
       "id": "6c00795b-a6d0-45c2-96b0-1f6f84cecf18",
@@ -1444,8 +1396,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        2864,
-        -928
+        -1904,
+        -336
       ],
       "id": "7f488dae-0e0d-4678-8692-e6506b4fd50d",
       "name": "Edit Fields"
@@ -1455,8 +1407,8 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        3968,
-        -976
+        -656,
+        -368
       ],
       "id": "2a41c131-9b6e-4aac-97cd-c6482f39f4a3",
       "name": "No Operation, do nothing5"
@@ -1500,8 +1452,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -2896,
-        -1552
+        -3888,
+        -1536
       ],
       "id": "5168940c-6294-4916-bb16-dbb3c1fde6fc",
       "name": "Webhook",
@@ -1514,8 +1466,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2240,
-        -1552
+        -3232,
+        -1536
       ],
       "id": "68c1aaa6-daf3-4598-98c0-481d9cf75067",
       "name": "Code Normalizar Evolution Clinica"
@@ -1548,8 +1500,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -2048,
-        -1552
+        -3040,
+        -1536
       ],
       "id": "b9c6ada6-b608-473c-8fbc-0341ae60a060",
       "name": "IF evento e mensagem"
@@ -1585,8 +1537,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -1760,
-        -1856
+        -2752,
+        -1680
       ],
       "id": "73a2a3b1-8a8a-4fb7-8cdc-de3573ce8200",
       "name": "HTTP RPC n8n_resolve_clinic",
@@ -1599,8 +1551,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1568,
-        -1856
+        -2560,
+        -1680
       ],
       "id": "ff56c25c-24f0-49bf-8244-2be225908afa",
       "name": "Code merge webhook e resolucao"
@@ -1712,8 +1664,8 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3,
       "position": [
-        -1376,
-        -1904
+        -2368,
+        -1728
       ],
       "id": "6121ead0-30ee-4de0-a7a0-6b0c9e6eb024",
       "name": "Switch assinatura e acesso"
@@ -1734,8 +1686,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -976,
-        -2144
+        -1968,
+        -1968
       ],
       "id": "70e14b87-e6bb-4c15-9be5-52baed6046a4",
       "name": "HTTP aviso teste expirado",
@@ -1763,8 +1715,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -848,
-        -1920
+        -1840,
+        -1744
       ],
       "id": "b853c925-d6e5-419f-9532-d05113954ac8",
       "name": "HTTP aviso mensal bloqueado",
@@ -1804,8 +1756,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -1008,
-        -2336
+        -2000,
+        -2160
       ],
       "id": "7d07bfdc-3727-4595-80b8-3493c5b854d9",
       "name": "IF webhook de teste bloqueio"
@@ -1838,8 +1790,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -800,
-        -2144
+        -1792,
+        -1968
       ],
       "id": "fb91a942-173b-4944-847b-990d70540029",
       "name": "IF webhook de teste bloqueio te"
@@ -1872,8 +1824,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -576,
-        -1904
+        -1568,
+        -1728
       ],
       "id": "8a84e502-2b46-4fa0-a6bd-08af31665a45",
       "name": "IF webhook de teste bloqueio me"
@@ -1906,8 +1858,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -960,
-        -1440
+        -1824,
+        -1360
       ],
       "id": "afd0ac9e-5943-40ff-8f1c-75e79ca05682",
       "name": "IF webhook de teste ativo"
@@ -1921,8 +1873,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        -640,
-        -2496
+        -1632,
+        -2320
       ],
       "id": "0e0eec21-d5d9-4262-b228-16d8b89e227c",
       "name": "Respond webhook teste bloqueado"
@@ -1936,8 +1888,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        -496,
-        -2176
+        -1488,
+        -2000
       ],
       "id": "c50aad26-263c-478f-98d4-7ae7039f8a74",
       "name": "Respond webhook teste bloqueado te"
@@ -1951,8 +1903,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        -288,
-        -1888
+        -1280,
+        -1712
       ],
       "id": "20cd4f00-9bf8-4b35-a685-8bc885d19ae2",
       "name": "Respond webhook teste bloqueado me"
@@ -1966,8 +1918,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        -656,
-        -1552
+        -1536,
+        -1456
       ],
       "id": "fbc4e114-0f4d-40d5-b6bf-c7773da91e5b",
       "name": "Respond webhook teste ativo"
@@ -1977,8 +1929,8 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        -1792,
-        -1456
+        -2784,
+        -1440
       ],
       "id": "444bb561-1e48-41f5-9791-bf6bc5b97a53",
       "name": "NoOp demais eventos Evolution"
@@ -2011,8 +1963,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -1584,
-        -1456
+        -2576,
+        -1440
       ],
       "id": "be93228d-7998-425d-8650-f9408808f8ef",
       "name": "IF teste apos ignorar evento"
@@ -2026,8 +1978,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        -1296,
-        -1472
+        -2288,
+        -1456
       ],
       "id": "7c4a13ac-5337-4147-8be6-df09a2e5d5cc",
       "name": "Respond webhook teste ignorado"
@@ -2037,8 +1989,8 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        -640,
-        -2320
+        -1632,
+        -2144
       ],
       "id": "600d5e6c-11a0-4d2d-8f47-3c033f7fad5a",
       "name": "NoOp fim producao bloqueado"
@@ -2048,8 +2000,8 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        -288,
-        -2032
+        -1280,
+        -1856
       ],
       "id": "82e091fd-c852-45ac-a36a-a04fe51752ac",
       "name": "NoOp fim producao bloqueado te"
@@ -2059,8 +2011,8 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        -288,
-        -1744
+        -1280,
+        -1568
       ],
       "id": "61a2f786-e6cf-4723-95aa-353f0549d187",
       "name": "NoOp fim producao bloqueado me"
@@ -2076,8 +2028,8 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
       "position": [
-        -2432,
-        432
+        -2352,
+        -336
       ],
       "id": "e827d29e-43f1-4050-b76c-7015028a1a54",
       "name": "AI Agent"
@@ -2112,8 +2064,8 @@
       "type": "@n8n/n8n-nodes-langchain.toolThink",
       "typeVersion": 1,
       "position": [
-        -2288,
-        272
+        -2608,
+        -128
       ],
       "id": "64543dd2-6308-4f7d-a767-874bd0d326e5",
       "name": "Refletir1"
@@ -2132,8 +2084,8 @@
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
-        -2160,
-        272
+        -2480,
+        -128
       ],
       "id": "237bccd8-e6dd-4066-9059-bd64ab46401e",
       "name": "Reagir mensagem1",
@@ -2171,8 +2123,8 @@
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2.2,
       "position": [
-        -464,
-        -1408
+        -1168,
+        -1328
       ],
       "id": "77962412-e2bd-41a3-a398-b533a27eec3e",
       "name": "Filter"
@@ -2204,8 +2156,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        4096,
-        -784
+        -528,
+        -176
       ],
       "id": "24555f4d-a6ef-49e4-bf7c-4a065bc32b20",
       "name": "If"
@@ -2235,8 +2187,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4432,
-        -1056
+        -192,
+        -448
       ],
       "id": "b7344659-d35e-41d1-a0ca-d402687e8f88",
       "name": "Evolution API1"
@@ -2248,8 +2200,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4272,
-        -896
+        -352,
+        -288
       ],
       "id": "18693641-d1f2-432b-8609-c1afbf59f2e8",
       "name": "Code"
@@ -2263,8 +2215,8 @@
       "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
       "typeVersion": 1.3,
       "position": [
-        -2416,
-        272
+        -2736,
+        -128
       ],
       "id": "cfb82700-e4e8-4fd6-b2a3-b2b9df3b64cc",
       "name": "Postgres Chat Memory",
@@ -2290,8 +2242,8 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
       "position": [
-        -2576,
-        272
+        -2896,
+        -128
       ],
       "id": "54be6cad-fe64-41a5-8c26-3faa6a061d7d",
       "name": "OpenAI Chat Model1",
@@ -2308,8 +2260,8 @@
       "name": "Replace Me1",
       "typeVersion": 1,
       "position": [
-        3872,
-        -784
+        -752,
+        -176
       ],
       "id": "077bcd76-7a15-41f2-83e0-3302b01ddbff"
     },
@@ -2336,8 +2288,8 @@
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
-        -2704,
-        656
+        -2624,
+        304
       ],
       "id": "ab1b10ce-6d71-4d88-b0e6-520c2b7754c0",
       "name": "cs_buscar_agendamentos",
@@ -2371,8 +2323,8 @@
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
-        -2512,
-        656
+        -2432,
+        304
       ],
       "id": "67746a1b-555b-44c7-978e-4f2830c60105",
       "name": "cs_consultar_vagas",
@@ -2397,8 +2349,8 @@
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
-        -2320,
-        656
+        -2240,
+        304
       ],
       "id": "f9d8a601-75b2-4b85-8f0d-c24520e76664",
       "name": "cs_consultar_servicos",
@@ -2462,8 +2414,8 @@
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
-        -2128,
-        656
+        -2048,
+        304
       ],
       "id": "6ac9d0e5-149f-4e6a-8164-04a4544cf4d8",
       "name": "cs_agendar",
@@ -2527,8 +2479,8 @@
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
-        -1936,
-        656
+        -1856,
+        304
       ],
       "id": "8e8e0859-8158-4748-a251-cbfa72beb01b",
       "name": "cs_reagendar",
@@ -2582,8 +2534,8 @@
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
-        -1744,
-        656
+        -1664,
+        304
       ],
       "id": "aaedacaf-88a5-4fdf-8f28-79c3cfb0c914",
       "name": "cs_cancelar",
@@ -2604,8 +2556,8 @@
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
-        -1552,
-        656
+        -1472,
+        304
       ],
       "id": "38b0cf63-bf3c-48ee-8c0a-e1602bea7972",
       "name": "cs_consultar_profissionais",
@@ -2662,7 +2614,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2224,
+        -2528,
         -336
       ]
     },
@@ -2775,8 +2727,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -2416,
-        -1552
+        -3408,
+        -1536
       ]
     },
     {
@@ -2808,11 +2760,46 @@
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2.3,
       "position": [
-        -2688,
-        -1552
+        -3680,
+        -1536
       ],
       "id": "2f2bcaff-0887-4a38-a3fd-47f994a98174",
       "name": "Filter1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f59e7243-5b97-4052-87a9-19d85de44f51",
+              "leftValue": "558196454656@s.whatsapp.net",
+              "rightValue": "={{ $json.body.data.key.remoteJid }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": "={{ false }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        -3552,
+        -1184
+      ],
+      "id": "1a6e5601-acf6-443c-8e5e-02d3ac4ad5e7",
+      "name": "Filter2"
     },
     {
       "parameters": {
@@ -2844,26 +2831,20 @@
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
-        -2000,
-        464
-      ],
-      "credentials": {
-        "supabaseApi": {
-          "id": "SmHWpBnyL1cYuhlm",
-          "name": "Supabase clinicas"
-        }
-      }
+        2100,
+        700
+      ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT COUNT(*)::int AS historico_count FROM public.n8n_chat_histories WHERE session_id = '{{ $('Code merge webhook e resolucao').first().json.clinica_id }}:{{ $('Webhook').first().json.body.data.key.remoteJid }}'",
+        "query": "=SELECT COUNT(*)::int AS historico_count FROM public.n8n_chat_histories WHERE session_id = '{{ $('Code merge webhook e resolucao').first().json.clinica_id }}:{{ $('Webhook').first().json.body.data.key.remoteJid }}'",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        -2448,
+        -2608,
         -336
       ],
       "id": "f0a1b2c3-7777-4aaa-bbbb-000checkhist",
@@ -2882,9 +2863,17 @@
         "method": "POST",
         "url": "=https://evo.plataformabot.top/message/sendText/{{ $('Campos iniciais').first().json.instanceName }}",
         "sendHeaders": true,
-        "parametersHeaders": {
-          "values": [
-            {}
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "14027fe51ef29cdee722fffcd46c94bc"
+            }
           ]
         },
         "sendBody": true,
@@ -2908,77 +2897,84 @@
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
-        -1744,
-        832
+        -1664,
+        480
       ],
       "id": "b3f1a2c4-9e8d-4a7b-8c6e-5f2d1e0a9b3c",
       "name": "cs_notificar_profissional"
     },
     {
+      "id": "ma-agent-qualifica",
+      "name": "agente_atende_qualifica",
+      "type": "@n8n/n8n-nodes-langchain.agent",
       "parameters": {
-        "promptType": "define",
         "text": "={{ $json.mensagem }}",
         "options": {
           "systemMessage": "=## IDENTIFICAÇÃO DO CLIENTE\nVocê é {{ $json.nome_agente || 'Assistente' }}, recepcionista virtual da {{ $json.clinic_name || 'clínica' }}.\nData/hora: {{ $now.format('dd/MM/yyyy HH:mm') }}\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nTelefone: {{ $json.remoteJid }}\n\n{{ $json.primeiro_contato\n  ? ($json.nome_cliente\n      ? '→ PRIMEIRO CONTATO (retorno). Use saudação: \"' + ($json.saudacao_retorno || 'Olá, ' + $json.nome_cliente + '! Como posso te ajudar hoje? 😊') + '\"'\n      : '→ PRIMEIRO CONTATO (novo). Período: ' + $json.saudacao_periodo + '. Apresente-se: \"' + ($json.saudacao_novo || 'Olá! ' + $json.saudacao_periodo + '! Sou ' + ($json.nome_agente || 'Assistente') + ', da ' + ($json.clinic_name || 'clínica') + '. Como posso te chamar? 😊') + '\" Finalize com: Como posso te chamar?')\n  : '→ CONVERSA EM ANDAMENTO. NÃO cumprimente novamente.'\n}}\n\n⛔ Se nome_cliente está vazio e o cliente informar o nome → chame cs_salvar_nome UMA vez.\n⛔ Se nome_cliente já está preenchido → NÃO pergunte de novo.\n\n## SEU PAPEL\nIdentificar a intenção do cliente e encaminhar. NÃO execute agendamentos nem explique procedimentos sozinho.\n\n## FORMATAÇÃO\nNUNCA escreva listas em linha corrida. SEMPRE use quebra de linha para cada item.\n\n## ROTEAMENTO OBRIGATÓRIO\nApós sua resposta ao cliente, na ÚLTIMA linha coloque EXATAMENTE UMA das tags:\n[ROTA: agendamento]    — cliente quer agendar, cancelar ou reagendar\n[ROTA: faq]            — dúvidas gerais (horários, endereço, pagamento, convênio)\n[ROTA: procedimentos]  — quer saber o que é ou como funciona um procedimento\n[ROTA: humano]         — pediu falar com pessoa ou é urgência\n[ROTA: concluido]      — já respondido completamente, sem ação adicional\n\n{{ $json.instr_triagem ? '## TRIAGEM\\n' + $json.instr_triagem : '' }}\n{{ $json.instr_transferir ? '## QUANDO TRANSFERIR\\n' + $json.instr_transferir : '' }}"
         }
       },
-      "id": "ma-agent-qualifica",
-      "name": "agente_atende_qualifica",
-      "type": "@n8n/n8n-nodes-langchain.agent",
       "position": [
-        -864,
-        -224
+        500,
+        -336
       ],
       "typeVersion": 1.7
     },
     {
+      "id": "ma-model-qualifica",
+      "name": "Chat Model qualifica",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "parameters": {
-        "model": "gpt-4o-mini",
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
         "options": {
           "temperature": 0.4
         }
       },
-      "id": "ma-model-qualifica",
-      "name": "Chat Model qualifica",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "position": [
-        -1136,
-        -16
-      ],
-      "typeVersion": 1.1,
       "credentials": {
         "openAiApi": {
           "id": "v4dQPWdlMtUeGSD3",
           "name": "OpenAi clinicas"
         }
-      }
+      },
+      "position": [
+        300,
+        -136
+      ],
+      "typeVersion": 1
     },
     {
+      "id": "ma-memory-qualifica",
+      "name": "Memory qualifica",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
       "parameters": {
         "sessionIdType": "customKey",
         "sessionKey": "={{ $('Monta Contexto').first().json.clinic_id + ':' + $('Monta Contexto').first().json.remoteJid }}",
         "contextWindowLength": 50
       },
-      "id": "ma-memory-qualifica",
-      "name": "Memory qualifica",
-      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
-      "position": [
-        -928,
-        -16
-      ],
-      "typeVersion": 1.3,
       "credentials": {
         "postgres": {
           "id": "et3QrDBkKSd0EwRF",
           "name": "Postgres clinica"
         }
-      }
+      },
+      "position": [
+        500,
+        -136
+      ],
+      "typeVersion": 1.3
     },
     {
+      "id": "ma-tool-salvar-nome-q",
+      "name": "qualifica_cs_salvar_nome",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "parameters": {
         "toolDescription": "Salva o nome do cliente em cs_clientes. Chamar UMA única vez assim que o cliente informar o próprio nome durante a conversa.",
         "method": "POST",
-        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_salvar_nome' }}",
+        "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_cs_salvar_nome' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendBody": true,
@@ -2999,48 +2995,48 @@
           ]
         }
       },
-      "id": "ma-tool-salvar-nome-q",
-      "name": "qualifica_cs_salvar_nome",
-      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-      "position": [
-        -736,
-        -16
-      ],
-      "typeVersion": 1.1,
       "credentials": {
         "supabaseApi": {
           "id": "SmHWpBnyL1cYuhlm",
           "name": "Supabase clinicas"
         }
-      }
+      },
+      "position": [
+        700,
+        -136
+      ],
+      "typeVersion": 1.1
     },
     {
-      "parameters": {
-        "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
-      },
       "id": "ma-refletir-qualifica",
       "name": "Refletir qualifica",
       "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "parameters": {
+        "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
+      },
       "position": [
-        -528,
-        -16
+        900,
+        -136
       ],
       "typeVersion": 1
     },
     {
-      "parameters": {
-        "jsCode": "const agentOutput = $input.first().json.output || '';\nconst montaCtx = $('Monta Contexto').first().json;\nconst match = agentOutput.match(/\\[ROTA:\\s*(agendamento|faq|procedimentos|humano|concluido)\\]/i);\nconst rota = match ? match[1].toLowerCase() : 'concluido';\nconst output = agentOutput.replace(/\\[ROTA:.*?\\]/gi, '').trim();\nreturn [{ json: { ...montaCtx, output, rota } }];"
-      },
       "id": "ma-code-extrair-rota",
       "name": "Code Extrair Rota",
       "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const agentOutput = $input.first().json.output || '';\nconst montaCtx = $('Monta Contexto').first().json;\nconst match = agentOutput.match(/\\[ROTA:\\s*(agendamento|faq|procedimentos|humano|concluido)\\]/i);\nconst rota = match ? match[1].toLowerCase() : 'concluido';\nconst output = agentOutput.replace(/\\[ROTA:.*?\\]/gi, '').trim();\nreturn [{ json: { ...montaCtx, output, rota } }];"
+      },
       "position": [
-        -544,
-        -208
+        800,
+        -336
       ],
       "typeVersion": 2
     },
     {
+      "id": "ma-switch-rota",
+      "name": "Switch Rota",
+      "type": "n8n-nodes-base.switch",
       "parameters": {
         "rules": {
           "values": [
@@ -3139,30 +3135,6 @@
               },
               "renameOutput": true,
               "outputKey": "humano"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.rota }}",
-                    "rightValue": "concluido",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    },
-                    "id": "sw-rota-5"
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "concluido"
             }
           ]
         },
@@ -3170,80 +3142,84 @@
           "fallbackOutput": "extra"
         }
       },
-      "id": "ma-switch-rota",
-      "name": "Switch Rota",
-      "type": "n8n-nodes-base.switch",
       "position": [
-        -336,
-        -96
+        1100,
+        -336
       ],
       "typeVersion": 3.2
     },
     {
+      "id": "ma-agent-agendador",
+      "name": "agente_agendador",
+      "type": "@n8n/n8n-nodes-langchain.agent",
       "parameters": {
-        "promptType": "define",
         "text": "={{ $json.mensagem }}",
         "options": {
           "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, responsável por agendamentos da {{ $json.clinic_name || 'clínica' }}.\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nTelefone (p_telefone): {{ $json.remoteJid }}\nData/hora: {{ $now.format('dd/MM/yyyy HH:mm') }}\n\n## FORMATAÇÃO\nNUNCA escreva listas em linha corrida. SEMPRE use quebra de linha para cada item.\n\n## FLUXO NOVO AGENDAMENTO\n1. cs_consultar_servicos → mostre lista → guarde servico_id\n2. cs_consultar_profissionais → mostre lista → pergunte preferência\n3. Pergunte nome completo (NUNCA use nome do WhatsApp se nome_cliente vazio)\n4. Pergunte data desejada → cs_consultar_vagas (data em YYYY-MM-DD)\n5. Verifique o horário pedido no array retornado (HH:MM exato)\n   - Se encontrar match → confirme direto, NÃO liste alternativas\n   - Se não encontrar → diga que não está disponível e liste alternativas\n6. Confirme: nome, serviço, profissional, data, horário\n7. cs_agendar com: nome_cliente, telefone_cliente, servico_id, profissional_id, data (YYYY-MM-DD), horario (HH:MM)\n8. Confirme com resumo\n\n## FLUXO CANCELAR / REAGENDAR\n1. cs_buscar_agendamentos → mostre lista\n2. Confirme explicitamente ANTES de chamar cs_cancelar ou cs_reagendar\n\n## PÓS AGENDAMENTO/CANCELAMENTO/REAGENDAMENTO\nSe profissional_whatsapp ≠ null → chame cs_notificar_profissional ANTES de responder ao cliente\n- Agendamento: \"📅 Novo agendamento: {nome}, {serviço}, {data} às {horário}\"\n- Reagendamento: \"🔄 Reagendamento: {nome}, {serviço}, {nova_data} às {novo_horário}\"\n- Cancelamento: \"❌ Cancelamento: {nome}, {serviço}, {data} às {horário}\"\n\n## PREÇOS\nInforme valor SOMENTE se o cliente perguntar. Se null: \"valor não informado pela clínica\"\n\n## REGRAS\n- NUNCA invente horários, serviços ou profissionais não retornados pelas tools\n- NUNCA agende ou cancele sem confirmação explícita do cliente\n- Máximo 3-5 linhas por mensagem\n\n{{ $json.agent_instructions ? '## INSTRUÇÕES DA CLÍNICA\\n' + $json.agent_instructions : '' }}"
         }
       },
-      "id": "ma-agent-agendador",
-      "name": "agente_agendador",
-      "type": "@n8n/n8n-nodes-langchain.agent",
       "position": [
-        3392,
-        -128
+        1600,
+        -800
       ],
       "typeVersion": 1.7
     },
     {
+      "id": "ma-model-agendador",
+      "name": "Chat Model agendador",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "parameters": {
-        "model": "gpt-4o-mini",
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
         "options": {
           "temperature": 0.1
         }
       },
-      "id": "ma-model-agendador",
-      "name": "Chat Model agendador",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "position": [
-        3632,
-        -272
-      ],
-      "typeVersion": 1.1,
       "credentials": {
         "openAiApi": {
           "id": "v4dQPWdlMtUeGSD3",
           "name": "OpenAi clinicas"
         }
-      }
+      },
+      "position": [
+        1200,
+        -1000
+      ],
+      "typeVersion": 1
     },
     {
+      "id": "ma-memory-agendador",
+      "name": "Memory agendador",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
       "parameters": {
         "sessionIdType": "customKey",
         "sessionKey": "={{ $('Monta Contexto').first().json.clinic_id + ':' + $('Monta Contexto').first().json.remoteJid }}",
         "contextWindowLength": 50
       },
-      "id": "ma-memory-agendador",
-      "name": "Memory agendador",
-      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
-      "position": [
-        4000,
-        -208
-      ],
-      "typeVersion": 1.3,
       "credentials": {
         "postgres": {
           "id": "et3QrDBkKSd0EwRF",
           "name": "Postgres clinica"
         }
-      }
+      },
+      "position": [
+        1400,
+        -1000
+      ],
+      "typeVersion": 1.3
     },
     {
+      "id": "ma-tool-buscar-agd",
+      "name": "agd_cs_buscar_agendamentos",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "parameters": {
         "toolDescription": "Busca agendamentos ativos pelo telefone WhatsApp (remoteJid). Retorna id, profissional_id, data_iso (YYYY-MM-DD), horario (HH:MM), serviço e profissional. Use antes de reagendar ou cancelar.",
         "method": "POST",
-        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_buscar_agendamentos' }}",
+        "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_cs_buscar_agendamentos' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendBody": true,
@@ -3259,26 +3235,26 @@
           ]
         }
       },
-      "id": "ma-tool-buscar-agd",
-      "name": "agd_cs_buscar_agendamentos",
-      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-      "position": [
-        2928,
-        144
-      ],
-      "typeVersion": 1.1,
       "credentials": {
         "supabaseApi": {
           "id": "SmHWpBnyL1cYuhlm",
           "name": "Supabase clinicas"
         }
-      }
+      },
+      "position": [
+        1200,
+        -600
+      ],
+      "typeVersion": 1.1
     },
     {
+      "id": "ma-tool-vagas-agd",
+      "name": "agd_cs_consultar_vagas",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "parameters": {
         "toolDescription": "Lista horários disponíveis de um dia específico. Pergunte sempre a data ao cliente antes de chamar. Passe data_solicitada em formato YYYY-MM-DD.",
         "method": "POST",
-        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_consultar_vagas' }}",
+        "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_cs_consultar_vagas' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendBody": true,
@@ -3294,74 +3270,74 @@
           ]
         }
       },
-      "id": "ma-tool-vagas-agd",
-      "name": "agd_cs_consultar_vagas",
-      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-      "position": [
-        3136,
-        144
-      ],
-      "typeVersion": 1.1,
       "credentials": {
         "supabaseApi": {
           "id": "SmHWpBnyL1cYuhlm",
           "name": "Supabase clinicas"
         }
-      }
+      },
+      "position": [
+        1400,
+        -600
+      ],
+      "typeVersion": 1.1
     },
     {
+      "id": "ma-tool-servicos-agd",
+      "name": "agd_cs_consultar_servicos",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "parameters": {
         "toolDescription": "Lista os procedimentos/serviços ativos da clínica (id, nome, descrição, duração, preço). O campo \"id\" é o servico_id a usar em cs_agendar.",
         "method": "POST",
-        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_clinic_procedimentos' }}",
+        "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_clinic_procedimentos' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Code merge webhook e resolucao').first().json.clinica_id }) }}"
       },
-      "id": "ma-tool-servicos-agd",
-      "name": "agd_cs_consultar_servicos",
-      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-      "position": [
-        3328,
-        144
-      ],
-      "typeVersion": 1.1,
       "credentials": {
         "supabaseApi": {
           "id": "SmHWpBnyL1cYuhlm",
           "name": "Supabase clinicas"
         }
-      }
+      },
+      "position": [
+        1600,
+        -600
+      ],
+      "typeVersion": 1.1
     },
     {
-      "parameters": {
-        "toolDescription": "Lista os profissionais ativos da clínica com nome e especialidade.",
-        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/cs_profissionais?select=id,nome,especialidade&ativo=eq.true&order=nome.asc&clinic_id=eq.' + $('Code merge webhook e resolucao').first().json.clinica_id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "supabaseApi"
-      },
       "id": "ma-tool-profissionais-agd",
       "name": "agd_cs_consultar_profissionais",
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-      "position": [
-        3536,
-        144
-      ],
-      "typeVersion": 1.1,
+      "parameters": {
+        "toolDescription": "Lista os profissionais ativos da clínica com nome e especialidade.",
+        "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/cs_profissionais?select=id,nome,especialidade&ativo=eq.true&order=nome.asc&clinic_id=eq.' + $('Code merge webhook e resolucao').first().json.clinica_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi"
+      },
       "credentials": {
         "supabaseApi": {
           "id": "SmHWpBnyL1cYuhlm",
           "name": "Supabase clinicas"
         }
-      }
+      },
+      "position": [
+        1800,
+        -600
+      ],
+      "typeVersion": 1.1
     },
     {
+      "id": "ma-tool-agendar-agd",
+      "name": "agd_cs_agendar",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "parameters": {
         "toolDescription": "Cria agendamento após confirmação explícita do cliente. Obrigatório: servico_id de cs_consultar_servicos, profissional_id de cs_consultar_vagas, data em YYYY-MM-DD, horario em HH:MM.",
         "method": "POST",
-        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_agendar' }}",
+        "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_cs_agendar' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendBody": true,
@@ -3407,26 +3383,26 @@
           ]
         }
       },
-      "id": "ma-tool-agendar-agd",
-      "name": "agd_cs_agendar",
-      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-      "position": [
-        3728,
-        144
-      ],
-      "typeVersion": 1.1,
       "credentials": {
         "supabaseApi": {
           "id": "SmHWpBnyL1cYuhlm",
           "name": "Supabase clinicas"
         }
-      }
+      },
+      "position": [
+        2000,
+        -600
+      ],
+      "typeVersion": 1.1
     },
     {
+      "id": "ma-tool-reagendar-agd",
+      "name": "agd_cs_reagendar",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "parameters": {
         "toolDescription": "Reagenda consulta existente após confirmação. profissional_antigo_id, data_antiga e horario_antigo vêm de cs_buscar_agendamentos; novo slot das vagas disponíveis.",
         "method": "POST",
-        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_reagendar' }}",
+        "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_cs_reagendar' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendBody": true,
@@ -3472,26 +3448,26 @@
           ]
         }
       },
-      "id": "ma-tool-reagendar-agd",
-      "name": "agd_cs_reagendar",
-      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-      "position": [
-        3936,
-        144
-      ],
-      "typeVersion": 1.1,
       "credentials": {
         "supabaseApi": {
           "id": "SmHWpBnyL1cYuhlm",
           "name": "Supabase clinicas"
         }
-      }
+      },
+      "position": [
+        2200,
+        -600
+      ],
+      "typeVersion": 1.1
     },
     {
+      "id": "ma-tool-cancelar-agd",
+      "name": "agd_cs_cancelar",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "parameters": {
         "toolDescription": "Cancela consulta após confirmação explícita. profissional_id, data (YYYY-MM-DD) e horario (HH:MM) devem ser os do agendamento a cancelar (de cs_buscar_agendamentos).",
         "method": "POST",
-        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_cancelar' }}",
+        "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_cs_cancelar' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendBody": true,
@@ -3527,30 +3503,38 @@
           ]
         }
       },
-      "id": "ma-tool-cancelar-agd",
-      "name": "agd_cs_cancelar",
-      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-      "position": [
-        4128,
-        144
-      ],
-      "typeVersion": 1.1,
       "credentials": {
         "supabaseApi": {
           "id": "SmHWpBnyL1cYuhlm",
           "name": "Supabase clinicas"
         }
-      }
+      },
+      "position": [
+        2400,
+        -600
+      ],
+      "typeVersion": 1.1
     },
     {
+      "id": "ma-tool-notificar-agd",
+      "name": "agd_cs_notificar_profissional",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "parameters": {
         "toolDescription": "Envia notificação WhatsApp para o profissional após agendamento, reagendamento ou cancelamento. CHAMAR SEMPRE após cs_agendar, cs_reagendar ou cs_cancelar quando profissional_whatsapp estiver presente e não nulo na resposta da RPC.",
         "method": "POST",
         "url": "=https://evo.plataformabot.top/message/sendText/{{ $('Campos iniciais').first().json.instanceName }}",
         "sendHeaders": true,
-        "parametersHeaders": {
-          "values": [
-            {}
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "14027fe51ef29cdee722fffcd46c94bc"
+            }
           ]
         },
         "sendBody": true,
@@ -3571,240 +3555,254 @@
           ]
         }
       },
-      "id": "ma-tool-notificar-agd",
-      "name": "agd_cs_notificar_profissional",
-      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "credentials": {
+        "supabaseApi": {
+          "id": "SmHWpBnyL1cYuhlm",
+          "name": "Supabase clinicas"
+        }
+      },
       "position": [
-        4336,
-        144
+        2600,
+        -600
       ],
       "typeVersion": 1.1
     },
     {
-      "parameters": {
-        "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
-      },
       "id": "ma-refletir-agendador",
       "name": "Refletir agendador",
       "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "parameters": {
+        "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
+      },
       "position": [
-        4528,
-        144
+        2800,
+        -600
       ],
       "typeVersion": 1
     },
     {
+      "id": "ma-agent-faq",
+      "name": "agente_faq",
+      "type": "@n8n/n8n-nodes-langchain.agent",
       "parameters": {
-        "promptType": "define",
         "text": "={{ $json.mensagem }}",
         "options": {
           "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, atendente virtual da {{ $json.clinic_name || 'clínica' }}.\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nData/hora: {{ $now.format('dd/MM/yyyy HH:mm') }}\n\n## SEU PAPEL\nResponder dúvidas gerais sobre a clínica de forma objetiva e concisa.\n\n## INFORMAÇÕES DISPONÍVEIS\n{{ $json.instr_faq || 'Consulte as informações da clínica disponíveis. Se não souber, oriente o cliente a contatar diretamente.' }}\n\n## REGRAS\n- Responda APENAS com informações confirmadas (context ou tool)\n- Se não souber: \"Não tenho essa informação. Recomendo contatar a clínica diretamente.\"\n- NUNCA invente endereços, horários, convênios ou valores\n- Máximo 3-5 linhas por resposta\n\n{{ $json.instr_outros ? '## OUTRAS INSTRUÇÕES\\n' + $json.instr_outros : '' }}"
         }
       },
-      "id": "ma-agent-faq",
-      "name": "agente_faq",
-      "type": "@n8n/n8n-nodes-langchain.agent",
       "position": [
-        1856,
-        256
+        1600,
+        -336
       ],
       "typeVersion": 1.7
     },
     {
+      "id": "ma-model-faq",
+      "name": "Chat Model faq",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "parameters": {
-        "model": "gpt-4o-mini",
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
         "options": {
           "temperature": 0.5
         }
       },
-      "id": "ma-model-faq",
-      "name": "Chat Model faq",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "position": [
-        1456,
-        448
-      ],
-      "typeVersion": 1.1,
       "credentials": {
         "openAiApi": {
           "id": "v4dQPWdlMtUeGSD3",
           "name": "OpenAi clinicas"
         }
-      }
+      },
+      "position": [
+        1200,
+        -136
+      ],
+      "typeVersion": 1
     },
     {
+      "id": "ma-memory-faq",
+      "name": "Memory faq",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
       "parameters": {
         "sessionIdType": "customKey",
         "sessionKey": "={{ $('Monta Contexto').first().json.clinic_id + ':' + $('Monta Contexto').first().json.remoteJid }}",
         "contextWindowLength": 50
       },
-      "id": "ma-memory-faq",
-      "name": "Memory faq",
-      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
-      "position": [
-        1664,
-        448
-      ],
-      "typeVersion": 1.3,
       "credentials": {
         "postgres": {
           "id": "et3QrDBkKSd0EwRF",
           "name": "Postgres clinica"
         }
-      }
+      },
+      "position": [
+        1400,
+        -136
+      ],
+      "typeVersion": 1.3
     },
     {
+      "id": "ma-tool-servicos-faq",
+      "name": "faq_cs_consultar_servicos",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "parameters": {
         "toolDescription": "Lista os serviços/procedimentos ativos da clínica. Use quando o cliente perguntar quais procedimentos a clínica oferece.",
         "method": "POST",
-        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_clinic_procedimentos' }}",
+        "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_clinic_procedimentos' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Code merge webhook e resolucao').first().json.clinica_id }) }}"
       },
-      "id": "ma-tool-servicos-faq",
-      "name": "faq_cs_consultar_servicos",
-      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-      "position": [
-        1856,
-        448
-      ],
-      "typeVersion": 1.1,
       "credentials": {
         "supabaseApi": {
           "id": "SmHWpBnyL1cYuhlm",
           "name": "Supabase clinicas"
         }
-      }
+      },
+      "position": [
+        1600,
+        -136
+      ],
+      "typeVersion": 1.1
     },
     {
-      "parameters": {
-        "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
-      },
       "id": "ma-refletir-faq",
       "name": "Refletir faq",
       "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "parameters": {
+        "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
+      },
       "position": [
-        2064,
-        448
+        1800,
+        -136
       ],
       "typeVersion": 1
     },
     {
+      "id": "ma-agent-especialista",
+      "name": "agente_especialista_procedimentos",
+      "type": "@n8n/n8n-nodes-langchain.agent",
       "parameters": {
-        "promptType": "define",
         "text": "={{ $json.mensagem }}",
         "options": {
           "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, especialista em procedimentos da {{ $json.clinic_name || 'clínica' }}.\nData/hora: {{ $now.format('dd/MM/yyyy HH:mm') }}\n\n## SEU PAPEL\nExplicar procedimentos: o que são, como funcionam, preparo, pós-cuidados, duração.\n\n## COMO USAR AS TOOLS\n1. cs_consultar_servicos → use nome e descrição retornados como base\n2. NUNCA invente benefícios médicos não cadastrados\n3. Se o procedimento não estiver na lista → \"A clínica não oferece esse procedimento.\"\n\n## APÓS EXPLICAR\nPergunte: \"Gostaria de agendar este procedimento?\"\n\n## REGRAS\n- Preço: só informe se perguntarem\n- Máximo 4-6 linhas"
         }
       },
-      "id": "ma-agent-especialista",
-      "name": "agente_especialista_procedimentos",
-      "type": "@n8n/n8n-nodes-langchain.agent",
       "position": [
-        1840,
-        864
+        1600,
+        128
       ],
       "typeVersion": 1.7
     },
     {
+      "id": "ma-model-especialista",
+      "name": "Chat Model especialista",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "parameters": {
-        "model": "gpt-4o-mini",
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
         "options": {
           "temperature": 0.4
         }
       },
-      "id": "ma-model-especialista",
-      "name": "Chat Model especialista",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "position": [
-        1440,
-        1072
-      ],
-      "typeVersion": 1.1,
       "credentials": {
         "openAiApi": {
           "id": "v4dQPWdlMtUeGSD3",
           "name": "OpenAi clinicas"
         }
-      }
+      },
+      "position": [
+        1200,
+        328
+      ],
+      "typeVersion": 1
     },
     {
+      "id": "ma-memory-especialista",
+      "name": "Memory especialista",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
       "parameters": {
         "sessionIdType": "customKey",
         "sessionKey": "={{ $('Monta Contexto').first().json.clinic_id + ':' + $('Monta Contexto').first().json.remoteJid }}",
         "contextWindowLength": 50
       },
-      "id": "ma-memory-especialista",
-      "name": "Memory especialista",
-      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
-      "position": [
-        1648,
-        1072
-      ],
-      "typeVersion": 1.3,
       "credentials": {
         "postgres": {
           "id": "et3QrDBkKSd0EwRF",
           "name": "Postgres clinica"
         }
-      }
+      },
+      "position": [
+        1400,
+        328
+      ],
+      "typeVersion": 1.3
     },
     {
+      "id": "ma-tool-servicos-esp",
+      "name": "esp_cs_consultar_servicos",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "parameters": {
         "toolDescription": "Lista os procedimentos com nome, descrição, duração e preço. Use para obter informações detalhadas sobre um procedimento específico.",
         "method": "POST",
-        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_clinic_procedimentos' }}",
+        "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_clinic_procedimentos' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Code merge webhook e resolucao').first().json.clinica_id }) }}"
       },
-      "id": "ma-tool-servicos-esp",
-      "name": "esp_cs_consultar_servicos",
-      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-      "position": [
-        1840,
-        1072
-      ],
-      "typeVersion": 1.1,
       "credentials": {
         "supabaseApi": {
           "id": "SmHWpBnyL1cYuhlm",
           "name": "Supabase clinicas"
         }
-      }
+      },
+      "position": [
+        1600,
+        328
+      ],
+      "typeVersion": 1.1
     },
     {
-      "parameters": {
-        "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
-      },
       "id": "ma-refletir-especialista",
       "name": "Refletir especialista",
       "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "parameters": {
+        "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
+      },
       "position": [
-        2048,
-        1072
+        1800,
+        328
       ],
       "typeVersion": 1
     },
     {
-      "parameters": {
-        "jsCode": "const ctx = $('Monta Contexto').first().json;\nconst msg = (ctx.instr_transferir || '').trim()\n  || 'Um momento! Vou te transferir para um atendente humano. Em breve alguém entrará em contato. 😊';\nreturn [{ json: {\n  mensagem_handoff: msg,\n  clinic_id: ctx.clinic_id,\n  remoteJid: ctx.remoteJid,\n  instanceName: ctx.instanceName,\n  telefone_numero: (ctx.remoteJid || '').split('@')[0].replace(/\\D/g, ''),\n} }];"
-      },
       "id": "ma-code-handoff",
       "name": "Code Preparar Handoff",
       "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const ctx = $('Monta Contexto').first().json;\nconst msg = (ctx.instr_transferir || '').trim()\n  || 'Um momento! Vou te transferir para um atendente humano. Em breve alguém entrará em contato. 😊';\nreturn [{ json: {\n  mensagem_handoff: msg,\n  clinic_id: ctx.clinic_id,\n  remoteJid: ctx.remoteJid,\n  instanceName: ctx.instanceName,\n  telefone_numero: (ctx.remoteJid || '').split('@')[0].replace(/\\D/g, ''),\n} }];"
+      },
       "position": [
-        1536,
-        1424
+        1600,
+        592
       ],
       "typeVersion": 2
     },
     {
+      "id": "ma-update-bot-ativo",
+      "name": "Update bot_ativo false",
+      "type": "n8n-nodes-base.supabase",
       "parameters": {
         "operation": "update",
         "tableId": "cs_clientes",
@@ -3832,22 +3830,22 @@
           ]
         }
       },
-      "id": "ma-update-bot-ativo",
-      "name": "Update bot_ativo false",
-      "type": "n8n-nodes-base.supabase",
-      "position": [
-        1840,
-        1424
-      ],
-      "typeVersion": 1,
       "credentials": {
         "supabaseApi": {
           "id": "3OLdsDQmEZIdf1QP",
           "name": "Supabase account"
         }
-      }
+      },
+      "position": [
+        1900,
+        592
+      ],
+      "typeVersion": 1
     },
     {
+      "id": "ma-evolution-handoff",
+      "name": "Evolution Handoff",
+      "type": "n8n-nodes-base.httpRequest",
       "parameters": {
         "method": "POST",
         "url": "={{ 'https://evo.plataformabot.top/message/sendText/' + $json.instanceName }}",
@@ -3869,12 +3867,9 @@
         "jsonBody": "={{ JSON.stringify({ number: $json.remoteJid, text: $json.mensagem_handoff, delay: 500 }) }}",
         "options": {}
       },
-      "id": "ma-evolution-handoff",
-      "name": "Evolution Handoff",
-      "type": "n8n-nodes-base.httpRequest",
       "position": [
-        2144,
-        1424
+        2200,
+        592
       ],
       "typeVersion": 4.2
     }
@@ -4370,7 +4365,13 @@
     },
     "AI Agent": {
       "main": [
-        []
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Edit Fields3": {
@@ -4379,6 +4380,28 @@
           {
             "node": "RegistraMsgFila",
             "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refletir1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reagir mensagem1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
             "index": 0
           }
         ]
@@ -4435,12 +4458,111 @@
         ]
       ]
     },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Replace Me1": {
       "main": [
         [
           {
             "node": "If",
             "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cs_buscar_agendamentos": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cs_consultar_vagas": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cs_consultar_servicos": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cs_agendar": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cs_reagendar": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cs_cancelar": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cs_consultar_profissionais": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
             "index": 0
           }
         ]
@@ -4762,6 +4884,17 @@
         ]
       ]
     },
+    "cs_notificar_profissional": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "agente_atende_qualifica": {
       "main": [
         [
@@ -4810,13 +4943,6 @@
         [
           {
             "node": "Code Preparar Handoff",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Edit Fields",
             "type": "main",
             "index": 0
           }
@@ -5150,7 +5276,7 @@
     "templateCredsSetupCompleted": true
   },
   "pinData": {
-    "Webhook1": [
+    "Webhook": [
       {
         "json": {
           "headers": {
@@ -5332,9 +5458,9 @@
       }
     ]
   },
-  "versionId": "bc75711c-c2fa-4e41-b58b-734e0e544ca8",
-  "activeVersionId": "bc75711c-c2fa-4e41-b58b-734e0e544ca8",
-  "versionCounter": 514,
+  "versionId": "9b49025a-bf51-46bf-bbcb-57691bd865a0",
+  "activeVersionId": "9b49025a-bf51-46bf-bbcb-57691bd865a0",
+  "versionCounter": 293,
   "triggerCount": 1,
   "shared": [
     {
@@ -5357,9 +5483,9 @@
   ],
   "tags": [],
   "activeVersion": {
-    "updatedAt": "2026-04-20T18:18:11.259Z",
-    "createdAt": "2026-04-20T18:18:11.259Z",
-    "versionId": "bc75711c-c2fa-4e41-b58b-734e0e544ca8",
+    "updatedAt": "2026-04-04T22:36:07.494Z",
+    "createdAt": "2026-04-04T22:36:07.494Z",
+    "versionId": "9b49025a-bf51-46bf-bbcb-57691bd865a0",
     "workflowId": "kCX2LfxJrdYWB0vk",
     "nodes": [
       {
@@ -5445,8 +5571,8 @@
         "type": "n8n-nodes-base.set",
         "typeVersion": 3.4,
         "position": [
-          -240,
-          -1408
+          -976,
+          -1328
         ],
         "id": "fe44522f-b176-432f-a49c-84f44ca6cd98",
         "name": "Campos iniciais"
@@ -5479,8 +5605,8 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
         "position": [
-          -16,
-          -1392
+          -592,
+          -1360
         ],
         "id": "1fbaa50e-967e-4fc0-8f3a-f15ae04a349f",
         "name": "A Empresa Assumiu o Atendimento?"
@@ -5644,8 +5770,8 @@
         "type": "n8n-nodes-base.supabase",
         "typeVersion": 1,
         "position": [
-          640,
-          -1632
+          -192,
+          -1456
         ],
         "id": "57727933-6690-4e41-a0d5-03990fe2d51e",
         "name": "Get Empresa1",
@@ -5687,8 +5813,8 @@
         "type": "n8n-nodes-base.supabase",
         "typeVersion": 1,
         "position": [
-          864,
-          -1632
+          32,
+          -1456
         ],
         "id": "c051c224-d6e2-4935-b6a7-cfccc7469bd7",
         "name": "Update Cliente",
@@ -5740,7 +5866,8 @@
           "fieldsUi": {
             "fieldValues": [
               {
-                "fieldId": "nome"
+                "fieldId": "nome",
+                "fieldValue": ""
               },
               {
                 "fieldId": "telefone",
@@ -5833,8 +5960,8 @@
         "type": "n8n-nodes-base.supabase",
         "typeVersion": 1,
         "position": [
-          1264,
-          -1840
+          432,
+          -1664
         ],
         "id": "ebd8eb34-fecf-4627-985b-a5422513c136",
         "name": "Get Empresa2",
@@ -5876,8 +6003,8 @@
         "type": "n8n-nodes-base.supabase",
         "typeVersion": 1,
         "position": [
-          1472,
-          -1840
+          640,
+          -1664
         ],
         "id": "d620c05c-dd0b-4d6c-aa48-6392b51db85d",
         "name": "Update Cliente1",
@@ -5894,8 +6021,8 @@
         "type": "n8n-nodes-base.noOp",
         "typeVersion": 1,
         "position": [
-          1664,
-          -1840
+          832,
+          -1664
         ],
         "id": "f7f8dc42-e33e-4528-84d7-032a4312ef79",
         "name": "No Operation, do nothing4"
@@ -5908,8 +6035,8 @@
         "type": "n8n-nodes-base.wait",
         "typeVersion": 1.1,
         "position": [
-          1056,
-          -1840
+          224,
+          -1664
         ],
         "id": "005b63ea-c2fa-4e95-ba0f-c9e3e2b857ad",
         "name": "esperar 10 minutos",
@@ -5917,114 +6044,35 @@
       },
       {
         "parameters": {
-          "content": "⚠️ **AI Agent legado**\nDesconectado — mantido como fallback de rollback.\nPara reativar: reconectar `Monta Contexto → AI Agent`.",
-          "height": 150,
-          "width": 340,
-          "color": 2
-        },
-        "id": "sn-legacy",
-        "name": "SN Legacy AI Agent",
-        "type": "n8n-nodes-base.stickyNote",
-        "position": [
-          -2944,
-          144
-        ],
-        "typeVersion": 1
-      },
-      {
-        "parameters": {
-          "content": "### 🙋 ENCAMINHAR PARA ATENDENTE HUMANO\n**Sem LLM — fluxo 100% determinístico**\n\n1. **Code Preparar Handoff:** lê `instr_transferir` da clínica ou usa mensagem padrão\n2. **Update bot_ativo false:** seta `cs_clientes.bot_ativo = false` via Supabase\n3. **Evolution Handoff:** envia a mensagem de transferência via WhatsApp\n\nBot reativa automaticamente após **10 minutos** (fluxo existente `esperar 10 minutos`).\nPara reativar manualmente, a clínica pode usar o painel.",
-          "height": 444,
-          "width": 1310,
-          "color": 2
-        },
-        "id": "sn-humano",
-        "name": "SN Humano",
-        "type": "n8n-nodes-base.stickyNote",
-        "position": [
-          1104,
-          1232
-        ],
-        "typeVersion": 1
-      },
-      {
-        "parameters": {
-          "content": "### 🔬 ESPECIALISTA EM PROCEDIMENTOS\n**agente_especialista_procedimentos** (temp 0.4)\n\n**Função:** Explica procedimentos em detalhe: o que é, como funciona, preparo pré e pós, duração da sessão.\n\n**Tool:** cs_consultar_servicos → usa a descrição cadastrada como base. NUNCA inventa benefícios médicos.\n\nAo terminar, pergunta: *\"Gostaria de agendar este procedimento?\"*\n\n**Conteúdo:** cadastrado no painel web em Procedimentos (campo descrição).",
-          "height": 578,
-          "width": 940
-        },
-        "id": "sn-especialista",
-        "name": "SN Especialista",
-        "type": "n8n-nodes-base.stickyNote",
-        "position": [
-          1408,
-          624
-        ],
-        "typeVersion": 1
-      },
-      {
-        "parameters": {
-          "content": "### ❓ AGENTE FAQ\n**agente_faq** (temp 0.5)\n\n**Função:** Responde dúvidas gerais da clínica:\nendereço, horários de funcionamento, formas de pagamento, convênios, estacionamento, documentos necessários.\n\n**Fonte das respostas:** campo `orientacoes` de `clinics.agent_instructions` (configurado no painel web em Configurações do Agente).\n\n**Tool disponível:** cs_consultar_servicos (para \"quais serviços vocês oferecem?\")\n\nSe não souber: *\"Não tenho essa informação. Recomendo contatar a clínica diretamente.\"*",
-          "height": 632,
-          "width": 940,
+          "content": "# Reativa bot para o cliente",
+          "height": 260,
+          "width": 780,
           "color": 4
         },
-        "id": "sn-faq",
-        "name": "SN FAQ",
         "type": "n8n-nodes-base.stickyNote",
         "position": [
-          1408,
-          -48
+          -992,
+          -2400
         ],
-        "typeVersion": 1
+        "typeVersion": 1,
+        "id": "492535e8-ccef-4c0b-87ad-f6a627e6a89a",
+        "name": "Sticky Note"
       },
       {
         "parameters": {
-          "content": "### 📅 AGENTE AGENDADOR\n**agente_agendador** (temp **0.1** — precisão transacional)\n\n**Função:** Único agente que cria, edita e cancela consultas.\n\n**Fluxo obrigatório:**\n1. cs_consultar_servicos → lista serviços\n2. cs_consultar_profissionais → lista profissionais\n3. cs_consultar_vagas → verifica disponibilidade (YYYY-MM-DD)\n4. Confirmação explícita do cliente\n5. cs_agendar / cs_reagendar / cs_cancelar\n6. cs_notificar_profissional (se profissional_whatsapp ≠ null)\n\n**Temperatura 0.1** para nunca inventar horários, serviços ou datas.",
-          "height": 880,
-          "width": 1858,
-          "color": 6
+          "content": "# Desabilita o bot a intera??o do usu?rio.\n",
+          "height": 260,
+          "width": 780,
+          "color": 3
         },
-        "id": "sn-agendador",
-        "name": "SN Agendador",
         "type": "n8n-nodes-base.stickyNote",
         "position": [
-          2848,
-          -448
+          -128,
+          -2368
         ],
-        "typeVersion": 1
-      },
-      {
-        "parameters": {
-          "content": "### 🎙️ QUALIFICAÇÃO & ROTEAMENTO\n**agente_atende_qualifica** (temp 0.4)\n\n**Função:** Saúda o cliente, coleta o nome (cs_salvar_nome), identifica a intenção e coloca uma tag `[ROTA: X]` no fim da resposta.\n\n**Rotas possíveis:**\n→ `agendamento` — quer agendar / cancelar / reagendar\n→ `faq` — dúvida geral (horário, endereço, pagamento)\n→ `procedimentos` — quer saber como funciona um procedimento\n→ `humano` — pediu atendente ou urgência\n→ `concluido` — já respondido, sem ação adicional\n\n**Code Extrair Rota:** limpa a tag e repassa todo o contexto.\n**Switch Rota:** distribui para o agente correto.",
-          "height": 656,
-          "width": 1178,
-          "color": 5
-        },
-        "id": "sn-qualifica",
-        "name": "SN Qualifica",
-        "type": "n8n-nodes-base.stickyNote",
-        "position": [
-          -1280,
-          -448
-        ],
-        "typeVersion": 1
-      },
-      {
-        "parameters": {
-          "content": "## 🤖 SISTEMA MULTI-AGENTE\nFluxo com **4 agentes especializados** + handoff humano para reduzir alucinação.\n\n**Roteamento:** `agente_atende_qualifica` classifica a intenção e emite `[ROTA: X]` → `Code Extrair Rota` → `Switch Rota` → agente correto.\nTodos os agentes compartilham a **mesma memória Postgres** (session: clinic_id:remoteJid, 50 msgs) garantindo continuidade da conversa.",
-          "height": 2876,
-          "width": 4004,
-          "color": 7
-        },
-        "id": "sn-master-banner",
-        "name": "SN Master Banner",
-        "type": "n8n-nodes-base.stickyNote",
-        "position": [
-          1040,
-          -1104
-        ],
-        "typeVersion": 1
+        "typeVersion": 1,
+        "id": "93e89a87-c332-4df4-af3c-f76e1d32a1e7",
+        "name": "Sticky Note1"
       },
       {
         "parameters": {
@@ -6053,8 +6101,8 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
         "position": [
-          288,
-          -1744
+          -544,
+          -1568
         ],
         "id": "ed47e02f-cfec-4c24-8bd8-43f112fef439",
         "name": "Se existe o emoji ??"
@@ -6078,12 +6126,12 @@
         "parameters": {
           "content": "# Verificar se cliente est? cadastrado\n",
           "height": 580,
-          "width": 856,
+          "width": 840,
           "color": 5
         },
         "type": "n8n-nodes-base.stickyNote",
         "position": [
-          -2944,
+          -2928,
           -1104
         ],
         "typeVersion": 1,
@@ -6115,12 +6163,42 @@
         },
         "type": "n8n-nodes-base.stickyNote",
         "position": [
-          -2928,
-          -1728
+          -3920,
+          -1712
         ],
         "typeVersion": 1,
         "id": "8b53977c-949e-4cca-bd98-f57c0452a3cf",
         "name": "Sticky Note8"
+      },
+      {
+        "parameters": {
+          "content": "## Atendimento Ia ou Empresa\n",
+          "height": 320
+        },
+        "type": "n8n-nodes-base.stickyNote",
+        "position": [
+          -976,
+          -1984
+        ],
+        "typeVersion": 1,
+        "id": "24cc42c6-dc55-4ecd-9449-807ee78c16e0",
+        "name": "Sticky Note9"
+      },
+      {
+        "parameters": {
+          "content": "# Ativar ou Desabilitar o bot\n",
+          "height": 260,
+          "width": 440,
+          "color": 6
+        },
+        "type": "n8n-nodes-base.stickyNote",
+        "position": [
+          -624,
+          -1936
+        ],
+        "typeVersion": 1,
+        "id": "4b20ea78-be03-44c5-9ca1-c5281c4e813a",
+        "name": "Sticky Note10"
       },
       {
         "parameters": {
@@ -6317,8 +6395,8 @@
         "type": "n8n-nodes-base.splitOut",
         "typeVersion": 1,
         "position": [
-          3072,
-          -928
+          -1728,
+          -336
         ],
         "id": "7c811de3-7bc3-4f2e-a8fa-3a354c056c2e",
         "name": "Quebra a mensagem em v?rias mensagens"
@@ -6330,8 +6408,8 @@
         "type": "n8n-nodes-base.splitInBatches",
         "typeVersion": 3,
         "position": [
-          3568,
-          -816
+          -1056,
+          -208
         ],
         "id": "9a611fb7-abdf-45f0-a602-ad33842576a7",
         "name": "Separa 1 mensagem para enviar"
@@ -6342,8 +6420,8 @@
         "name": "Repete",
         "typeVersion": 1,
         "position": [
-          4688,
-          -784
+          64,
+          -176
         ],
         "id": "460901cd-9923-4101-aa4b-b3f4d1a89fb0"
       },
@@ -6354,8 +6432,8 @@
         "type": "n8n-nodes-base.wait",
         "typeVersion": 1.1,
         "position": [
-          4688,
-          -1024
+          64,
+          -416
         ],
         "id": "275b01b5-2040-41ac-bc1c-0b3cd42dab7e",
         "name": "Aguarda 1 segundo",
@@ -6386,8 +6464,8 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          4432,
-          -784
+          -192,
+          -176
         ],
         "id": "7c3e8e4c-4f61-4820-acc3-9c5f50df3451",
         "name": "Evolution API"
@@ -6410,8 +6488,8 @@
       },
       {
         "parameters": {
-          "content": "# Passo 04: Montagem de Contexto\nBusca configuração da clínica (`Buscar Config Clínica`) + histórico de chat (`Check First Contact`) + monta o payload completo com `clinic_id`, `remoteJid`, instruções da clínica e dados do cliente → `Monta Contexto`.\n\nO output alimenta os **4 agentes especializados** da seção à direita.",
-          "height": 504,
+          "content": "# Passo 04: Processa Resposta do Agente + Tools de Agendamento",
+          "height": 476,
           "width": 1600,
           "color": 4
         },
@@ -6433,8 +6511,8 @@
         },
         "type": "n8n-nodes-base.stickyNote",
         "position": [
-          3344,
-          -1072
+          -1280,
+          -464
         ],
         "typeVersion": 1,
         "id": "dfa7d0dd-57f5-4b40-a5be-64f3b7176853",
@@ -6443,14 +6521,14 @@
       {
         "parameters": {
           "content": "# ?? Cl?nica Sa?de - Tools (RPC Supabase)\ncs_buscar_agendamentos | cs_consultar_vagas | cs_consultar_servicos | cs_agendar | cs_reagendar | cs_cancelar",
-          "height": 296,
+          "height": 408,
           "width": 1340,
           "color": 2
         },
         "type": "n8n-nodes-base.stickyNote",
         "position": [
-          -2752,
-          528
+          -2672,
+          64
         ],
         "typeVersion": 1,
         "id": "6c00795b-a6d0-45c2-96b0-1f6f84cecf18",
@@ -6799,8 +6877,8 @@
         "type": "n8n-nodes-base.set",
         "typeVersion": 3.4,
         "position": [
-          2864,
-          -928
+          -1904,
+          -336
         ],
         "id": "7f488dae-0e0d-4678-8692-e6506b4fd50d",
         "name": "Edit Fields"
@@ -6810,8 +6888,8 @@
         "type": "n8n-nodes-base.noOp",
         "typeVersion": 1,
         "position": [
-          3968,
-          -976
+          -656,
+          -368
         ],
         "id": "2a41c131-9b6e-4aac-97cd-c6482f39f4a3",
         "name": "No Operation, do nothing5"
@@ -6855,8 +6933,8 @@
         "type": "n8n-nodes-base.webhook",
         "typeVersion": 2,
         "position": [
-          -2896,
-          -1552
+          -3888,
+          -1536
         ],
         "id": "5168940c-6294-4916-bb16-dbb3c1fde6fc",
         "name": "Webhook",
@@ -6869,8 +6947,8 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          -2240,
-          -1552
+          -3232,
+          -1536
         ],
         "id": "68c1aaa6-daf3-4598-98c0-481d9cf75067",
         "name": "Code Normalizar Evolution Clinica"
@@ -6903,8 +6981,8 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
         "position": [
-          -2048,
-          -1552
+          -3040,
+          -1536
         ],
         "id": "b9c6ada6-b608-473c-8fbc-0341ae60a060",
         "name": "IF evento e mensagem"
@@ -6940,8 +7018,8 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          -1760,
-          -1856
+          -2752,
+          -1680
         ],
         "id": "73a2a3b1-8a8a-4fb7-8cdc-de3573ce8200",
         "name": "HTTP RPC n8n_resolve_clinic",
@@ -6954,8 +7032,8 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          -1568,
-          -1856
+          -2560,
+          -1680
         ],
         "id": "ff56c25c-24f0-49bf-8244-2be225908afa",
         "name": "Code merge webhook e resolucao"
@@ -7067,8 +7145,8 @@
         "type": "n8n-nodes-base.switch",
         "typeVersion": 3,
         "position": [
-          -1376,
-          -1904
+          -2368,
+          -1728
         ],
         "id": "6121ead0-30ee-4de0-a7a0-6b0c9e6eb024",
         "name": "Switch assinatura e acesso"
@@ -7089,8 +7167,8 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          -976,
-          -2144
+          -1968,
+          -1968
         ],
         "id": "70e14b87-e6bb-4c15-9be5-52baed6046a4",
         "name": "HTTP aviso teste expirado",
@@ -7118,8 +7196,8 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          -848,
-          -1920
+          -1840,
+          -1744
         ],
         "id": "b853c925-d6e5-419f-9532-d05113954ac8",
         "name": "HTTP aviso mensal bloqueado",
@@ -7159,8 +7237,8 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
         "position": [
-          -1008,
-          -2336
+          -2000,
+          -2160
         ],
         "id": "7d07bfdc-3727-4595-80b8-3493c5b854d9",
         "name": "IF webhook de teste bloqueio"
@@ -7193,8 +7271,8 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
         "position": [
-          -800,
-          -2144
+          -1792,
+          -1968
         ],
         "id": "fb91a942-173b-4944-847b-990d70540029",
         "name": "IF webhook de teste bloqueio te"
@@ -7227,8 +7305,8 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
         "position": [
-          -576,
-          -1904
+          -1568,
+          -1728
         ],
         "id": "8a84e502-2b46-4fa0-a6bd-08af31665a45",
         "name": "IF webhook de teste bloqueio me"
@@ -7261,8 +7339,8 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
         "position": [
-          -960,
-          -1440
+          -1824,
+          -1360
         ],
         "id": "afd0ac9e-5943-40ff-8f1c-75e79ca05682",
         "name": "IF webhook de teste ativo"
@@ -7276,8 +7354,8 @@
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1.1,
         "position": [
-          -640,
-          -2496
+          -1632,
+          -2320
         ],
         "id": "0e0eec21-d5d9-4262-b228-16d8b89e227c",
         "name": "Respond webhook teste bloqueado"
@@ -7291,8 +7369,8 @@
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1.1,
         "position": [
-          -496,
-          -2176
+          -1488,
+          -2000
         ],
         "id": "c50aad26-263c-478f-98d4-7ae7039f8a74",
         "name": "Respond webhook teste bloqueado te"
@@ -7306,8 +7384,8 @@
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1.1,
         "position": [
-          -288,
-          -1888
+          -1280,
+          -1712
         ],
         "id": "20cd4f00-9bf8-4b35-a685-8bc885d19ae2",
         "name": "Respond webhook teste bloqueado me"
@@ -7321,8 +7399,8 @@
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1.1,
         "position": [
-          -656,
-          -1552
+          -1536,
+          -1456
         ],
         "id": "fbc4e114-0f4d-40d5-b6bf-c7773da91e5b",
         "name": "Respond webhook teste ativo"
@@ -7332,8 +7410,8 @@
         "type": "n8n-nodes-base.noOp",
         "typeVersion": 1,
         "position": [
-          -1792,
-          -1456
+          -2784,
+          -1440
         ],
         "id": "444bb561-1e48-41f5-9791-bf6bc5b97a53",
         "name": "NoOp demais eventos Evolution"
@@ -7366,8 +7444,8 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
         "position": [
-          -1584,
-          -1456
+          -2576,
+          -1440
         ],
         "id": "be93228d-7998-425d-8650-f9408808f8ef",
         "name": "IF teste apos ignorar evento"
@@ -7381,8 +7459,8 @@
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1.1,
         "position": [
-          -1296,
-          -1472
+          -2288,
+          -1456
         ],
         "id": "7c4a13ac-5337-4147-8be6-df09a2e5d5cc",
         "name": "Respond webhook teste ignorado"
@@ -7392,8 +7470,8 @@
         "type": "n8n-nodes-base.noOp",
         "typeVersion": 1,
         "position": [
-          -640,
-          -2320
+          -1632,
+          -2144
         ],
         "id": "600d5e6c-11a0-4d2d-8f47-3c033f7fad5a",
         "name": "NoOp fim producao bloqueado"
@@ -7403,8 +7481,8 @@
         "type": "n8n-nodes-base.noOp",
         "typeVersion": 1,
         "position": [
-          -288,
-          -2032
+          -1280,
+          -1856
         ],
         "id": "82e091fd-c852-45ac-a36a-a04fe51752ac",
         "name": "NoOp fim producao bloqueado te"
@@ -7414,8 +7492,8 @@
         "type": "n8n-nodes-base.noOp",
         "typeVersion": 1,
         "position": [
-          -288,
-          -1744
+          -1280,
+          -1568
         ],
         "id": "61a2f786-e6cf-4723-95aa-353f0549d187",
         "name": "NoOp fim producao bloqueado me"
@@ -7431,8 +7509,8 @@
         "type": "@n8n/n8n-nodes-langchain.agent",
         "typeVersion": 1.7,
         "position": [
-          -2432,
-          432
+          -2352,
+          -336
         ],
         "id": "e827d29e-43f1-4050-b76c-7015028a1a54",
         "name": "AI Agent"
@@ -7467,8 +7545,8 @@
         "type": "@n8n/n8n-nodes-langchain.toolThink",
         "typeVersion": 1,
         "position": [
-          -2288,
-          272
+          -2608,
+          -128
         ],
         "id": "64543dd2-6308-4f7d-a767-874bd0d326e5",
         "name": "Refletir1"
@@ -7487,8 +7565,8 @@
         "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "typeVersion": 1.1,
         "position": [
-          -2160,
-          272
+          -2480,
+          -128
         ],
         "id": "237bccd8-e6dd-4066-9059-bd64ab46401e",
         "name": "Reagir mensagem1",
@@ -7526,8 +7604,8 @@
         "type": "n8n-nodes-base.filter",
         "typeVersion": 2.2,
         "position": [
-          -464,
-          -1408
+          -1168,
+          -1328
         ],
         "id": "77962412-e2bd-41a3-a398-b533a27eec3e",
         "name": "Filter"
@@ -7559,8 +7637,8 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
         "position": [
-          4096,
-          -784
+          -528,
+          -176
         ],
         "id": "24555f4d-a6ef-49e4-bf7c-4a065bc32b20",
         "name": "If"
@@ -7590,8 +7668,8 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          4432,
-          -1056
+          -192,
+          -448
         ],
         "id": "b7344659-d35e-41d1-a0ca-d402687e8f88",
         "name": "Evolution API1"
@@ -7603,8 +7681,8 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          4272,
-          -896
+          -352,
+          -288
         ],
         "id": "18693641-d1f2-432b-8609-c1afbf59f2e8",
         "name": "Code"
@@ -7618,8 +7696,8 @@
         "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
         "typeVersion": 1.3,
         "position": [
-          -2416,
-          272
+          -2736,
+          -128
         ],
         "id": "cfb82700-e4e8-4fd6-b2a3-b2b9df3b64cc",
         "name": "Postgres Chat Memory",
@@ -7645,8 +7723,8 @@
         "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
         "typeVersion": 1.2,
         "position": [
-          -2576,
-          272
+          -2896,
+          -128
         ],
         "id": "54be6cad-fe64-41a5-8c26-3faa6a061d7d",
         "name": "OpenAI Chat Model1",
@@ -7663,8 +7741,8 @@
         "name": "Replace Me1",
         "typeVersion": 1,
         "position": [
-          3872,
-          -784
+          -752,
+          -176
         ],
         "id": "077bcd76-7a15-41f2-83e0-3302b01ddbff"
       },
@@ -7691,8 +7769,8 @@
         "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "typeVersion": 1.1,
         "position": [
-          -2704,
-          656
+          -2624,
+          304
         ],
         "id": "ab1b10ce-6d71-4d88-b0e6-520c2b7754c0",
         "name": "cs_buscar_agendamentos",
@@ -7726,8 +7804,8 @@
         "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "typeVersion": 1.1,
         "position": [
-          -2512,
-          656
+          -2432,
+          304
         ],
         "id": "67746a1b-555b-44c7-978e-4f2830c60105",
         "name": "cs_consultar_vagas",
@@ -7752,8 +7830,8 @@
         "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "typeVersion": 1.1,
         "position": [
-          -2320,
-          656
+          -2240,
+          304
         ],
         "id": "f9d8a601-75b2-4b85-8f0d-c24520e76664",
         "name": "cs_consultar_servicos",
@@ -7817,8 +7895,8 @@
         "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "typeVersion": 1.1,
         "position": [
-          -2128,
-          656
+          -2048,
+          304
         ],
         "id": "6ac9d0e5-149f-4e6a-8164-04a4544cf4d8",
         "name": "cs_agendar",
@@ -7882,8 +7960,8 @@
         "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "typeVersion": 1.1,
         "position": [
-          -1936,
-          656
+          -1856,
+          304
         ],
         "id": "8e8e0859-8158-4748-a251-cbfa72beb01b",
         "name": "cs_reagendar",
@@ -7937,8 +8015,8 @@
         "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "typeVersion": 1.1,
         "position": [
-          -1744,
-          656
+          -1664,
+          304
         ],
         "id": "aaedacaf-88a5-4fdf-8f28-79c3cfb0c914",
         "name": "cs_cancelar",
@@ -7959,8 +8037,8 @@
         "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "typeVersion": 1.1,
         "position": [
-          -1552,
-          656
+          -1472,
+          304
         ],
         "id": "38b0cf63-bf3c-48ee-8c0a-e1602bea7972",
         "name": "cs_consultar_profissionais",
@@ -8017,7 +8095,7 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          -2224,
+          -2528,
           -336
         ]
       },
@@ -8130,8 +8208,8 @@
         "type": "n8n-nodes-base.set",
         "typeVersion": 3.4,
         "position": [
-          -2416,
-          -1552
+          -3408,
+          -1536
         ]
       },
       {
@@ -8163,62 +8241,57 @@
         "type": "n8n-nodes-base.filter",
         "typeVersion": 2.3,
         "position": [
-          -2688,
-          -1552
+          -3680,
+          -1536
         ],
         "id": "2f2bcaff-0887-4a38-a3fd-47f994a98174",
         "name": "Filter1"
       },
       {
         "parameters": {
-          "toolDescription": "Salva o nome do cliente em cs_clientes. Chamar UMA única vez assim que o cliente informar o próprio nome durante a conversa. Parâmetros: nome (string com o nome informado pelo cliente).",
-          "method": "POST",
-          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_salvar_nome' }}",
-          "authentication": "predefinedCredentialType",
-          "nodeCredentialType": "supabaseApi",
-          "sendBody": true,
-          "specifyBody": "json",
-          "jsonBody": "={\n  \"p_clinic_id\": \"{{ $('Code merge webhook e resolucao').first().json.clinica_id }}\",\n  \"p_telefone\": \"{telefone}\",\n  \"p_nome\": \"{nome}\"\n}",
-          "placeholderDefinitions": {
-            "values": [
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 3
+            },
+            "conditions": [
               {
-                "name": "nome",
-                "description": "Nome informado pelo cliente durante a conversa.",
-                "type": "string"
-              },
-              {
-                "name": "telefone",
-                "description": "Telefone WhatsApp completo (remoteJid), ex: 5581999990000@s.whatsapp.net.",
-                "type": "string"
+                "id": "f59e7243-5b97-4052-87a9-19d85de44f51",
+                "leftValue": "558196454656@s.whatsapp.net",
+                "rightValue": "={{ $json.body.data.key.remoteJid }}",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals",
+                  "name": "filter.operator.equals"
+                }
               }
-            ]
-          }
+            ],
+            "combinator": "and"
+          },
+          "looseTypeValidation": "={{ false }}",
+          "options": {}
         },
-        "id": "agc-tool-salvar-nome",
-        "name": "cs_salvar_nome",
-        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-        "typeVersion": 1.1,
+        "type": "n8n-nodes-base.filter",
+        "typeVersion": 2.3,
         "position": [
-          -2000,
-          464
+          -3552,
+          -1184
         ],
-        "credentials": {
-          "supabaseApi": {
-            "id": "SmHWpBnyL1cYuhlm",
-            "name": "Supabase clinicas"
-          }
-        }
+        "id": "1a6e5601-acf6-443c-8e5e-02d3ac4ad5e7",
+        "name": "Filter2"
       },
       {
         "parameters": {
           "operation": "executeQuery",
-          "query": "SELECT COUNT(*)::int AS historico_count FROM public.n8n_chat_histories WHERE session_id = '{{ $('Code merge webhook e resolucao').first().json.clinica_id }}:{{ $('Webhook').first().json.body.data.key.remoteJid }}'",
+          "query": "=SELECT COUNT(*)::int AS historico_count FROM public.n8n_chat_histories WHERE session_id = '{{ $('Code merge webhook e resolucao').first().json.clinica_id }}:{{ $('Webhook').first().json.body.data.key.remoteJid }}'",
           "options": {}
         },
         "type": "n8n-nodes-base.postgres",
         "typeVersion": 2.5,
         "position": [
-          -2448,
+          -2608,
           -336
         ],
         "id": "f0a1b2c3-7777-4aaa-bbbb-000checkhist",
@@ -8237,9 +8310,17 @@
           "method": "POST",
           "url": "=https://evo.plataformabot.top/message/sendText/{{ $('Campos iniciais').first().json.instanceName }}",
           "sendHeaders": true,
-          "parametersHeaders": {
-            "values": [
-              {}
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "apikey",
+                "value": "14027fe51ef29cdee722fffcd46c94bc"
+              }
             ]
           },
           "sendBody": true,
@@ -8263,77 +8344,84 @@
         "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "typeVersion": 1.1,
         "position": [
-          -1744,
-          832
+          -1664,
+          480
         ],
         "id": "b3f1a2c4-9e8d-4a7b-8c6e-5f2d1e0a9b3c",
         "name": "cs_notificar_profissional"
       },
       {
+        "id": "ma-agent-qualifica",
+        "name": "agente_atende_qualifica",
+        "type": "@n8n/n8n-nodes-langchain.agent",
         "parameters": {
-          "promptType": "define",
           "text": "={{ $json.mensagem }}",
           "options": {
             "systemMessage": "=## IDENTIFICAÇÃO DO CLIENTE\nVocê é {{ $json.nome_agente || 'Assistente' }}, recepcionista virtual da {{ $json.clinic_name || 'clínica' }}.\nData/hora: {{ $now.format('dd/MM/yyyy HH:mm') }}\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nTelefone: {{ $json.remoteJid }}\n\n{{ $json.primeiro_contato\n  ? ($json.nome_cliente\n      ? '→ PRIMEIRO CONTATO (retorno). Use saudação: \"' + ($json.saudacao_retorno || 'Olá, ' + $json.nome_cliente + '! Como posso te ajudar hoje? 😊') + '\"'\n      : '→ PRIMEIRO CONTATO (novo). Período: ' + $json.saudacao_periodo + '. Apresente-se: \"' + ($json.saudacao_novo || 'Olá! ' + $json.saudacao_periodo + '! Sou ' + ($json.nome_agente || 'Assistente') + ', da ' + ($json.clinic_name || 'clínica') + '. Como posso te chamar? 😊') + '\" Finalize com: Como posso te chamar?')\n  : '→ CONVERSA EM ANDAMENTO. NÃO cumprimente novamente.'\n}}\n\n⛔ Se nome_cliente está vazio e o cliente informar o nome → chame cs_salvar_nome UMA vez.\n⛔ Se nome_cliente já está preenchido → NÃO pergunte de novo.\n\n## SEU PAPEL\nIdentificar a intenção do cliente e encaminhar. NÃO execute agendamentos nem explique procedimentos sozinho.\n\n## FORMATAÇÃO\nNUNCA escreva listas em linha corrida. SEMPRE use quebra de linha para cada item.\n\n## ROTEAMENTO OBRIGATÓRIO\nApós sua resposta ao cliente, na ÚLTIMA linha coloque EXATAMENTE UMA das tags:\n[ROTA: agendamento]    — cliente quer agendar, cancelar ou reagendar\n[ROTA: faq]            — dúvidas gerais (horários, endereço, pagamento, convênio)\n[ROTA: procedimentos]  — quer saber o que é ou como funciona um procedimento\n[ROTA: humano]         — pediu falar com pessoa ou é urgência\n[ROTA: concluido]      — já respondido completamente, sem ação adicional\n\n{{ $json.instr_triagem ? '## TRIAGEM\\n' + $json.instr_triagem : '' }}\n{{ $json.instr_transferir ? '## QUANDO TRANSFERIR\\n' + $json.instr_transferir : '' }}"
           }
         },
-        "id": "ma-agent-qualifica",
-        "name": "agente_atende_qualifica",
-        "type": "@n8n/n8n-nodes-langchain.agent",
         "position": [
-          -864,
-          -224
+          500,
+          -336
         ],
         "typeVersion": 1.7
       },
       {
+        "id": "ma-model-qualifica",
+        "name": "Chat Model qualifica",
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
         "parameters": {
-          "model": "gpt-4o-mini",
+          "model": {
+            "__rl": true,
+            "value": "gpt-4o-mini",
+            "mode": "list",
+            "cachedResultName": "gpt-4o-mini"
+          },
           "options": {
             "temperature": 0.4
           }
         },
-        "id": "ma-model-qualifica",
-        "name": "Chat Model qualifica",
-        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-        "position": [
-          -1136,
-          -16
-        ],
-        "typeVersion": 1.1,
         "credentials": {
           "openAiApi": {
             "id": "v4dQPWdlMtUeGSD3",
             "name": "OpenAi clinicas"
           }
-        }
+        },
+        "position": [
+          300,
+          -136
+        ],
+        "typeVersion": 1
       },
       {
+        "id": "ma-memory-qualifica",
+        "name": "Memory qualifica",
+        "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
         "parameters": {
           "sessionIdType": "customKey",
           "sessionKey": "={{ $('Monta Contexto').first().json.clinic_id + ':' + $('Monta Contexto').first().json.remoteJid }}",
           "contextWindowLength": 50
         },
-        "id": "ma-memory-qualifica",
-        "name": "Memory qualifica",
-        "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
-        "position": [
-          -928,
-          -16
-        ],
-        "typeVersion": 1.3,
         "credentials": {
           "postgres": {
             "id": "et3QrDBkKSd0EwRF",
             "name": "Postgres clinica"
           }
-        }
+        },
+        "position": [
+          500,
+          -136
+        ],
+        "typeVersion": 1.3
       },
       {
+        "id": "ma-tool-salvar-nome-q",
+        "name": "qualifica_cs_salvar_nome",
+        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "parameters": {
           "toolDescription": "Salva o nome do cliente em cs_clientes. Chamar UMA única vez assim que o cliente informar o próprio nome durante a conversa.",
           "method": "POST",
-          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_salvar_nome' }}",
+          "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_cs_salvar_nome' }}",
           "authentication": "predefinedCredentialType",
           "nodeCredentialType": "supabaseApi",
           "sendBody": true,
@@ -8354,48 +8442,48 @@
             ]
           }
         },
-        "id": "ma-tool-salvar-nome-q",
-        "name": "qualifica_cs_salvar_nome",
-        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-        "position": [
-          -736,
-          -16
-        ],
-        "typeVersion": 1.1,
         "credentials": {
           "supabaseApi": {
             "id": "SmHWpBnyL1cYuhlm",
             "name": "Supabase clinicas"
           }
-        }
+        },
+        "position": [
+          700,
+          -136
+        ],
+        "typeVersion": 1.1
       },
       {
-        "parameters": {
-          "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
-        },
         "id": "ma-refletir-qualifica",
         "name": "Refletir qualifica",
         "type": "@n8n/n8n-nodes-langchain.toolThink",
+        "parameters": {
+          "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
+        },
         "position": [
-          -528,
-          -16
+          900,
+          -136
         ],
         "typeVersion": 1
       },
       {
-        "parameters": {
-          "jsCode": "const agentOutput = $input.first().json.output || '';\nconst montaCtx = $('Monta Contexto').first().json;\nconst match = agentOutput.match(/\\[ROTA:\\s*(agendamento|faq|procedimentos|humano|concluido)\\]/i);\nconst rota = match ? match[1].toLowerCase() : 'concluido';\nconst output = agentOutput.replace(/\\[ROTA:.*?\\]/gi, '').trim();\nreturn [{ json: { ...montaCtx, output, rota } }];"
-        },
         "id": "ma-code-extrair-rota",
         "name": "Code Extrair Rota",
         "type": "n8n-nodes-base.code",
+        "parameters": {
+          "jsCode": "const agentOutput = $input.first().json.output || '';\nconst montaCtx = $('Monta Contexto').first().json;\nconst match = agentOutput.match(/\\[ROTA:\\s*(agendamento|faq|procedimentos|humano|concluido)\\]/i);\nconst rota = match ? match[1].toLowerCase() : 'concluido';\nconst output = agentOutput.replace(/\\[ROTA:.*?\\]/gi, '').trim();\nreturn [{ json: { ...montaCtx, output, rota } }];"
+        },
         "position": [
-          -544,
-          -208
+          800,
+          -336
         ],
         "typeVersion": 2
       },
       {
+        "id": "ma-switch-rota",
+        "name": "Switch Rota",
+        "type": "n8n-nodes-base.switch",
         "parameters": {
           "rules": {
             "values": [
@@ -8494,30 +8582,6 @@
                 },
                 "renameOutput": true,
                 "outputKey": "humano"
-              },
-              {
-                "conditions": {
-                  "options": {
-                    "caseSensitive": true,
-                    "leftValue": "",
-                    "typeValidation": "strict",
-                    "version": 2
-                  },
-                  "conditions": [
-                    {
-                      "leftValue": "={{ $json.rota }}",
-                      "rightValue": "concluido",
-                      "operator": {
-                        "type": "string",
-                        "operation": "equals"
-                      },
-                      "id": "sw-rota-5"
-                    }
-                  ],
-                  "combinator": "and"
-                },
-                "renameOutput": true,
-                "outputKey": "concluido"
               }
             ]
           },
@@ -8525,80 +8589,84 @@
             "fallbackOutput": "extra"
           }
         },
-        "id": "ma-switch-rota",
-        "name": "Switch Rota",
-        "type": "n8n-nodes-base.switch",
         "position": [
-          -336,
-          -96
+          1100,
+          -336
         ],
         "typeVersion": 3.2
       },
       {
+        "id": "ma-agent-agendador",
+        "name": "agente_agendador",
+        "type": "@n8n/n8n-nodes-langchain.agent",
         "parameters": {
-          "promptType": "define",
           "text": "={{ $json.mensagem }}",
           "options": {
             "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, responsável por agendamentos da {{ $json.clinic_name || 'clínica' }}.\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nTelefone (p_telefone): {{ $json.remoteJid }}\nData/hora: {{ $now.format('dd/MM/yyyy HH:mm') }}\n\n## FORMATAÇÃO\nNUNCA escreva listas em linha corrida. SEMPRE use quebra de linha para cada item.\n\n## FLUXO NOVO AGENDAMENTO\n1. cs_consultar_servicos → mostre lista → guarde servico_id\n2. cs_consultar_profissionais → mostre lista → pergunte preferência\n3. Pergunte nome completo (NUNCA use nome do WhatsApp se nome_cliente vazio)\n4. Pergunte data desejada → cs_consultar_vagas (data em YYYY-MM-DD)\n5. Verifique o horário pedido no array retornado (HH:MM exato)\n   - Se encontrar match → confirme direto, NÃO liste alternativas\n   - Se não encontrar → diga que não está disponível e liste alternativas\n6. Confirme: nome, serviço, profissional, data, horário\n7. cs_agendar com: nome_cliente, telefone_cliente, servico_id, profissional_id, data (YYYY-MM-DD), horario (HH:MM)\n8. Confirme com resumo\n\n## FLUXO CANCELAR / REAGENDAR\n1. cs_buscar_agendamentos → mostre lista\n2. Confirme explicitamente ANTES de chamar cs_cancelar ou cs_reagendar\n\n## PÓS AGENDAMENTO/CANCELAMENTO/REAGENDAMENTO\nSe profissional_whatsapp ≠ null → chame cs_notificar_profissional ANTES de responder ao cliente\n- Agendamento: \"📅 Novo agendamento: {nome}, {serviço}, {data} às {horário}\"\n- Reagendamento: \"🔄 Reagendamento: {nome}, {serviço}, {nova_data} às {novo_horário}\"\n- Cancelamento: \"❌ Cancelamento: {nome}, {serviço}, {data} às {horário}\"\n\n## PREÇOS\nInforme valor SOMENTE se o cliente perguntar. Se null: \"valor não informado pela clínica\"\n\n## REGRAS\n- NUNCA invente horários, serviços ou profissionais não retornados pelas tools\n- NUNCA agende ou cancele sem confirmação explícita do cliente\n- Máximo 3-5 linhas por mensagem\n\n{{ $json.agent_instructions ? '## INSTRUÇÕES DA CLÍNICA\\n' + $json.agent_instructions : '' }}"
           }
         },
-        "id": "ma-agent-agendador",
-        "name": "agente_agendador",
-        "type": "@n8n/n8n-nodes-langchain.agent",
         "position": [
-          3392,
-          -128
+          1600,
+          -800
         ],
         "typeVersion": 1.7
       },
       {
+        "id": "ma-model-agendador",
+        "name": "Chat Model agendador",
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
         "parameters": {
-          "model": "gpt-4o-mini",
+          "model": {
+            "__rl": true,
+            "value": "gpt-4o-mini",
+            "mode": "list",
+            "cachedResultName": "gpt-4o-mini"
+          },
           "options": {
             "temperature": 0.1
           }
         },
-        "id": "ma-model-agendador",
-        "name": "Chat Model agendador",
-        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-        "position": [
-          3632,
-          -272
-        ],
-        "typeVersion": 1.1,
         "credentials": {
           "openAiApi": {
             "id": "v4dQPWdlMtUeGSD3",
             "name": "OpenAi clinicas"
           }
-        }
+        },
+        "position": [
+          1200,
+          -1000
+        ],
+        "typeVersion": 1
       },
       {
+        "id": "ma-memory-agendador",
+        "name": "Memory agendador",
+        "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
         "parameters": {
           "sessionIdType": "customKey",
           "sessionKey": "={{ $('Monta Contexto').first().json.clinic_id + ':' + $('Monta Contexto').first().json.remoteJid }}",
           "contextWindowLength": 50
         },
-        "id": "ma-memory-agendador",
-        "name": "Memory agendador",
-        "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
-        "position": [
-          4000,
-          -208
-        ],
-        "typeVersion": 1.3,
         "credentials": {
           "postgres": {
             "id": "et3QrDBkKSd0EwRF",
             "name": "Postgres clinica"
           }
-        }
+        },
+        "position": [
+          1400,
+          -1000
+        ],
+        "typeVersion": 1.3
       },
       {
+        "id": "ma-tool-buscar-agd",
+        "name": "agd_cs_buscar_agendamentos",
+        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "parameters": {
           "toolDescription": "Busca agendamentos ativos pelo telefone WhatsApp (remoteJid). Retorna id, profissional_id, data_iso (YYYY-MM-DD), horario (HH:MM), serviço e profissional. Use antes de reagendar ou cancelar.",
           "method": "POST",
-          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_buscar_agendamentos' }}",
+          "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_cs_buscar_agendamentos' }}",
           "authentication": "predefinedCredentialType",
           "nodeCredentialType": "supabaseApi",
           "sendBody": true,
@@ -8614,26 +8682,26 @@
             ]
           }
         },
-        "id": "ma-tool-buscar-agd",
-        "name": "agd_cs_buscar_agendamentos",
-        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-        "position": [
-          2928,
-          144
-        ],
-        "typeVersion": 1.1,
         "credentials": {
           "supabaseApi": {
             "id": "SmHWpBnyL1cYuhlm",
             "name": "Supabase clinicas"
           }
-        }
+        },
+        "position": [
+          1200,
+          -600
+        ],
+        "typeVersion": 1.1
       },
       {
+        "id": "ma-tool-vagas-agd",
+        "name": "agd_cs_consultar_vagas",
+        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "parameters": {
           "toolDescription": "Lista horários disponíveis de um dia específico. Pergunte sempre a data ao cliente antes de chamar. Passe data_solicitada em formato YYYY-MM-DD.",
           "method": "POST",
-          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_consultar_vagas' }}",
+          "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_cs_consultar_vagas' }}",
           "authentication": "predefinedCredentialType",
           "nodeCredentialType": "supabaseApi",
           "sendBody": true,
@@ -8649,74 +8717,74 @@
             ]
           }
         },
-        "id": "ma-tool-vagas-agd",
-        "name": "agd_cs_consultar_vagas",
-        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-        "position": [
-          3136,
-          144
-        ],
-        "typeVersion": 1.1,
         "credentials": {
           "supabaseApi": {
             "id": "SmHWpBnyL1cYuhlm",
             "name": "Supabase clinicas"
           }
-        }
+        },
+        "position": [
+          1400,
+          -600
+        ],
+        "typeVersion": 1.1
       },
       {
+        "id": "ma-tool-servicos-agd",
+        "name": "agd_cs_consultar_servicos",
+        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "parameters": {
           "toolDescription": "Lista os procedimentos/serviços ativos da clínica (id, nome, descrição, duração, preço). O campo \"id\" é o servico_id a usar em cs_agendar.",
           "method": "POST",
-          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_clinic_procedimentos' }}",
+          "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_clinic_procedimentos' }}",
           "authentication": "predefinedCredentialType",
           "nodeCredentialType": "supabaseApi",
           "sendBody": true,
           "specifyBody": "json",
           "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Code merge webhook e resolucao').first().json.clinica_id }) }}"
         },
-        "id": "ma-tool-servicos-agd",
-        "name": "agd_cs_consultar_servicos",
-        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-        "position": [
-          3328,
-          144
-        ],
-        "typeVersion": 1.1,
         "credentials": {
           "supabaseApi": {
             "id": "SmHWpBnyL1cYuhlm",
             "name": "Supabase clinicas"
           }
-        }
+        },
+        "position": [
+          1600,
+          -600
+        ],
+        "typeVersion": 1.1
       },
       {
-        "parameters": {
-          "toolDescription": "Lista os profissionais ativos da clínica com nome e especialidade.",
-          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/cs_profissionais?select=id,nome,especialidade&ativo=eq.true&order=nome.asc&clinic_id=eq.' + $('Code merge webhook e resolucao').first().json.clinica_id }}",
-          "authentication": "predefinedCredentialType",
-          "nodeCredentialType": "supabaseApi"
-        },
         "id": "ma-tool-profissionais-agd",
         "name": "agd_cs_consultar_profissionais",
         "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-        "position": [
-          3536,
-          144
-        ],
-        "typeVersion": 1.1,
+        "parameters": {
+          "toolDescription": "Lista os profissionais ativos da clínica com nome e especialidade.",
+          "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/cs_profissionais?select=id,nome,especialidade&ativo=eq.true&order=nome.asc&clinic_id=eq.' + $('Code merge webhook e resolucao').first().json.clinica_id }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "supabaseApi"
+        },
         "credentials": {
           "supabaseApi": {
             "id": "SmHWpBnyL1cYuhlm",
             "name": "Supabase clinicas"
           }
-        }
+        },
+        "position": [
+          1800,
+          -600
+        ],
+        "typeVersion": 1.1
       },
       {
+        "id": "ma-tool-agendar-agd",
+        "name": "agd_cs_agendar",
+        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "parameters": {
           "toolDescription": "Cria agendamento após confirmação explícita do cliente. Obrigatório: servico_id de cs_consultar_servicos, profissional_id de cs_consultar_vagas, data em YYYY-MM-DD, horario em HH:MM.",
           "method": "POST",
-          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_agendar' }}",
+          "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_cs_agendar' }}",
           "authentication": "predefinedCredentialType",
           "nodeCredentialType": "supabaseApi",
           "sendBody": true,
@@ -8762,26 +8830,26 @@
             ]
           }
         },
-        "id": "ma-tool-agendar-agd",
-        "name": "agd_cs_agendar",
-        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-        "position": [
-          3728,
-          144
-        ],
-        "typeVersion": 1.1,
         "credentials": {
           "supabaseApi": {
             "id": "SmHWpBnyL1cYuhlm",
             "name": "Supabase clinicas"
           }
-        }
+        },
+        "position": [
+          2000,
+          -600
+        ],
+        "typeVersion": 1.1
       },
       {
+        "id": "ma-tool-reagendar-agd",
+        "name": "agd_cs_reagendar",
+        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "parameters": {
           "toolDescription": "Reagenda consulta existente após confirmação. profissional_antigo_id, data_antiga e horario_antigo vêm de cs_buscar_agendamentos; novo slot das vagas disponíveis.",
           "method": "POST",
-          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_reagendar' }}",
+          "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_cs_reagendar' }}",
           "authentication": "predefinedCredentialType",
           "nodeCredentialType": "supabaseApi",
           "sendBody": true,
@@ -8827,26 +8895,26 @@
             ]
           }
         },
-        "id": "ma-tool-reagendar-agd",
-        "name": "agd_cs_reagendar",
-        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-        "position": [
-          3936,
-          144
-        ],
-        "typeVersion": 1.1,
         "credentials": {
           "supabaseApi": {
             "id": "SmHWpBnyL1cYuhlm",
             "name": "Supabase clinicas"
           }
-        }
+        },
+        "position": [
+          2200,
+          -600
+        ],
+        "typeVersion": 1.1
       },
       {
+        "id": "ma-tool-cancelar-agd",
+        "name": "agd_cs_cancelar",
+        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "parameters": {
           "toolDescription": "Cancela consulta após confirmação explícita. profissional_id, data (YYYY-MM-DD) e horario (HH:MM) devem ser os do agendamento a cancelar (de cs_buscar_agendamentos).",
           "method": "POST",
-          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_cancelar' }}",
+          "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_cs_cancelar' }}",
           "authentication": "predefinedCredentialType",
           "nodeCredentialType": "supabaseApi",
           "sendBody": true,
@@ -8882,30 +8950,38 @@
             ]
           }
         },
-        "id": "ma-tool-cancelar-agd",
-        "name": "agd_cs_cancelar",
-        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-        "position": [
-          4128,
-          144
-        ],
-        "typeVersion": 1.1,
         "credentials": {
           "supabaseApi": {
             "id": "SmHWpBnyL1cYuhlm",
             "name": "Supabase clinicas"
           }
-        }
+        },
+        "position": [
+          2400,
+          -600
+        ],
+        "typeVersion": 1.1
       },
       {
+        "id": "ma-tool-notificar-agd",
+        "name": "agd_cs_notificar_profissional",
+        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "parameters": {
           "toolDescription": "Envia notificação WhatsApp para o profissional após agendamento, reagendamento ou cancelamento. CHAMAR SEMPRE após cs_agendar, cs_reagendar ou cs_cancelar quando profissional_whatsapp estiver presente e não nulo na resposta da RPC.",
           "method": "POST",
           "url": "=https://evo.plataformabot.top/message/sendText/{{ $('Campos iniciais').first().json.instanceName }}",
           "sendHeaders": true,
-          "parametersHeaders": {
-            "values": [
-              {}
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "apikey",
+                "value": "14027fe51ef29cdee722fffcd46c94bc"
+              }
             ]
           },
           "sendBody": true,
@@ -8926,240 +9002,254 @@
             ]
           }
         },
-        "id": "ma-tool-notificar-agd",
-        "name": "agd_cs_notificar_profissional",
-        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+        "credentials": {
+          "supabaseApi": {
+            "id": "SmHWpBnyL1cYuhlm",
+            "name": "Supabase clinicas"
+          }
+        },
         "position": [
-          4336,
-          144
+          2600,
+          -600
         ],
         "typeVersion": 1.1
       },
       {
-        "parameters": {
-          "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
-        },
         "id": "ma-refletir-agendador",
         "name": "Refletir agendador",
         "type": "@n8n/n8n-nodes-langchain.toolThink",
+        "parameters": {
+          "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
+        },
         "position": [
-          4528,
-          144
+          2800,
+          -600
         ],
         "typeVersion": 1
       },
       {
+        "id": "ma-agent-faq",
+        "name": "agente_faq",
+        "type": "@n8n/n8n-nodes-langchain.agent",
         "parameters": {
-          "promptType": "define",
           "text": "={{ $json.mensagem }}",
           "options": {
             "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, atendente virtual da {{ $json.clinic_name || 'clínica' }}.\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nData/hora: {{ $now.format('dd/MM/yyyy HH:mm') }}\n\n## SEU PAPEL\nResponder dúvidas gerais sobre a clínica de forma objetiva e concisa.\n\n## INFORMAÇÕES DISPONÍVEIS\n{{ $json.instr_faq || 'Consulte as informações da clínica disponíveis. Se não souber, oriente o cliente a contatar diretamente.' }}\n\n## REGRAS\n- Responda APENAS com informações confirmadas (context ou tool)\n- Se não souber: \"Não tenho essa informação. Recomendo contatar a clínica diretamente.\"\n- NUNCA invente endereços, horários, convênios ou valores\n- Máximo 3-5 linhas por resposta\n\n{{ $json.instr_outros ? '## OUTRAS INSTRUÇÕES\\n' + $json.instr_outros : '' }}"
           }
         },
-        "id": "ma-agent-faq",
-        "name": "agente_faq",
-        "type": "@n8n/n8n-nodes-langchain.agent",
         "position": [
-          1856,
-          256
+          1600,
+          -336
         ],
         "typeVersion": 1.7
       },
       {
+        "id": "ma-model-faq",
+        "name": "Chat Model faq",
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
         "parameters": {
-          "model": "gpt-4o-mini",
+          "model": {
+            "__rl": true,
+            "value": "gpt-4o-mini",
+            "mode": "list",
+            "cachedResultName": "gpt-4o-mini"
+          },
           "options": {
             "temperature": 0.5
           }
         },
-        "id": "ma-model-faq",
-        "name": "Chat Model faq",
-        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-        "position": [
-          1456,
-          448
-        ],
-        "typeVersion": 1.1,
         "credentials": {
           "openAiApi": {
             "id": "v4dQPWdlMtUeGSD3",
             "name": "OpenAi clinicas"
           }
-        }
+        },
+        "position": [
+          1200,
+          -136
+        ],
+        "typeVersion": 1
       },
       {
+        "id": "ma-memory-faq",
+        "name": "Memory faq",
+        "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
         "parameters": {
           "sessionIdType": "customKey",
           "sessionKey": "={{ $('Monta Contexto').first().json.clinic_id + ':' + $('Monta Contexto').first().json.remoteJid }}",
           "contextWindowLength": 50
         },
-        "id": "ma-memory-faq",
-        "name": "Memory faq",
-        "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
-        "position": [
-          1664,
-          448
-        ],
-        "typeVersion": 1.3,
         "credentials": {
           "postgres": {
             "id": "et3QrDBkKSd0EwRF",
             "name": "Postgres clinica"
           }
-        }
+        },
+        "position": [
+          1400,
+          -136
+        ],
+        "typeVersion": 1.3
       },
       {
+        "id": "ma-tool-servicos-faq",
+        "name": "faq_cs_consultar_servicos",
+        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "parameters": {
           "toolDescription": "Lista os serviços/procedimentos ativos da clínica. Use quando o cliente perguntar quais procedimentos a clínica oferece.",
           "method": "POST",
-          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_clinic_procedimentos' }}",
+          "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_clinic_procedimentos' }}",
           "authentication": "predefinedCredentialType",
           "nodeCredentialType": "supabaseApi",
           "sendBody": true,
           "specifyBody": "json",
           "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Code merge webhook e resolucao').first().json.clinica_id }) }}"
         },
-        "id": "ma-tool-servicos-faq",
-        "name": "faq_cs_consultar_servicos",
-        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-        "position": [
-          1856,
-          448
-        ],
-        "typeVersion": 1.1,
         "credentials": {
           "supabaseApi": {
             "id": "SmHWpBnyL1cYuhlm",
             "name": "Supabase clinicas"
           }
-        }
+        },
+        "position": [
+          1600,
+          -136
+        ],
+        "typeVersion": 1.1
       },
       {
-        "parameters": {
-          "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
-        },
         "id": "ma-refletir-faq",
         "name": "Refletir faq",
         "type": "@n8n/n8n-nodes-langchain.toolThink",
+        "parameters": {
+          "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
+        },
         "position": [
-          2064,
-          448
+          1800,
+          -136
         ],
         "typeVersion": 1
       },
       {
+        "id": "ma-agent-especialista",
+        "name": "agente_especialista_procedimentos",
+        "type": "@n8n/n8n-nodes-langchain.agent",
         "parameters": {
-          "promptType": "define",
           "text": "={{ $json.mensagem }}",
           "options": {
             "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, especialista em procedimentos da {{ $json.clinic_name || 'clínica' }}.\nData/hora: {{ $now.format('dd/MM/yyyy HH:mm') }}\n\n## SEU PAPEL\nExplicar procedimentos: o que são, como funcionam, preparo, pós-cuidados, duração.\n\n## COMO USAR AS TOOLS\n1. cs_consultar_servicos → use nome e descrição retornados como base\n2. NUNCA invente benefícios médicos não cadastrados\n3. Se o procedimento não estiver na lista → \"A clínica não oferece esse procedimento.\"\n\n## APÓS EXPLICAR\nPergunte: \"Gostaria de agendar este procedimento?\"\n\n## REGRAS\n- Preço: só informe se perguntarem\n- Máximo 4-6 linhas"
           }
         },
-        "id": "ma-agent-especialista",
-        "name": "agente_especialista_procedimentos",
-        "type": "@n8n/n8n-nodes-langchain.agent",
         "position": [
-          1840,
-          864
+          1600,
+          128
         ],
         "typeVersion": 1.7
       },
       {
+        "id": "ma-model-especialista",
+        "name": "Chat Model especialista",
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
         "parameters": {
-          "model": "gpt-4o-mini",
+          "model": {
+            "__rl": true,
+            "value": "gpt-4o-mini",
+            "mode": "list",
+            "cachedResultName": "gpt-4o-mini"
+          },
           "options": {
             "temperature": 0.4
           }
         },
-        "id": "ma-model-especialista",
-        "name": "Chat Model especialista",
-        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-        "position": [
-          1440,
-          1072
-        ],
-        "typeVersion": 1.1,
         "credentials": {
           "openAiApi": {
             "id": "v4dQPWdlMtUeGSD3",
             "name": "OpenAi clinicas"
           }
-        }
+        },
+        "position": [
+          1200,
+          328
+        ],
+        "typeVersion": 1
       },
       {
+        "id": "ma-memory-especialista",
+        "name": "Memory especialista",
+        "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
         "parameters": {
           "sessionIdType": "customKey",
           "sessionKey": "={{ $('Monta Contexto').first().json.clinic_id + ':' + $('Monta Contexto').first().json.remoteJid }}",
           "contextWindowLength": 50
         },
-        "id": "ma-memory-especialista",
-        "name": "Memory especialista",
-        "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
-        "position": [
-          1648,
-          1072
-        ],
-        "typeVersion": 1.3,
         "credentials": {
           "postgres": {
             "id": "et3QrDBkKSd0EwRF",
             "name": "Postgres clinica"
           }
-        }
+        },
+        "position": [
+          1400,
+          328
+        ],
+        "typeVersion": 1.3
       },
       {
+        "id": "ma-tool-servicos-esp",
+        "name": "esp_cs_consultar_servicos",
+        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "parameters": {
           "toolDescription": "Lista os procedimentos com nome, descrição, duração e preço. Use para obter informações detalhadas sobre um procedimento específico.",
           "method": "POST",
-          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_clinic_procedimentos' }}",
+          "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_clinic_procedimentos' }}",
           "authentication": "predefinedCredentialType",
           "nodeCredentialType": "supabaseApi",
           "sendBody": true,
           "specifyBody": "json",
           "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Code merge webhook e resolucao').first().json.clinica_id }) }}"
         },
-        "id": "ma-tool-servicos-esp",
-        "name": "esp_cs_consultar_servicos",
-        "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-        "position": [
-          1840,
-          1072
-        ],
-        "typeVersion": 1.1,
         "credentials": {
           "supabaseApi": {
             "id": "SmHWpBnyL1cYuhlm",
             "name": "Supabase clinicas"
           }
-        }
+        },
+        "position": [
+          1600,
+          328
+        ],
+        "typeVersion": 1.1
       },
       {
-        "parameters": {
-          "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
-        },
         "id": "ma-refletir-especialista",
         "name": "Refletir especialista",
         "type": "@n8n/n8n-nodes-langchain.toolThink",
+        "parameters": {
+          "description": "Use a ferramenta para refletir sobre algo. Ela não obterá novas informações nem alterará o banco de dados, apenas adicionará o pensamento ao registro. Use-a quando for necessário um raciocínio mais profundo."
+        },
         "position": [
-          2048,
-          1072
+          1800,
+          328
         ],
         "typeVersion": 1
       },
       {
-        "parameters": {
-          "jsCode": "const ctx = $('Monta Contexto').first().json;\nconst msg = (ctx.instr_transferir || '').trim()\n  || 'Um momento! Vou te transferir para um atendente humano. Em breve alguém entrará em contato. 😊';\nreturn [{ json: {\n  mensagem_handoff: msg,\n  clinic_id: ctx.clinic_id,\n  remoteJid: ctx.remoteJid,\n  instanceName: ctx.instanceName,\n  telefone_numero: (ctx.remoteJid || '').split('@')[0].replace(/\\D/g, ''),\n} }];"
-        },
         "id": "ma-code-handoff",
         "name": "Code Preparar Handoff",
         "type": "n8n-nodes-base.code",
+        "parameters": {
+          "jsCode": "const ctx = $('Monta Contexto').first().json;\nconst msg = (ctx.instr_transferir || '').trim()\n  || 'Um momento! Vou te transferir para um atendente humano. Em breve alguém entrará em contato. 😊';\nreturn [{ json: {\n  mensagem_handoff: msg,\n  clinic_id: ctx.clinic_id,\n  remoteJid: ctx.remoteJid,\n  instanceName: ctx.instanceName,\n  telefone_numero: (ctx.remoteJid || '').split('@')[0].replace(/\\D/g, ''),\n} }];"
+        },
         "position": [
-          1536,
-          1424
+          1600,
+          592
         ],
         "typeVersion": 2
       },
       {
+        "id": "ma-update-bot-ativo",
+        "name": "Update bot_ativo false",
+        "type": "n8n-nodes-base.supabase",
         "parameters": {
           "operation": "update",
           "tableId": "cs_clientes",
@@ -9187,22 +9277,22 @@
             ]
           }
         },
-        "id": "ma-update-bot-ativo",
-        "name": "Update bot_ativo false",
-        "type": "n8n-nodes-base.supabase",
-        "position": [
-          1840,
-          1424
-        ],
-        "typeVersion": 1,
         "credentials": {
           "supabaseApi": {
             "id": "3OLdsDQmEZIdf1QP",
             "name": "Supabase account"
           }
-        }
+        },
+        "position": [
+          1900,
+          592
+        ],
+        "typeVersion": 1
       },
       {
+        "id": "ma-evolution-handoff",
+        "name": "Evolution Handoff",
+        "type": "n8n-nodes-base.httpRequest",
         "parameters": {
           "method": "POST",
           "url": "={{ 'https://evo.plataformabot.top/message/sendText/' + $json.instanceName }}",
@@ -9224,12 +9314,9 @@
           "jsonBody": "={{ JSON.stringify({ number: $json.remoteJid, text: $json.mensagem_handoff, delay: 500 }) }}",
           "options": {}
         },
-        "id": "ma-evolution-handoff",
-        "name": "Evolution Handoff",
-        "type": "n8n-nodes-base.httpRequest",
         "position": [
-          2144,
-          1424
+          2200,
+          592
         ],
         "typeVersion": 4.2
       }
@@ -9725,7 +9812,13 @@
       },
       "AI Agent": {
         "main": [
-          []
+          [
+            {
+              "node": "Edit Fields",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Edit Fields3": {
@@ -9734,6 +9827,28 @@
             {
               "node": "RegistraMsgFila",
               "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Refletir1": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Reagir mensagem1": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_tool",
               "index": 0
             }
           ]
@@ -9790,12 +9905,111 @@
           ]
         ]
       },
+      "Postgres Chat Memory": {
+        "ai_memory": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_memory",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI Chat Model1": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
       "Replace Me1": {
         "main": [
           [
             {
               "node": "If",
               "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "cs_buscar_agendamentos": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "cs_consultar_vagas": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "cs_consultar_servicos": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "cs_agendar": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "cs_reagendar": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "cs_cancelar": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "cs_consultar_profissionais": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_tool",
               "index": 0
             }
           ]
@@ -10095,23 +10309,23 @@
           ]
         ]
       },
-      "cs_salvar_nome": {
-        "main": [
-          [
-            {
-              "node": "AI Agent",
-              "type": "ai_tool",
-              "index": 0
-            }
-          ]
-        ]
-      },
       "Check First Contact": {
         "main": [
           [
             {
               "node": "Monta Contexto",
               "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "cs_notificar_profissional": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_tool",
               "index": 0
             }
           ]
@@ -10165,13 +10379,6 @@
           [
             {
               "node": "Code Preparar Handoff",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Edit Fields",
               "type": "main",
               "index": 0
             }
@@ -10497,14 +10704,22 @@
     "authors": "Felipe da silva",
     "name": null,
     "description": null,
-    "autosaved": true,
+    "autosaved": false,
     "workflowPublishHistory": [
       {
-        "createdAt": "2026-04-20T18:21:51.104Z",
-        "id": 365,
+        "createdAt": "2026-04-04T22:36:07.575Z",
+        "id": 251,
         "workflowId": "kCX2LfxJrdYWB0vk",
-        "versionId": "bc75711c-c2fa-4e41-b58b-734e0e544ca8",
+        "versionId": "9b49025a-bf51-46bf-bbcb-57691bd865a0",
         "event": "activated",
+        "userId": "d850cd0f-6bfa-4a6d-ab5a-55521cfd6854"
+      },
+      {
+        "createdAt": "2026-04-04T22:36:07.553Z",
+        "id": 250,
+        "workflowId": "kCX2LfxJrdYWB0vk",
+        "versionId": "9b49025a-bf51-46bf-bbcb-57691bd865a0",
+        "event": "deactivated",
         "userId": "d850cd0f-6bfa-4a6d-ab5a-55521cfd6854"
       }
     ]

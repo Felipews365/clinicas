@@ -5,6 +5,12 @@ export type AgentPlaceholderContext = {
   endereco: string;
 };
 
+/** Calcula o período do dia com base no horário local do cliente (para preview). */
+function getPeriodoPreview(): string {
+  const hr = new Date().getHours();
+  return hr >= 5 && hr < 12 ? "Bom dia" : hr >= 12 && hr < 18 ? "Boa tarde" : "Boa noite";
+}
+
 /**
  * Substitui marcadores nas instruções do agente (ex.: secção Identidade).
  * O fluxo n8n aplica a mesma lógica ao montar o texto para o modelo.
@@ -22,6 +28,7 @@ export function expandAgentIdentityPlaceholders(
   const clinicLabel = c || "(nome da clínica no cadastro)";
   const quemLabel = q || "(preencha «Quem somos» acima)";
   const endLabel = e || "(preencha «Endereço» acima)";
+  const periodo = getPeriodoPreview();
   let o = text;
   o = rep(o, "{{name}}", agentLabel);
   o = rep(o, "{{nome_agente}}", agentLabel);
@@ -34,5 +41,6 @@ export function expandAgentIdentityPlaceholders(
   o = rep(o, "{{endereco}}", endLabel);
   o = rep(o, "{{morada}}", endLabel);
   o = rep(o, "{{endereco_clinica}}", endLabel);
+  o = rep(o, "{{periodo}}", periodo);
   return o;
 }
