@@ -9,6 +9,7 @@ type HistRow = {
   id: number;
   session_id: string;
   message: { type: "human" | "ai"; content: string };
+  created_at: string | null;
 };
 
 type ClientRow = {
@@ -24,25 +25,23 @@ type SessionInfo = {
   botAtivo: boolean;
   lastPreview: string;
   lastId: number;
+  lastAt: string | null;
 };
 
 type Props = { supabase: SupabaseClient; clinicId: string };
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-/** Extrai o telefone do session_id ("clinic_id:phone@s.whatsapp.net" → "phone") */
 function parsePhone(sessionId: string): string {
   const after = sessionId.split(":").slice(1).join(":");
   return after.split("@")[0] ?? after;
 }
 
-/** Normaliza telefone para comparação (só dígitos, sem DDI 55 se tiver 13+ dígitos) */
 function normPhone(p: string): string {
   const d = p.replace(/\D/g, "");
   return d.length >= 13 ? d.slice(2) : d;
 }
 
-/** Converte o conteúdo de uma mensagem humana (pode ser JSON {"msg":"..."}) em texto legível */
 function parseHumanContent(content: string): string {
   const lines = content.split("\n").filter(Boolean);
   const parts: string[] = [];
@@ -62,14 +61,41 @@ function parseContent(message: HistRow["message"]): string {
   return message.content;
 }
 
-function formatTime(ts: string | number) {
-  const d = typeof ts === "number" ? new Date(ts) : new Date(ts);
+/** Formato WhatsApp: "agora", "5min", "14:30", "ontem", "25 jan" */
+function formatTimeAgo(ts: string | null, now: number): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return "";
+  const diffMs = now - d.getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  const diffDay = Math.floor(diffMs / 86_400_000);
+
+  if (diffMin < 1) return "agora";
+  if (diffMin < 60) return `${diffMin}min`;
+  if (diffDay === 0)
+    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  if (diffDay === 1) return "ontem";
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+}
+
+/** Horário da mensagem: "14:30" */
+function formatMsgTime(ts: string | null): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return "";
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-function formatDate(ts: string | number) {
-  const d = typeof ts === "number" ? new Date(ts) : new Date(ts);
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+/** Label de data para separadores: "Hoje", "Ontem", "25 de jan." */
+function formatDateLabel(ts: string): string {
+  const d = new Date(ts);
+  const today = new Date();
+  const diffDay = Math.floor(
+    (today.setHours(0,0,0,0) - d.setHours(0,0,0,0)) / 86_400_000
+  );
+  if (diffDay === 0) return "Hoje";
+  if (diffDay === 1) return "Ontem";
+  return new Date(ts).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 }
 
 // ─── componente ───────────────────────────────────────────────────────────────
@@ -83,9 +109,19 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
   const [sendError, setSendError] = useState<string | null>(null);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  // ticker para atualizar timestamps ao vivo, como no WhatsApp
+  const [now, setNow] = useState(() => Date.now());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const selectedIdRef = useRef<string | null>(null);
+  selectedIdRef.current = selectedId;
 
   const selectedSession = sessions.find((s) => s.sessionId === selectedId) ?? null;
+
+  // ticker: atualiza "agora", "Xmin" etc. a cada 30 s
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   // ── carrega sessões ──────────────────────────────────────────────────────
   const loadSessions = useCallback(async () => {
@@ -94,7 +130,7 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
     const [{ data: histRows }, { data: clients }] = await Promise.all([
       supabase
         .from("n8n_chat_histories")
-        .select("id, session_id, message")
+        .select("id, session_id, message, created_at")
         .like("session_id", `${clinicId}:%`)
         .order("id", { ascending: false })
         .limit(2000),
@@ -109,7 +145,6 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
 
     const clientList = (clients ?? []) as ClientRow[];
 
-    // agrupa por session_id mantendo apenas o mais recente de cada
     const map = new Map<string, SessionInfo>();
     for (const row of histRows as HistRow[]) {
       if (map.has(row.session_id)) continue;
@@ -123,6 +158,7 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
         botAtivo: client?.bot_ativo ?? true,
         lastPreview: parseContent(row.message),
         lastId: row.id,
+        lastAt: row.created_at ?? null,
       });
     }
 
@@ -131,7 +167,7 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
 
   useEffect(() => { void loadSessions(); }, [loadSessions]);
 
-  // ── realtime: novas mensagens ────────────────────────────────────────────
+  // ── realtime: novas mensagens no chat_histories ──────────────────────────
   useEffect(() => {
     const ch = supabase
       .channel(`wainbox-hist-${clinicId}`)
@@ -141,15 +177,77 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
         (payload) => {
           const row = payload.new as HistRow;
           if (!row.session_id.startsWith(clinicId)) return;
-          void loadSessions();
-          if (row.session_id === selectedId) {
-            setMessages((prev) => [...prev, row]);
+
+          // Atualiza lista de sessões de forma incremental (sem reload total)
+          setSessions((prev) => {
+            const existing = prev.find((s) => s.sessionId === row.session_id);
+            const preview = parseContent(row.message);
+            if (existing) {
+              // atualiza sessão existente e move para o topo
+              const updated: SessionInfo = {
+                ...existing,
+                lastPreview: preview,
+                lastId: row.id,
+                lastAt: row.created_at ?? existing.lastAt,
+              };
+              return [updated, ...prev.filter((s) => s.sessionId !== row.session_id)];
+            } else {
+              // nova sessão — ainda sem nome do cliente, carrega depois
+              const phone = parsePhone(row.session_id);
+              const newSession: SessionInfo = {
+                sessionId: row.session_id,
+                phone,
+                clientName: null,
+                botAtivo: true,
+                lastPreview: preview,
+                lastId: row.id,
+                lastAt: row.created_at ?? null,
+              };
+              return [newSession, ...prev];
+            }
+          });
+
+          // Se esta sessão está aberta, adiciona a mensagem ao chat
+          if (row.session_id === selectedIdRef.current) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === row.id)) return prev;
+              return [...prev, row];
+            });
           }
         }
       )
       .subscribe();
     return () => { void supabase.removeChannel(ch); };
-  }, [supabase, clinicId, loadSessions, selectedId]);
+  }, [supabase, clinicId]);
+
+  // ── realtime: nome do cliente atualizado pelo agente ────────────────────
+  useEffect(() => {
+    const ch = supabase
+      .channel(`wainbox-clientes-${clinicId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "cs_clientes",
+          filter: `clinic_id=eq.${clinicId}`,
+        },
+        (payload) => {
+          const row = payload.new as ClientRow | undefined;
+          if (!row?.telefone) return;
+          const np = normPhone(row.telefone);
+          setSessions((prev) =>
+            prev.map((s) =>
+              normPhone(s.phone) === np
+                ? { ...s, clientName: row.nome?.trim() || null, botAtivo: row.bot_ativo ?? s.botAtivo }
+                : s
+            )
+          );
+        }
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(ch); };
+  }, [supabase, clinicId]);
 
   // ── carrega mensagens ao selecionar sessão ───────────────────────────────
   const loadMessages = useCallback(
@@ -157,7 +255,7 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
       setLoadingMessages(true);
       const { data } = await supabase
         .from("n8n_chat_histories")
-        .select("id, session_id, message")
+        .select("id, session_id, message, created_at")
         .eq("session_id", sessionId)
         .order("id", { ascending: true })
         .limit(300);
@@ -172,7 +270,7 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
     void loadMessages(selectedId);
   }, [selectedId, loadMessages]);
 
-  // scroll ao fundo
+  // scroll ao fundo quando chegam novas mensagens
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -210,6 +308,63 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
     }
   }
 
+  // ── separadores de data nas mensagens ────────────────────────────────────
+  function renderMessages() {
+    const items: React.ReactNode[] = [];
+    let lastDateLabel = "";
+
+    for (const row of messages) {
+      const isAi = row.message.type === "ai";
+      const text = parseContent(row.message);
+      const time = formatMsgTime(row.created_at);
+
+      // separador de data
+      if (row.created_at) {
+        const label = formatDateLabel(row.created_at);
+        if (label !== lastDateLabel) {
+          lastDateLabel = label;
+          items.push(
+            <div key={`sep-${row.id}`} className="flex items-center gap-2 py-2">
+              <div className="flex-1 border-t border-[#e6e1d8]" />
+              <span className="shrink-0 rounded-full bg-[#e6e1d8] px-2.5 py-0.5 text-[10px] font-medium text-[#8a8278]">
+                {label}
+              </span>
+              <div className="flex-1 border-t border-[#e6e1d8]" />
+            </div>
+          );
+        }
+      }
+
+      items.push(
+        <div
+          key={row.id}
+          className={`flex ${isAi ? "justify-end" : "justify-start"}`}
+        >
+          <div
+            className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
+              isAi
+                ? "rounded-br-sm bg-[#4D6D66] text-white"
+                : "rounded-bl-sm bg-white text-[#2c2825]"
+            }`}
+          >
+            <p className="whitespace-pre-wrap break-words">{text}</p>
+            {time && (
+              <p
+                className={`mt-1 text-right text-[10px] ${
+                  isAi ? "text-white/60" : "text-[#b0a99e]"
+                }`}
+              >
+                {time}
+              </p>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    return items;
+  }
+
   // ── render ───────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden rounded-2xl border border-[#e6e1d8] bg-[#F9F7F2] shadow-sm">
@@ -235,16 +390,20 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  {/* dot de status: verde = bot ativo, laranja = humano */}
                   <span
                     className={`h-2 w-2 shrink-0 rounded-full ${
                       s.botAtivo ? "bg-[#c8c3bb]" : "bg-amber-500"
                     }`}
                     title={s.botAtivo ? "Bot ativo" : "Atendimento humano"}
                   />
-                  <span className="truncate text-xs font-semibold text-[#2c2825]">
+                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[#2c2825]">
                     {s.clientName ?? s.phone}
                   </span>
+                  {s.lastAt && (
+                    <span className="shrink-0 text-[10px] text-[#b0a99e]">
+                      {formatTimeAgo(s.lastAt, now)}
+                    </span>
+                  )}
                 </div>
                 {s.clientName && (
                   <p className="mt-0.5 truncate text-[10px] text-[#8a8278]">{s.phone}</p>
@@ -275,7 +434,11 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
                 </p>
                 <p className="text-xs text-[#8a8278]">
                   {selectedSession.phone}
-                  <span className={`ml-2 font-medium ${selectedSession.botAtivo ? "text-[#4D6D66]" : "text-amber-600"}`}>
+                  <span
+                    className={`ml-2 font-medium ${
+                      selectedSession.botAtivo ? "text-[#4D6D66]" : "text-amber-600"
+                    }`}
+                  >
                     · {selectedSession.botAtivo ? "Bot ativo" : "Atendimento humano"}
                   </span>
                 </p>
@@ -297,27 +460,8 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
           ) : messages.length === 0 ? (
             <p className="text-center text-xs text-[#b0a99e]">Sem histórico de mensagens.</p>
           ) : (
-            <div className="space-y-2">
-              {messages.map((row) => {
-                const isAi = row.message.type === "ai";
-                const text = parseContent(row.message);
-                return (
-                  <div
-                    key={row.id}
-                    className={`flex ${isAi ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
-                        isAi
-                          ? "rounded-br-sm bg-[#4D6D66] text-white"
-                          : "rounded-bl-sm bg-white text-[#2c2825]"
-                      }`}
-                    >
-                      <p className="whitespace-pre-wrap break-words">{text}</p>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="space-y-1">
+              {renderMessages()}
               <div ref={messagesEndRef} />
             </div>
           )}

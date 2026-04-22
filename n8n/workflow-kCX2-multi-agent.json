@@ -3155,7 +3155,7 @@
       "parameters": {
         "text": "={{ $json.mensagem }}",
         "options": {
-          "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, responsável por agendamentos da {{ $json.clinic_name || 'clínica' }}.\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nTelefone (p_telefone): {{ $json.remoteJid }}\nData/hora: {{ $now.format('dd/MM/yyyy HH:mm') }}\n\n## FORMATAÇÃO\nNUNCA escreva listas em linha corrida. SEMPRE use quebra de linha para cada item.\n\n## FLUXO NOVO AGENDAMENTO\n1. cs_consultar_servicos → mostre lista → guarde servico_id\n2. cs_consultar_profissionais → mostre lista → pergunte preferência\n3. Pergunte nome completo (NUNCA use nome do WhatsApp se nome_cliente vazio)\n4. Pergunte data desejada → cs_consultar_vagas (data em YYYY-MM-DD)\n5. Verifique o horário pedido no array retornado (HH:MM exato)\n   - Se encontrar match → confirme direto, NÃO liste alternativas\n   - Se não encontrar → diga que não está disponível e liste alternativas\n6. Confirme: nome, serviço, profissional, data, horário\n7. cs_agendar com: nome_cliente, telefone_cliente, servico_id, profissional_id, data (YYYY-MM-DD), horario (HH:MM)\n8. Confirme com resumo\n\n## FLUXO CANCELAR / REAGENDAR\n1. cs_buscar_agendamentos → mostre lista\n2. Confirme explicitamente ANTES de chamar cs_cancelar ou cs_reagendar\n\n## PÓS AGENDAMENTO/CANCELAMENTO/REAGENDAMENTO\nSe profissional_whatsapp ≠ null → chame cs_notificar_profissional ANTES de responder ao cliente\n- Agendamento: \"📅 Novo agendamento: {nome}, {serviço}, {data} às {horário}\"\n- Reagendamento: \"🔄 Reagendamento: {nome}, {serviço}, {nova_data} às {novo_horário}\"\n- Cancelamento: \"❌ Cancelamento: {nome}, {serviço}, {data} às {horário}\"\n\n## PREÇOS\nInforme valor SOMENTE se o cliente perguntar. Se null: \"valor não informado pela clínica\"\n\n## REGRAS\n- NUNCA invente horários, serviços ou profissionais não retornados pelas tools\n- NUNCA agende ou cancele sem confirmação explícita do cliente\n- Máximo 3-5 linhas por mensagem\n\n{{ $json.agent_instructions ? '## INSTRUÇÕES DA CLÍNICA\\n' + $json.agent_instructions : '' }}"
+          "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, responsável por agendamentos da {{ $json.clinic_name || 'clínica' }}.\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nTelefone (p_telefone): {{ $json.remoteJid }}\nData/hora atual (apenas referência interna): {{ $now.format('dd/MM/yyyy HH:mm') }}\n\n## FORMATAÇÃO\nNUNCA escreva listas em linha corrida. SEMPRE use quebra de linha para cada item.\n\n## FLUXO NOVO AGENDAMENTO\n1. cs_consultar_servicos → mostre nome e descrição APENAS (NUNCA inclua preço, valor ou desconto) → guarde servico_id\n2. cs_consultar_profissionais → mostre lista → pergunte preferência → guarde profissional_id\n3. Se nome_cliente estiver vazio → pergunte nome completo (NUNCA use nome do WhatsApp)\n4. Pergunte EXPLICITAMENTE ao cliente qual data deseja → SOMENTE ENTÃO chame cs_consultar_vagas\n   - NUNCA use a data atual automaticamente\n   - NUNCA chame cs_consultar_vagas sem ter recebido a data do cliente nesta conversa\n   - Passe SEMPRE o profissional_id do profissional escolhido no parâmetro correspondente\n5. Verifique o horário pedido no array retornado (HH:MM exato)\n   - Se encontrar match → confirme direto, NÃO liste alternativas\n   - Se não encontrar → diga que não está disponível e liste alternativas do mesmo dia\n6. Confirme: nome, serviço, profissional, data, horário\n7. cs_agendar com: nome_cliente, telefone_cliente, servico_id, profissional_id, data (YYYY-MM-DD), horario (HH:MM)\n8. Confirme com resumo\n\n## FLUXO CANCELAR / REAGENDAR\n1. cs_buscar_agendamentos → mostre lista\n2. Confirme explicitamente ANTES de chamar cs_cancelar ou cs_reagendar\n\n## PÓS AGENDAMENTO/CANCELAMENTO/REAGENDAMENTO\nSe profissional_whatsapp ≠ null → chame cs_notificar_profissional ANTES de responder ao cliente\n- Agendamento: \"📅 Novo agendamento: {nome}, {serviço}, {data} às {horário}\"\n- Reagendamento: \"🔄 Reagendamento: {nome}, {serviço}, {nova_data} às {novo_horário}\"\n- Cancelamento: \"❌ Cancelamento: {nome}, {serviço}, {data} às {horário}\"\n\n## PREÇOS\nNUNCA mencione preço, valor, custo ou desconto ao apresentar serviços ou em qualquer momento espontâneo.\nInforme SOMENTE se o cliente perguntar diretamente. Se null: \"valor não informado pela clínica\"\n\n## REGRAS\n- NUNCA invente horários, serviços ou profissionais não retornados pelas tools\n- NUNCA agende ou cancele sem confirmação explícita do cliente\n- NUNCA repita horários da memória do chat — SEMPRE chame cs_consultar_vagas para obter dados atualizados\n- Se o cliente pedir para repetir ou confirmar horários disponíveis → chame cs_consultar_vagas novamente\n- Máximo 3-5 linhas por mensagem\n\n{{ $json.agent_instructions ? '## INSTRUÇÕES DA CLÍNICA\\n' + $json.agent_instructions : '' }}"
         }
       },
       "position": [
@@ -3252,20 +3252,34 @@
       "name": "agd_cs_consultar_vagas",
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "parameters": {
-        "toolDescription": "Lista horários disponíveis de um dia específico. Pergunte sempre a data ao cliente antes de chamar. Passe data_solicitada em formato YYYY-MM-DD.",
+        "toolDescription": "Lista horários disponíveis de um profissional em um dia específico.\nSempre pergunte ao cliente qual data deseja ANTES de chamar esta tool.\nParâmetros:\n- data_solicitada: data no formato YYYY-MM-DD (obrigatório)\n- profissional_id: UUID do profissional (obrigatório quando o cliente já escolheu o profissional; use null se ainda não souber)\nRetorna array com horários livres. Mostre apenas os horários — NUNCA mencione preços.",
         "method": "POST",
         "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_cs_consultar_vagas' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ '{\"p_clinic_id\":\"' + $('Code merge webhook e resolucao').first().json.clinica_id + '\",\"p_data\":\"{data_solicitada}\"}' }}",
+        "jsonBody": "={{ '{\"p_clinic_id\":\"' + $('Code merge webhook e resolucao').first().json.clinica_id + '\",\"p_data\":\"{data_solicitada}\",\"p_profissional_id\":\"{profissional_id}\"}' }}",
         "placeholderDefinitions": {
           "values": [
             {
               "name": "data_solicitada",
-              "description": "Data desejada em YYYY-MM-DD.",
+              "description": "Data desejada em formato YYYY-MM-DD. Pergunte ao cliente antes de chamar.",
               "type": "string"
+            },
+            {
+              "name": "profissional_id",
+              "description": "UUID do profissional escolhido pelo cliente. Use null se ainda não souber.",
+              "type": "string"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "params=single-object"
             }
           ]
         }
@@ -8602,7 +8616,7 @@
         "parameters": {
           "text": "={{ $json.mensagem }}",
           "options": {
-            "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, responsável por agendamentos da {{ $json.clinic_name || 'clínica' }}.\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nTelefone (p_telefone): {{ $json.remoteJid }}\nData/hora: {{ $now.format('dd/MM/yyyy HH:mm') }}\n\n## FORMATAÇÃO\nNUNCA escreva listas em linha corrida. SEMPRE use quebra de linha para cada item.\n\n## FLUXO NOVO AGENDAMENTO\n1. cs_consultar_servicos → mostre lista → guarde servico_id\n2. cs_consultar_profissionais → mostre lista → pergunte preferência\n3. Pergunte nome completo (NUNCA use nome do WhatsApp se nome_cliente vazio)\n4. Pergunte data desejada → cs_consultar_vagas (data em YYYY-MM-DD)\n5. Verifique o horário pedido no array retornado (HH:MM exato)\n   - Se encontrar match → confirme direto, NÃO liste alternativas\n   - Se não encontrar → diga que não está disponível e liste alternativas\n6. Confirme: nome, serviço, profissional, data, horário\n7. cs_agendar com: nome_cliente, telefone_cliente, servico_id, profissional_id, data (YYYY-MM-DD), horario (HH:MM)\n8. Confirme com resumo\n\n## FLUXO CANCELAR / REAGENDAR\n1. cs_buscar_agendamentos → mostre lista\n2. Confirme explicitamente ANTES de chamar cs_cancelar ou cs_reagendar\n\n## PÓS AGENDAMENTO/CANCELAMENTO/REAGENDAMENTO\nSe profissional_whatsapp ≠ null → chame cs_notificar_profissional ANTES de responder ao cliente\n- Agendamento: \"📅 Novo agendamento: {nome}, {serviço}, {data} às {horário}\"\n- Reagendamento: \"🔄 Reagendamento: {nome}, {serviço}, {nova_data} às {novo_horário}\"\n- Cancelamento: \"❌ Cancelamento: {nome}, {serviço}, {data} às {horário}\"\n\n## PREÇOS\nInforme valor SOMENTE se o cliente perguntar. Se null: \"valor não informado pela clínica\"\n\n## REGRAS\n- NUNCA invente horários, serviços ou profissionais não retornados pelas tools\n- NUNCA agende ou cancele sem confirmação explícita do cliente\n- Máximo 3-5 linhas por mensagem\n\n{{ $json.agent_instructions ? '## INSTRUÇÕES DA CLÍNICA\\n' + $json.agent_instructions : '' }}"
+            "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, responsável por agendamentos da {{ $json.clinic_name || 'clínica' }}.\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nTelefone (p_telefone): {{ $json.remoteJid }}\nData/hora atual (apenas referência interna): {{ $now.format('dd/MM/yyyy HH:mm') }}\n\n## FORMATAÇÃO\nNUNCA escreva listas em linha corrida. SEMPRE use quebra de linha para cada item.\n\n## FLUXO NOVO AGENDAMENTO\n1. cs_consultar_servicos → mostre nome e descrição APENAS (NUNCA inclua preço, valor ou desconto) → guarde servico_id\n2. cs_consultar_profissionais → mostre lista → pergunte preferência → guarde profissional_id\n3. Se nome_cliente estiver vazio → pergunte nome completo (NUNCA use nome do WhatsApp)\n4. Pergunte EXPLICITAMENTE ao cliente qual data deseja → SOMENTE ENTÃO chame cs_consultar_vagas\n   - NUNCA use a data atual automaticamente\n   - NUNCA chame cs_consultar_vagas sem ter recebido a data do cliente nesta conversa\n   - Passe SEMPRE o profissional_id do profissional escolhido no parâmetro correspondente\n5. Verifique o horário pedido no array retornado (HH:MM exato)\n   - Se encontrar match → confirme direto, NÃO liste alternativas\n   - Se não encontrar → diga que não está disponível e liste alternativas do mesmo dia\n6. Confirme: nome, serviço, profissional, data, horário\n7. cs_agendar com: nome_cliente, telefone_cliente, servico_id, profissional_id, data (YYYY-MM-DD), horario (HH:MM)\n8. Confirme com resumo\n\n## FLUXO CANCELAR / REAGENDAR\n1. cs_buscar_agendamentos → mostre lista\n2. Confirme explicitamente ANTES de chamar cs_cancelar ou cs_reagendar\n\n## PÓS AGENDAMENTO/CANCELAMENTO/REAGENDAMENTO\nSe profissional_whatsapp ≠ null → chame cs_notificar_profissional ANTES de responder ao cliente\n- Agendamento: \"📅 Novo agendamento: {nome}, {serviço}, {data} às {horário}\"\n- Reagendamento: \"🔄 Reagendamento: {nome}, {serviço}, {nova_data} às {novo_horário}\"\n- Cancelamento: \"❌ Cancelamento: {nome}, {serviço}, {data} às {horário}\"\n\n## PREÇOS\nNUNCA mencione preço, valor, custo ou desconto ao apresentar serviços ou em qualquer momento espontâneo.\nInforme SOMENTE se o cliente perguntar diretamente. Se null: \"valor não informado pela clínica\"\n\n## REGRAS\n- NUNCA invente horários, serviços ou profissionais não retornados pelas tools\n- NUNCA agende ou cancele sem confirmação explícita do cliente\n- NUNCA repita horários da memória do chat — SEMPRE chame cs_consultar_vagas para obter dados atualizados\n- Se o cliente pedir para repetir ou confirmar horários disponíveis → chame cs_consultar_vagas novamente\n- Máximo 3-5 linhas por mensagem\n\n{{ $json.agent_instructions ? '## INSTRUÇÕES DA CLÍNICA\\n' + $json.agent_instructions : '' }}"
           }
         },
         "position": [
@@ -8699,20 +8713,34 @@
         "name": "agd_cs_consultar_vagas",
         "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "parameters": {
-          "toolDescription": "Lista horários disponíveis de um dia específico. Pergunte sempre a data ao cliente antes de chamar. Passe data_solicitada em formato YYYY-MM-DD.",
+          "toolDescription": "Lista horários disponíveis de um profissional em um dia específico.\nSempre pergunte ao cliente qual data deseja ANTES de chamar esta tool.\nParâmetros:\n- data_solicitada: data no formato YYYY-MM-DD (obrigatório)\n- profissional_id: UUID do profissional (obrigatório quando o cliente já escolheu o profissional; use null se ainda não souber)\nRetorna array com horários livres. Mostre apenas os horários — NUNCA mencione preços.",
           "method": "POST",
           "url": "={{ '{{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }}/rest/v1/rpc/n8n_cs_consultar_vagas' }}",
           "authentication": "predefinedCredentialType",
           "nodeCredentialType": "supabaseApi",
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ '{\"p_clinic_id\":\"' + $('Code merge webhook e resolucao').first().json.clinica_id + '\",\"p_data\":\"{data_solicitada}\"}' }}",
+          "jsonBody": "={{ '{\"p_clinic_id\":\"' + $('Code merge webhook e resolucao').first().json.clinica_id + '\",\"p_data\":\"{data_solicitada}\",\"p_profissional_id\":\"{profissional_id}\"}' }}",
           "placeholderDefinitions": {
             "values": [
               {
                 "name": "data_solicitada",
-                "description": "Data desejada em YYYY-MM-DD.",
+                "description": "Data desejada em formato YYYY-MM-DD. Pergunte ao cliente antes de chamar.",
                 "type": "string"
+              },
+              {
+                "name": "profissional_id",
+                "description": "UUID do profissional escolhido pelo cliente. Use null se ainda não souber.",
+                "type": "string"
+              }
+            ]
+          },
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Prefer",
+                "value": "params=single-object"
               }
             ]
           }

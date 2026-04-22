@@ -45,6 +45,16 @@ web/
 - Nomear migrations: `YYYYMMDDHHMMSS_descricao_snake_case.sql`
 - RPCs usadas pelo agente n8n: prefixo `n8n_cs_*`
 
+### Profissionais (dual-table com sync automático)
+- O painel v2 salva profissionais em `professionals` (campos: `id`, `name`, `specialty`, `whatsapp`, `is_active`, `clinic_id`, `cs_profissional_id`, ...)
+- O legado/n8n usa `cs_profissionais` (campos: `id`, `nome`, `especialidade`, `ativo`, `clinic_id`)
+- **Trigger `trg_sync_professional_to_cs`** sincroniza automaticamente `professionals` → `cs_profissionais` no INSERT e UPDATE
+  - INSERT cria nova linha em `cs_profissionais` e preenche `professionals.cs_profissional_id`
+  - UPDATE (quando `cs_profissional_id` não é null) atualiza `nome`, `especialidade` e `ativo`
+- A agenda (`painel_cs_slots_dia`, `painel_cs_ensure_slots_grid`) e as RPCs do agente usam `cs_profissionais` — **nunca editar essas funções para ler de `professionals` diretamente**
+- O campo `professionals.cs_profissional_id` é a FK que liga as duas tabelas; se for null, o profissional não aparece na agenda nem no agente
+- Ao reportar problemas de profissional não aparecer na agenda, verificar se `cs_profissional_id` está preenchido na tabela `professionals`
+
 ### Serviços (dual-source)
 - O painel v2 salva procedimentos em `clinic_procedures` (campos: `id`, `name`, `clinic_id`)
 - O legado usa `cs_servicos` (campos: `id`, `nome`, `clinic_id`)
@@ -72,20 +82,25 @@ web/
 ### Agente WhatsApp (fluxo resumido)
 1. Webhook recebe mensagem → `Campos iniciais` extrai dados
 2. `Code merge webhook e resolucao` resolve `clinica_id` pelo `instance_name`
-3. `Get Empresa` busca dados da clínica (incluindo `agent_instructions`)
-4. `Get Cliente` busca cliente por `clinic_id` + `telefone`
-5. `Verificar se cliente está cadastrado`: se não existe → `Create Cliente` com `nome = ''`
-6. `Bot inativo` verifica se atendimento humano assumiu
-7. Fila Redis (debounce 6s) agrupa mensagens rápidas
-8. `Monta Contexto` monta payload para os agentes:
+3. `Buscar Config Cl?nica` (HTTP Request → Supabase REST) busca dados da clínica (incluindo `agent_instructions`)
+   - **Atenção:** o nome real do node no n8n contém `?` literal (encoding corrompido de `í`). Sempre referenciar como `$('Buscar Config Cl?nica')` em Code nodes
+   - `Get Empresa` (Supabase node) existe no workflow mas está em outro ramo — **não** é o que alimenta o Monta Contexto
+4. `Check First Contact` (Postgres) conta histórico de chat para detectar primeiro contato
+5. `Get Cliente` busca cliente por `clinic_id` + `telefone`
+6. `Verificar se cliente está cadastrado`: se não existe → `Create Cliente` com `nome = ''`
+7. `Bot inativo` verifica se atendimento humano assumiu
+8. Fila Redis (debounce 6s) agrupa mensagens rápidas
+9. `Monta Contexto` (Code node) monta payload para os agentes:
+   - lê dados da clínica via `$('Buscar Config Cl?nica').first().json` (não via `$input`)
    - injeta `clinic_name`, `nome_agente`, `agent_instructions`, `saudacao_novo/retorno`
+   - substitui placeholders `{{name}}`, `{{clinica}}`, `{{periodo}}` em `saudacao_novo` e `agent_instructions`
    - injeta `clinic_id`, `remoteJid`, `instanceName` (usados pelos agentes e handoff)
    - injeta `instr_triagem`, `instr_faq`, `instr_transferir` (seções de `agent_instructions`)
    - `instr_outros` ainda pode existir no Code node por compatibilidade com dados legados, mas não é alimentado pelo painel
    - `nome_cliente` vazio = cliente novo → agente qualificador pergunta o nome
    - `nome_cliente` preenchido = cliente de retorno → agente qualificador saúda pelo nome
-9. **Sistema multi-agente** roteia para o agente especializado correto (ver seção abaixo)
-10. Resposta enviada via Evolution API (WhatsApp)
+10. **Sistema multi-agente** roteia para o agente especializado correto (ver seção abaixo)
+11. Resposta enviada via Evolution API (WhatsApp)
 
 ### Arquitetura Multi-Agente
 
@@ -105,6 +120,19 @@ Monta Contexto
 ```
 
 Todos os agentes compartilham a mesma **Postgres Chat Memory** (session: `clinic_id:remoteJid`, 50 msgs).
+
+#### Code Extrair Rota — comportamento de fallback
+- Quando o qualificador **não inclui `[ROTA: X]`** na resposta (falha ocasional do LLM), o node infere a rota por palavras-chave no output:
+  - palavras de agendamento (`verificar`, `horario`, `vagas`, `agendar`, `disponivel`, `momento`) → `agendamento`
+  - palavras de explicação (`procedimento`, `funciona`, `preparo`, `tratamento`) → `procedimentos`
+  - palavras de informação (`endereco`, `funcionamento`, `convenio`, `pagamento`, `pix`) → `faq`
+  - caso contrário → `concluido`
+- O padrão anterior era defaultar sempre para `concluido`, o que fazia o agendador nunca ser chamado quando a tag faltava
+
+#### Regra do qualificador (`agente_atende_qualifica`)
+- O qualificador **NÃO deve dizer** "Vou verificar", "Um momento", "Aguarde" ou qualquer frase que implique que ele fará algo — essas ações são dos agentes especializados
+- Resposta correta: confirmar a intenção brevemente e incluir a tag — ex: `"Certo! [ROTA: agendamento]"`
+- Se o qualificador disser "Vou verificar" sem a tag → o `Code Extrair Rota` vai inferir `agendamento` pelo fallback (comportamento correto), mas a resposta enviada ao cliente será esse "Vou verificar..." em vez do resultado do agendador — experiência ruim mas funcional
 
 ### Tools por Agente
 
