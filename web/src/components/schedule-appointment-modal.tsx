@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  clinicClosedDayHintPt,
+  clinicVisibleHoursForDayKey,
+  type ClinicAgendaWeekendConfig,
+} from "@/lib/clinic-agenda-hours";
 
 const CONSULTATION_TYPES = [
   "Consulta Inicial",
@@ -32,8 +37,7 @@ type Props = {
   onSuccess: () => void;
   supabase: SupabaseClient;
   clinicId: string;
-  /** Horas habilitadas na agenda global (6–22). */
-  clinicVisibleHours: number[];
+  clinicAgendaConfig: ClinicAgendaWeekendConfig;
 };
 
 function profLabel(p: Prof) {
@@ -46,7 +50,7 @@ export function ScheduleAppointmentModal({
   onSuccess,
   supabase,
   clinicId,
-  clinicVisibleHours,
+  clinicAgendaConfig,
 }: Props) {
   const [professionals, setProfessionals] = useState<Prof[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -63,9 +67,21 @@ export function ScheduleAppointmentModal({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const hoursForSelectedDate = useMemo(() => {
+    if (!prefDate?.trim()) {
+      return clinicAgendaConfig.weekdayHours;
+    }
+    return clinicVisibleHoursForDayKey(prefDate.trim(), clinicAgendaConfig);
+  }, [prefDate, clinicAgendaConfig]);
+
+  const closedDayHint = useMemo(() => {
+    if (!prefDate?.trim()) return null;
+    return clinicClosedDayHintPt(prefDate.trim(), clinicAgendaConfig);
+  }, [prefDate, clinicAgendaConfig]);
+
   const timeOptions = useMemo(
-    () => buildHourlyStarts(clinicVisibleHours),
-    [clinicVisibleHours]
+    () => buildHourlyStarts(hoursForSelectedDate),
+    [hoursForSelectedDate]
   );
 
   const resetForm = useCallback(() => {
@@ -335,6 +351,14 @@ export function ScheduleAppointmentModal({
                 onChange={(e) => setPrefDate(e.target.value)}
                 className="w-full rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2.5 text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
               />
+              {closedDayHint ? (
+                <p className="mt-1.5 text-xs font-medium text-amber-800">{closedDayHint}</p>
+              ) : null}
+              {prefDate && !closedDayHint && timeOptions.length === 0 ? (
+                <p className="mt-1.5 text-xs text-[#6b635a]">
+                  Não há blocos configurados para esta data. Ajuste «Configurar horários da clínica».
+                </p>
+              ) : null}
             </label>
             <label className="block">
               <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#6b635a]">
@@ -344,9 +368,12 @@ export function ScheduleAppointmentModal({
                 required
                 value={prefTime}
                 onChange={(e) => setPrefTime(e.target.value)}
-                className="w-full rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2.5 text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
+                disabled={timeOptions.length === 0}
+                className="w-full rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2.5 text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <option value="">Selecione</option>
+                <option value="">
+                  {timeOptions.length === 0 ? "—" : "Selecione"}
+                </option>
                 {timeOptions.map((t) => (
                   <option key={t} value={t}>
                     {t}

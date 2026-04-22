@@ -2656,7 +2656,7 @@
           "parameters": [
             {
               "name": "select",
-              "value": "id,name,phone,timezone,agent_instructions"
+              "value": "id,name,phone,timezone,agent_instructions,agenda_visible_hours,sabado_aberto,sabado_agenda_hours"
             },
             {
               "name": "id",
@@ -2685,7 +2685,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Dados da clínica vêm de \"Buscar Config Cl?nica\" (nome real do node — ? = í corrompido)\nconst clinicRaw = (() => {\n  try {\n    const r = $('Buscar Config Cl?nica').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\nconst rawInstr = clinicRaw?.agent_instructions;\nconst clinic_name = clinicRaw?.name || '';\n\nlet agent_instructions = '';\nlet nome_agente = '';\nlet saudacao_novo = '';\nlet saudacao_retorno = '';\nlet instr_raw = {};\n\nif (rawInstr) {\n  try {\n    const cfg = typeof rawInstr === 'string' ? JSON.parse(rawInstr) : rawInstr;\n    nome_agente = cfg.nome_agente || '';\n    saudacao_novo = cfg.saudacao_novo || '';\n    saudacao_retorno = cfg.saudacao_retorno || '';\n    instr_raw = cfg;\n    const secoes = [\n      { key: 'identidade', label: 'IDENTIDADE DO AGENTE' },\n      { key: 'triagem',    label: 'TRIAGEM E URGENCIAS' },\n      { key: 'tom',        label: 'TOM E LINGUAGEM' },\n      { key: 'orientacoes',label: 'ORIENTACOES AO PACIENTE' },\n      { key: 'transferir', label: 'QUANDO TRANSFERIR PARA HUMANO' },\n      { key: 'outros',     label: 'OUTRAS INSTRUCOES' },\n    ];\n    agent_instructions = secoes\n      .filter(s => typeof cfg[s.key] === 'string' && cfg[s.key].trim())\n      .map(s => '### ' + s.label + '\\n' + cfg[s.key].trim())\n      .join('\\n\\n');\n  } catch(e) { agent_instructions = String(rawInstr); }\n}\n\nconst clientRow = (() => {\n  try {\n    const r = $('Get Cliente').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\nconst nome_cliente = (clientRow?.nome || '').trim();\n\nlet primeiro_contato = true;\ntry {\n  const histRow = $('Check First Contact').first().json;\n  const count = Number(histRow?.historico_count ?? 0);\n  primeiro_contato = count === 0;\n} catch { primeiro_contato = true; }\n\n// [PATCH: normalize mensagem]\n// Pega mensagem e normaliza: nunca deixa null/undefined/JSON-string chegar ao agent.\nlet _rawMsg;\ntry { _rawMsg = $('Edit Fields2').first().json.mensagem; } catch { _rawMsg = null; }\n// Fallback 1: Edit Fields1.msg (texto extraído do webhook)\nif (_rawMsg == null || _rawMsg === '') {\n  try { _rawMsg = $('Edit Fields1').first().json.msg || ''; } catch { _rawMsg = ''; }\n}\n// Fallback 2: campo conversation direto do webhook\nif (!_rawMsg) {\n  try { _rawMsg = $('Webhook').first().json.body?.data?.message?.conversation || ''; } catch { _rawMsg = ''; }\n}\n// Se ainda for JSON-string, extrai o texto\nlet mensagem = '';\nif (typeof _rawMsg === 'string') {\n  const _trimmed = _rawMsg.trim();\n  if (_trimmed.startsWith('{') || _trimmed.startsWith('[')) {\n    try {\n      const _parsed = JSON.parse(_trimmed);\n      mensagem = String(_parsed.msg || _parsed.mensagem || _parsed.text || _parsed.message || _parsed.Mensagens || _trimmed);\n    } catch { mensagem = _trimmed; }\n  } else {\n    mensagem = _trimmed;\n  }\n} else if (_rawMsg != null) {\n  mensagem = String(_rawMsg);\n}\nconst clinic_id = $('Code merge webhook e resolucao').first().json.clinica_id;\nconst remoteJid = $('Webhook').first().json.body.data.key.remoteJid;\nconst instanceName = $('Edit Fields1').first().json.instanceName || '';\n\nconst _nowBR = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));\nconst _hr = _nowBR.getHours();\nconst saudacao_periodo = _hr >= 5 && _hr < 12 ? 'Bom dia' : _hr >= 12 && _hr < 18 ? 'Boa tarde' : 'Boa noite';\nif (saudacao_novo) {\n  saudacao_novo = saudacao_novo\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{name}}/g, nome_agente)\n    .replace(/{{clinica}}/g, clinic_name);\n}\nif (agent_instructions) {\n  agent_instructions = agent_instructions\n    .replace(/{{name}}/g, nome_agente || '')\n    .replace(/{{nome_agente}}/g, nome_agente || '')\n    .replace(/{{agente}}/g, nome_agente || '')\n    .replace(/{{clinica}}/g, clinic_name || '')\n    .replace(/{{nome_clinica}}/g, clinic_name || '')\n    .replace(/{{periodo}}/g, saudacao_periodo);\n}\n\nreturn [{ json: {\n  mensagem,\n  agent_instructions,\n  nome_agente,\n  clinic_name,\n  nome_cliente,\n  saudacao_novo,\n  saudacao_retorno,\n  saudacao_periodo,\n  primeiro_contato,\n  clinic_id,\n  remoteJid,\n  instanceName,\n  instr_triagem:    instr_raw.triagem     || '',\n  instr_faq:        instr_raw.orientacoes || '',\n  instr_transferir: instr_raw.transferir  || '',\n  instr_outros:     instr_raw.outros      || '',\n} }];"
+        "jsCode": "// Dados da clínica vêm de \"Buscar Config Cl?nica\" (nome real do node — ? = í corrompido)\nconst clinicRaw = (() => {\n  try {\n    const r = $('Buscar Config Cl?nica').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\nconst rawInstr = clinicRaw?.agent_instructions;\nconst clinic_name = clinicRaw?.name || '';\n\nlet agent_instructions = '';\nlet nome_agente = '';\nlet saudacao_novo = '';\nlet saudacao_retorno = '';\nlet instr_raw = {};\n\nif (rawInstr) {\n  try {\n    const cfg = typeof rawInstr === 'string' ? JSON.parse(rawInstr) : rawInstr;\n    nome_agente = cfg.nome_agente || '';\n    saudacao_novo = cfg.saudacao_novo || '';\n    saudacao_retorno = cfg.saudacao_retorno || '';\n    instr_raw = cfg;\n    const secoes = [\n      { key: 'identidade', label: 'IDENTIDADE DO AGENTE' },\n      { key: 'triagem',    label: 'TRIAGEM E URGENCIAS' },\n      { key: 'tom',        label: 'TOM E LINGUAGEM' },\n      { key: 'orientacoes',label: 'ORIENTACOES AO PACIENTE' },\n      { key: 'transferir', label: 'QUANDO TRANSFERIR PARA HUMANO' },\n      { key: 'outros',     label: 'OUTRAS INSTRUCOES' },\n    ];\n    agent_instructions = secoes\n      .filter(s => typeof cfg[s.key] === 'string' && cfg[s.key].trim())\n      .map(s => '### ' + s.label + '\\n' + cfg[s.key].trim())\n      .join('\\n\\n');\n  } catch(e) { agent_instructions = String(rawInstr); }\n}\n\nconst clientRow = (() => {\n  try {\n    const r = $('Get Cliente').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\nconst nome_cliente = (clientRow?.nome || '').trim();\n\nlet primeiro_contato = true;\ntry {\n  const histRow = $('Check First Contact').first().json;\n  const count = Number(histRow?.historico_count ?? 0);\n  primeiro_contato = count === 0;\n} catch { primeiro_contato = true; }\n\n// [PATCH: normalize mensagem]\n// Pega mensagem e normaliza: nunca deixa null/undefined/JSON-string chegar ao agent.\nlet _rawMsg;\ntry { _rawMsg = $('Edit Fields2').first().json.mensagem; } catch { _rawMsg = null; }\n// Fallback 1: Edit Fields1.msg (texto extraído do webhook)\nif (_rawMsg == null || _rawMsg === '') {\n  try { _rawMsg = $('Edit Fields1').first().json.msg || ''; } catch { _rawMsg = ''; }\n}\n// Fallback 2: campo conversation direto do webhook\nif (!_rawMsg) {\n  try { _rawMsg = $('Webhook').first().json.body?.data?.message?.conversation || ''; } catch { _rawMsg = ''; }\n}\n// Se ainda for JSON-string, extrai o texto\nlet mensagem = '';\nif (typeof _rawMsg === 'string') {\n  const _trimmed = _rawMsg.trim();\n  if (_trimmed.startsWith('{') || _trimmed.startsWith('[')) {\n    try {\n      const _parsed = JSON.parse(_trimmed);\n      mensagem = String(_parsed.msg || _parsed.mensagem || _parsed.text || _parsed.message || _parsed.Mensagens || _trimmed);\n    } catch { mensagem = _trimmed; }\n  } else {\n    mensagem = _trimmed;\n  }\n} else if (_rawMsg != null) {\n  mensagem = String(_rawMsg);\n}\nconst clinic_id = $('Code merge webhook e resolucao').first().json.clinica_id;\nconst remoteJid = $('Webhook').first().json.body.data.key.remoteJid;\nconst instanceName = $('Edit Fields1').first().json.instanceName || '';\n\nconst _nowBR = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));\nconst _hr = _nowBR.getHours();\nconst saudacao_periodo = _hr >= 5 && _hr < 12 ? 'Bom dia' : _hr >= 12 && _hr < 18 ? 'Boa tarde' : 'Boa noite';\nif (saudacao_novo) {\n  saudacao_novo = saudacao_novo\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{name}}/g, nome_agente)\n    .replace(/{{clinica}}/g, clinic_name);\n}\nif (agent_instructions) {\n  agent_instructions = agent_instructions\n    .replace(/{{name}}/g, nome_agente || '')\n    .replace(/{{nome_agente}}/g, nome_agente || '')\n    .replace(/{{agente}}/g, nome_agente || '')\n    .replace(/{{clinica}}/g, clinic_name || '')\n    .replace(/{{nome_clinica}}/g, clinic_name || '')\n    .replace(/{{periodo}}/g, saudacao_periodo);\n}\n\nfunction _normHoursArr(v) {\n  if (!Array.isArray(v)) return [];\n  const s = new Set();\n  for (const x of v) {\n    const n = typeof x === 'number' ? x : parseInt(String(x), 10);\n    if (Number.isFinite(n) && n >= 6 && n <= 22) s.add(n);\n  }\n  return [...s].sort((a,b)=>a-b);\n}\nfunction _fmtHourList(arr) {\n  if (!arr.length) return 'conforme configuração no painel';\n  return arr.map(h => String(h).padStart(2, '0') + ':00').join(', ');\n}\nconst _wdH = _normHoursArr(clinicRaw.agenda_visible_hours);\nconst _sabOn = clinicRaw.sabado_aberto === true || clinicRaw.sabado_aberto === 'true' || clinicRaw.sabado_aberto === 1;\nconst _sabH = _normHoursArr(clinicRaw.sabado_agenda_hours);\nlet _horCal = '### HORÁRIO DA CLÍNICA (AGENDAMENTOS — respeite estritamente)' + String.fromCharCode(10);\n_horCal += '- Domingo: sem atendimento.' + String.fromCharCode(10);\n_horCal += '- Dias úteis (segunda a sexta): blocos ' + _fmtHourList(_wdH) + '.' + String.fromCharCode(10);\nif (!_sabOn) {\n  _horCal += '- Sábado: sem atendimento.' + String.fromCharCode(10);\n} else if (_sabH.length) {\n  _horCal += '- Sábado: aberto — blocos ' + _fmtHourList(_sabH) + '.' + String.fromCharCode(10);\n} else {\n  _horCal += '- Sábado: aberto — mesmos blocos dos dias úteis.' + String.fromCharCode(10);\n}\n_horCal += 'Não ofereça horários em dias fechados nem fora dos blocos; use as tools para vagas reais.';\nagent_instructions = (agent_instructions ? agent_instructions + String.fromCharCode(10,10) : '') + _horCal;\n\nreturn [{ json: {\n  mensagem,\n  agent_instructions,\n  nome_agente,\n  clinic_name,\n  nome_cliente,\n  saudacao_novo,\n  saudacao_retorno,\n  saudacao_periodo,\n  primeiro_contato,\n  clinic_id,\n  remoteJid,\n  instanceName,\n  instr_triagem:    instr_raw.triagem     || '',\n  instr_faq:        instr_raw.orientacoes || '',\n  instr_transferir: instr_raw.transferir  || '',\n  instr_outros:     instr_raw.outros      || '',\n} }];"
       },
       "id": "ddcdcb0e-e998-4c40-8f6c-064b3e852df9",
       "name": "Monta Contexto",
@@ -3214,7 +3214,7 @@
         "promptType": "define",
         "text": "={{ $json.mensagem }}",
         "options": {
-          "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, responsável por agendamentos da {{ $json.clinic_name || 'clínica' }}.\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nTelefone (p_telefone): {{ $json.remoteJid }}\nData/hora atual: {{ $now.format('dd/MM/yyyy HH:mm') }} — Hoje é {{ ['','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado','domingo'][$now.weekday] }} — YYYY-MM-DD: {{ $now.format('yyyy-MM-dd') }}\n\n{{ $json.agent_instructions }}\n\n## REGRA FUNDAMENTAL - EXECUÇÃO DE TOOLS\nVOCÊ É UM AGENTE QUE EXECUTA AÇÕES, NÃO DESCREVE O QUE VAI FAZER.\n\n❌ PROIBIDO: \"Vou consultar os horários\", \"Um momento por favor\", \"Deixa eu verificar\", \"Aguarde enquanto busco\"\n✓ CORRETO: Chamar a tool IMEDIATAMENTE e só responder ao cliente DEPOIS que ela retornar, já com o resultado.\n\nSe você tem todos os dados para chamar uma tool (data + profissional_id), CHAME A TOOL AGORA. Nunca anuncie que vai fazer — faça.\n\n## FORMATAÇÃO\nNUNCA escreva listas em linha corrida. SEMPRE use quebra de linha para cada item.\n\n## FLUXO NOVO AGENDAMENTO\nOs profissionais e serviços JÁ ESTÃO listados acima em ## PROFISSIONAIS DISPONÍVEIS e ## SERVIÇOS DISPONÍVEIS.\nNÃO chame cs_consultar_profissionais nem cs_consultar_servicos — use os IDs exatos listados acima.\n\n1. Apresente serviços (nome/descrição, NUNCA preço) e pergunte qual o cliente deseja → guarde servico_id\n2. Apresente profissionais e pergunte preferência → guarde profissional_id (UUID exato da lista acima)\n3. Se nome_cliente estiver vazio → pergunte nome completo (NUNCA use nome do WhatsApp)\n4. Pergunte a data desejada\n5. ASSIM QUE TIVER profissional_id + data convertida para YYYY-MM-DD → CHAME cs_consultar_vagas IMEDIATAMENTE (sem \"vou consultar\")\n6. Verifique o horário pedido no array retornado (HH:MM exato):\n   - Match → confirme direto\n   - Sem match → liste alternativas do mesmo dia\n7. Confirme com o cliente: nome, serviço, profissional, data, horário\n8. CHAME cs_agendar com todos os dados\n9. Confirme com resumo final\n\n## FLUXO CANCELAR / REAGENDAR\n1. CHAME cs_buscar_agendamentos → mostre lista\n2. Confirme explicitamente ANTES de CHAMAR cs_cancelar ou cs_reagendar\n\n## PÓS AGENDAMENTO/CANCELAMENTO/REAGENDAMENTO\nSe profissional_whatsapp ≠ null → CHAME cs_notificar_profissional ANTES de responder ao cliente\n- Agendamento: \"📅 Novo agendamento: {nome}, {serviço}, {data} às {horário}\"\n- Reagendamento: \"🔄 Reagendamento: {nome}, {serviço}, {nova_data} às {novo_horário}\"\n- Cancelamento: \"❌ Cancelamento: {nome}, {serviço}, {data} às {horário}\"\n\n## PREÇOS\nNUNCA mencione preço/valor/desconto espontaneamente. Informe SOMENTE se o cliente perguntar. Se null: \"valor não informado pela clínica\"\n\n## DATAS\nCONVERTA relativas para YYYY-MM-DD ANTES de chamar tools:\n- \"hoje\" → data atual acima\n- \"amanhã\" → data acima + 1 dia\n- \"depois de amanhã\" → +2 dias\n- \"quarta-feira\" → próxima quarta usando o dia da semana informado acima\n- Dias da semana → calcule o próximo dia correspondente a partir de hoje\n\n## MÚLTIPLOS PROFISSIONAIS\n1. Use os IDs da lista ## PROFISSIONAIS DISPONÍVEIS (não chame cs_consultar_profissionais)\n2. Pergunte a data apenas uma vez\n3. Chame cs_consultar_vagas UMA VEZ por profissional — NUNCA dois IDs ao mesmo tempo\n4. Apresente horários separados por profissional\n\nREGRA DATAS: Quando o cliente mencionar datas relativas (\"quarta-feira\", \"amanhã\", etc.), converta SEMPRE para YYYY-MM-DD ANTES de chamar qualquer tool. Use o dia da semana atual acima para calcular. NUNCA confirme uma data sem checar que o dia da semana bate."
+          "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, responsável por agendamentos da {{ $json.clinic_name || 'clínica' }}.\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nTelefone (p_telefone): {{ $json.remoteJid }}\nData/hora atual: {{ $now.format('dd/MM/yyyy HH:mm') }} — Hoje é {{ ['','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado','domingo'][$now.weekday] }} — YYYY-MM-DD: {{ $now.format('yyyy-MM-dd') }}\n\n{{ $json.agent_instructions }}\n\n## REGRA FUNDAMENTAL - EXECUÇÃO DE TOOLS\nVOCÊ É UM AGENTE QUE EXECUTA AÇÕES, NÃO DESCREVE O QUE VAI FAZER.\n\n❌ PROIBIDO: \"Vou consultar os horários\", \"Um momento por favor\", \"Deixa eu verificar\", \"Aguarde enquanto busco\"\n✓ CORRETO: Chamar a tool IMEDIATAMENTE e só responder ao cliente DEPOIS que ela retornar, já com o resultado.\n\nSe você tem todos os dados para chamar uma tool (data + profissional_id), CHAME A TOOL AGORA. Nunca anuncie que vai fazer — faça.\n\n## FORMATAÇÃO\nNUNCA escreva listas em linha corrida. SEMPRE use quebra de linha para cada item.\n\n## FLUXO NOVO AGENDAMENTO\nOs profissionais e serviços JÁ ESTÃO listados acima em ## PROFISSIONAIS DISPONÍVEIS e ## SERVIÇOS DISPONÍVEIS.\nNÃO chame cs_consultar_profissionais nem cs_consultar_servicos — use os IDs exatos listados acima.\n\n1. Apresente serviços (nome/descrição, NUNCA preço) e pergunte qual o cliente deseja → guarde servico_id\n2. Apresente profissionais e pergunte preferência → guarde profissional_id (UUID exato da lista acima)\n3. Se nome_cliente estiver vazio → pergunte nome completo (NUNCA use nome do WhatsApp)\n4. Pergunte a data desejada\n5. ASSIM QUE TIVER profissional_id + data convertida para YYYY-MM-DD → CHAME cs_consultar_vagas IMEDIATAMENTE (sem \"vou consultar\")\n6. Verifique o horário pedido no array retornado (HH:MM exato):\n   - Match → confirme direto\n   - Sem match → liste alternativas do mesmo dia\n7. Confirme com o cliente: nome, serviço, profissional, data, horário\n8. CHAME **cs_reagendar** (se já havia agendamento ativo listado em cs_buscar_agendamentos) OU **cs_agendar** (se é primeiro agendamento) com todos os dados corretos\n9. Confirme com resumo final\n\n## FLUXO CANCELAR / REAGENDAR\n1. CHAME cs_buscar_agendamentos e guarde de cada item: id (agendamento_id), profissional_id, data_iso, horario, nome_procedimento.\n2. Se o cliente quer mudar data e/ou horário e já existe agendamento ativo na lista → use SEMPRE **cs_reagendar** com agendamento_id + profissional_antigo_id + data_antiga + horario_antigo + novo_profissional_id (muito frequentemente o mesmo UUID) + nova_data + novo_horario. **NUNCA use cs_agendar** nesse caso — cs_agendar cria um SEGUNDO agendamento (duplicado).\n3. Use **cs_agendar** apenas quando o cliente **não** tem consulta ativa para aquele atendimento (primeiro agendamento ou já cancelou todos).\n4. Confirme explicitamente ANTES de CHAMAR cs_cancelar ou cs_reagendar.\n\n## cs_consultar_vagas — SOMENTE O JSON RETORNADO\nApós cs_consultar_vagas, os únicos horários válidos são os valores \"horario\" (HH:MM) dos objetos do array retornado.\n- Liste **todos** os horários retornados, sem pular nenhum. Se o JSON contém \"10:00\", você **deve** incluir 10:00 na lista ao cliente.\n- **Proibido** inventar horário que não apareça no JSON.\n- Antes de dizer que não há vaga às HH:MM, procure no array um item com horario **exatamente** igual a HH:MM. Se existir → o horário está disponível; confirme com o cliente.\n\n## NOTIFICAÇÃO AO PROFISSIONAL\n**Não chame cs_notificar_profissional.** Depois de cs_agendar, cs_reagendar ou cs_cancelar com sucesso, responda ao cliente normalmente — o fluxo envia WhatsApp ao profissional automaticamente quando houver profissional_whatsapp na resposta da RPC.\n\n## PREÇOS\nNUNCA mencione preço/valor/desconto espontaneamente. Informe SOMENTE se o cliente perguntar. Se null: \"valor não informado pela clínica\"\n\n## DATAS\nCONVERTA relativas para YYYY-MM-DD ANTES de chamar tools:\n- \"hoje\" → data atual acima\n- \"amanhã\" → data acima + 1 dia\n- \"depois de amanhã\" → +2 dias\n- \"quarta-feira\" → próxima quarta usando o dia da semana informado acima\n- Dias da semana → calcule o próximo dia correspondente a partir de hoje\n\n## MÚLTIPLOS PROFISSIONAIS\n1. Use os IDs da lista ## PROFISSIONAIS DISPONÍVEIS (não chame cs_consultar_profissionais)\n2. Pergunte a data apenas uma vez\n3. Chame cs_consultar_vagas UMA VEZ por profissional — NUNCA dois IDs ao mesmo tempo\n4. Apresente horários separados por profissional\n\nREGRA DATAS: Quando o cliente mencionar datas relativas (\"quarta-feira\", \"amanhã\", etc.), converta SEMPRE para YYYY-MM-DD ANTES de chamar qualquer tool. Use o dia da semana atual acima para calcular. NUNCA confirme uma data sem checar que o dia da semana bate."
         }
       },
       "id": "ma-agent-agendador",
@@ -3602,17 +3602,18 @@
       "parameters": {
         "toolDescription": "Envia notificação WhatsApp para o profissional após agendamento, reagendamento ou cancelamento. CHAMAR SEMPRE após cs_agendar, cs_reagendar ou cs_cancelar quando profissional_whatsapp estiver presente e não nulo na resposta da RPC.",
         "method": "POST",
-        "url": "={{ 'https://evo.plataformabot.top/message/sendText/' + $('Edit Fields1').first().json.instanceName }}",
+        "url": "={{ 'https://evo.plataformabot.top/message/sendText/' + ($('Edit Fields1').first().json.instanceName || $json._tenant?.instance_name || '') }}",
         "sendHeaders": true,
-        "parametersHeaders": {
-          "values": [
-            {
-              "name": "apikey",
-              "value": "E24A6298-300E-4794-89C8-23783D858B12"
-            },
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
             {
               "name": "Content-Type",
               "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "E24A6298-300E-4794-89C8-23783D858B12"
             }
           ]
         },
@@ -4093,6 +4094,84 @@
             }
           }
         }
+      }
+    },
+    {
+      "id": "a1b2notify-0001-4000-8000-000000000001",
+      "name": "Code auto-notify profissional",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3550,
+        40
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const item = { ...$input.first().json };\n\nfunction parseLast(nodeName) {\n  try {\n    const rows = $(nodeName).all();\n    if (!rows?.length) return null;\n    const raw = rows[rows.length - 1].json?.response;\n    if (raw == null) return null;\n    return typeof raw === 'string' ? JSON.parse(raw) : raw;\n  } catch (e) {\n    return null;\n  }\n}\n\nconst ctx = $('Monta Contexto').first().json;\nconst inst = String($('Edit Fields1').first().json.instanceName || '').trim();\nconst nome = String(ctx.nome_cliente || 'Cliente').trim();\nlet notify = null;\n\nconst ag = parseLast('agd_cs_agendar');\nconst re = parseLast('agd_cs_reagendar');\nconst ca = parseLast('agd_cs_cancelar');\nconst tail = String(item.output || '').trim().slice(-400);\n\nif (ag?.ok && ag.profissional_whatsapp) {\n  const num = String(ag.profissional_whatsapp).replace(/\\D/g, '');\n  if (num.length >= 10) {\n    notify = { number: num, instanceName: inst, text: '📅 Novo agendamento (IA): ' + nome + (tail ? ('\\n' + tail) : '\\nVerifique o painel da clínica.') };\n  }\n} else if (re?.ok && re.profissional_whatsapp) {\n  const num = String(re.profissional_whatsapp).replace(/\\D/g, '');\n  if (num.length >= 10) {\n    notify = { number: num, instanceName: inst, text: '🔄 Reagendamento (IA): ' + nome + (tail ? ('\\n' + tail) : '\\nVerifique o painel da clínica.') };\n  }\n} else if (ca?.ok && ca.profissional_whatsapp) {\n  const num = String(ca.profissional_whatsapp).replace(/\\D/g, '');\n  if (num.length >= 10) {\n    notify = { number: num, instanceName: inst, text: '❌ Cancelamento (IA): ' + nome + (tail ? ('\\n' + tail) : '\\nVerifique o painel da clínica.') };\n  }\n}\n\nreturn [{ json: { ...item, _evolution_notify: notify } }];"
+      }
+    },
+    {
+      "id": "a1b2notify-0002-4000-8000-000000000002",
+      "name": "IF notify profissional",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3780,
+        160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "if-notify-1",
+              "leftValue": "={{ $json._evolution_notify?.number }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a1b2notify-0003-4000-8000-000000000003",
+      "name": "HTTP Evolution notify profissional",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4000,
+        280
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://evo.plataformabot.top/message/sendText/' + ($json._evolution_notify.instanceName || $('Edit Fields1').first().json.instanceName || '') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "E24A6298-300E-4794-89C8-23783D858B12"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $json._evolution_notify.number, text: $json._evolution_notify.text, delay: 1000 }) }}",
+        "options": {}
       }
     }
   ],
@@ -5051,7 +5130,7 @@
       "main": [
         [
           {
-            "node": "Edit Fields",
+            "node": "Code auto-notify profissional",
             "type": "main",
             "index": 0
           }
@@ -5229,13 +5308,7 @@
     },
     "agd_cs_notificar_profissional": {
       "ai_tool": [
-        [
-          {
-            "node": "agente_agendador",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Refletir agendador": {
@@ -5368,6 +5441,34 @@
             "index": 0
           }
         ]
+      ]
+    },
+    "Code auto-notify profissional": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF notify profissional",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF notify profissional": {
+      "main": [
+        [
+          {
+            "node": "HTTP Evolution notify profissional",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     }
   },
@@ -8213,7 +8314,7 @@
             "parameters": [
               {
                 "name": "select",
-                "value": "id,name,phone,timezone,agent_instructions"
+                "value": "id,name,phone,timezone,agent_instructions,agenda_visible_hours,sabado_aberto,sabado_agenda_hours"
               },
               {
                 "name": "id",
@@ -8242,7 +8343,7 @@
       },
       {
         "parameters": {
-          "jsCode": "// Dados da clínica vêm de \"Buscar Config Cl?nica\" (nome real do node — ? = í corrompido)\nconst clinicRaw = (() => {\n  try {\n    const r = $('Buscar Config Cl?nica').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\nconst rawInstr = clinicRaw?.agent_instructions;\nconst clinic_name = clinicRaw?.name || '';\n\nlet agent_instructions = '';\nlet nome_agente = '';\nlet saudacao_novo = '';\nlet saudacao_retorno = '';\nlet instr_raw = {};\n\nif (rawInstr) {\n  try {\n    const cfg = typeof rawInstr === 'string' ? JSON.parse(rawInstr) : rawInstr;\n    nome_agente = cfg.nome_agente || '';\n    saudacao_novo = cfg.saudacao_novo || '';\n    saudacao_retorno = cfg.saudacao_retorno || '';\n    instr_raw = cfg;\n    const secoes = [\n      { key: 'identidade', label: 'IDENTIDADE DO AGENTE' },\n      { key: 'triagem',    label: 'TRIAGEM E URGENCIAS' },\n      { key: 'tom',        label: 'TOM E LINGUAGEM' },\n      { key: 'orientacoes',label: 'ORIENTACOES AO PACIENTE' },\n      { key: 'transferir', label: 'QUANDO TRANSFERIR PARA HUMANO' },\n      { key: 'outros',     label: 'OUTRAS INSTRUCOES' },\n    ];\n    agent_instructions = secoes\n      .filter(s => typeof cfg[s.key] === 'string' && cfg[s.key].trim())\n      .map(s => '### ' + s.label + '\\n' + cfg[s.key].trim())\n      .join('\\n\\n');\n  } catch(e) { agent_instructions = String(rawInstr); }\n}\n\nconst clientRow = (() => {\n  try {\n    const r = $('Get Cliente').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\nconst nome_cliente = (clientRow?.nome || '').trim();\n\nlet primeiro_contato = true;\ntry {\n  const histRow = $('Check First Contact').first().json;\n  const count = Number(histRow?.historico_count ?? 0);\n  primeiro_contato = count === 0;\n} catch { primeiro_contato = true; }\n\nconst mensagem = $('Edit Fields2').first().json.mensagem;\nconst clinic_id = $('Code merge webhook e resolucao').first().json.clinica_id;\nconst remoteJid = $('Webhook').first().json.body.data.key.remoteJid;\nconst instanceName = $('Edit Fields1').first().json.instanceName || '';\n\nconst _nowBR = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));\nconst _hr = _nowBR.getHours();\nconst saudacao_periodo = _hr >= 5 && _hr < 12 ? 'Bom dia' : _hr >= 12 && _hr < 18 ? 'Boa tarde' : 'Boa noite';\nif (saudacao_novo) {\n  saudacao_novo = saudacao_novo\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{name}}/g, nome_agente)\n    .replace(/{{clinica}}/g, clinic_name);\n}\nif (agent_instructions) {\n  agent_instructions = agent_instructions\n    .replace(/{{name}}/g, nome_agente || '')\n    .replace(/{{nome_agente}}/g, nome_agente || '')\n    .replace(/{{agente}}/g, nome_agente || '')\n    .replace(/{{clinica}}/g, clinic_name || '')\n    .replace(/{{nome_clinica}}/g, clinic_name || '')\n    .replace(/{{periodo}}/g, saudacao_periodo);\n}\n\nreturn [{ json: {\n  mensagem,\n  agent_instructions,\n  nome_agente,\n  clinic_name,\n  nome_cliente,\n  saudacao_novo,\n  saudacao_retorno,\n  saudacao_periodo,\n  primeiro_contato,\n  clinic_id,\n  remoteJid,\n  instanceName,\n  instr_triagem:    instr_raw.triagem     || '',\n  instr_faq:        instr_raw.orientacoes || '',\n  instr_transferir: instr_raw.transferir  || '',\n  instr_outros:     instr_raw.outros      || '',\n} }];"
+          "jsCode": "// Dados da clínica vêm de \"Buscar Config Cl?nica\" (nome real do node — ? = í corrompido)\nconst clinicRaw = (() => {\n  try {\n    const r = $('Buscar Config Cl?nica').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\nconst rawInstr = clinicRaw?.agent_instructions;\nconst clinic_name = clinicRaw?.name || '';\n\nlet agent_instructions = '';\nlet nome_agente = '';\nlet saudacao_novo = '';\nlet saudacao_retorno = '';\nlet instr_raw = {};\n\nif (rawInstr) {\n  try {\n    const cfg = typeof rawInstr === 'string' ? JSON.parse(rawInstr) : rawInstr;\n    nome_agente = cfg.nome_agente || '';\n    saudacao_novo = cfg.saudacao_novo || '';\n    saudacao_retorno = cfg.saudacao_retorno || '';\n    instr_raw = cfg;\n    const secoes = [\n      { key: 'identidade', label: 'IDENTIDADE DO AGENTE' },\n      { key: 'triagem',    label: 'TRIAGEM E URGENCIAS' },\n      { key: 'tom',        label: 'TOM E LINGUAGEM' },\n      { key: 'orientacoes',label: 'ORIENTACOES AO PACIENTE' },\n      { key: 'transferir', label: 'QUANDO TRANSFERIR PARA HUMANO' },\n      { key: 'outros',     label: 'OUTRAS INSTRUCOES' },\n    ];\n    agent_instructions = secoes\n      .filter(s => typeof cfg[s.key] === 'string' && cfg[s.key].trim())\n      .map(s => '### ' + s.label + '\\n' + cfg[s.key].trim())\n      .join('\\n\\n');\n  } catch(e) { agent_instructions = String(rawInstr); }\n}\n\nconst clientRow = (() => {\n  try {\n    const r = $('Get Cliente').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\nconst nome_cliente = (clientRow?.nome || '').trim();\n\nlet primeiro_contato = true;\ntry {\n  const histRow = $('Check First Contact').first().json;\n  const count = Number(histRow?.historico_count ?? 0);\n  primeiro_contato = count === 0;\n} catch { primeiro_contato = true; }\n\nconst mensagem = $('Edit Fields2').first().json.mensagem;\nconst clinic_id = $('Code merge webhook e resolucao').first().json.clinica_id;\nconst remoteJid = $('Webhook').first().json.body.data.key.remoteJid;\nconst instanceName = $('Edit Fields1').first().json.instanceName || '';\n\nconst _nowBR = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));\nconst _hr = _nowBR.getHours();\nconst saudacao_periodo = _hr >= 5 && _hr < 12 ? 'Bom dia' : _hr >= 12 && _hr < 18 ? 'Boa tarde' : 'Boa noite';\nif (saudacao_novo) {\n  saudacao_novo = saudacao_novo\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{name}}/g, nome_agente)\n    .replace(/{{clinica}}/g, clinic_name);\n}\nif (agent_instructions) {\n  agent_instructions = agent_instructions\n    .replace(/{{name}}/g, nome_agente || '')\n    .replace(/{{nome_agente}}/g, nome_agente || '')\n    .replace(/{{agente}}/g, nome_agente || '')\n    .replace(/{{clinica}}/g, clinic_name || '')\n    .replace(/{{nome_clinica}}/g, clinic_name || '')\n    .replace(/{{periodo}}/g, saudacao_periodo);\n}\n\nfunction _normHoursArr(v) {\n  if (!Array.isArray(v)) return [];\n  const s = new Set();\n  for (const x of v) {\n    const n = typeof x === 'number' ? x : parseInt(String(x), 10);\n    if (Number.isFinite(n) && n >= 6 && n <= 22) s.add(n);\n  }\n  return [...s].sort((a,b)=>a-b);\n}\nfunction _fmtHourList(arr) {\n  if (!arr.length) return 'conforme configuração no painel';\n  return arr.map(h => String(h).padStart(2, '0') + ':00').join(', ');\n}\nconst _wdH = _normHoursArr(clinicRaw.agenda_visible_hours);\nconst _sabOn = clinicRaw.sabado_aberto === true || clinicRaw.sabado_aberto === 'true' || clinicRaw.sabado_aberto === 1;\nconst _sabH = _normHoursArr(clinicRaw.sabado_agenda_hours);\nlet _horCal = '### HORÁRIO DA CLÍNICA (AGENDAMENTOS — respeite estritamente)' + String.fromCharCode(10);\n_horCal += '- Domingo: sem atendimento.' + String.fromCharCode(10);\n_horCal += '- Dias úteis (segunda a sexta): blocos ' + _fmtHourList(_wdH) + '.' + String.fromCharCode(10);\nif (!_sabOn) {\n  _horCal += '- Sábado: sem atendimento.' + String.fromCharCode(10);\n} else if (_sabH.length) {\n  _horCal += '- Sábado: aberto — blocos ' + _fmtHourList(_sabH) + '.' + String.fromCharCode(10);\n} else {\n  _horCal += '- Sábado: aberto — mesmos blocos dos dias úteis.' + String.fromCharCode(10);\n}\n_horCal += 'Não ofereça horários em dias fechados nem fora dos blocos; use as tools para vagas reais.';\nagent_instructions = (agent_instructions ? agent_instructions + String.fromCharCode(10,10) : '') + _horCal;\n\nreturn [{ json: {\n  mensagem,\n  agent_instructions,\n  nome_agente,\n  clinic_name,\n  nome_cliente,\n  saudacao_novo,\n  saudacao_retorno,\n  saudacao_periodo,\n  primeiro_contato,\n  clinic_id,\n  remoteJid,\n  instanceName,\n  instr_triagem:    instr_raw.triagem     || '',\n  instr_faq:        instr_raw.orientacoes || '',\n  instr_transferir: instr_raw.transferir  || '',\n  instr_outros:     instr_raw.outros      || '',\n} }];"
         },
         "id": "ddcdcb0e-e998-4c40-8f6c-064b3e852df9",
         "name": "Monta Contexto",
@@ -9138,17 +9239,18 @@
         "parameters": {
           "toolDescription": "Envia notificação WhatsApp para o profissional após agendamento, reagendamento ou cancelamento. CHAMAR SEMPRE após cs_agendar, cs_reagendar ou cs_cancelar quando profissional_whatsapp estiver presente e não nulo na resposta da RPC.",
           "method": "POST",
-          "url": "=https://evo.plataformabot.top/message/sendText/{{ $('Campos iniciais').first().json.instanceName }}",
+          "url": "={{ 'https://evo.plataformabot.top/message/sendText/' + ($('Edit Fields1').first().json.instanceName || $json._tenant?.instance_name || '') }}",
           "sendHeaders": true,
-          "parametersHeaders": {
-            "values": [
-              {
-                "name": "apikey",
-                "value": "E24A6298-300E-4794-89C8-23783D858B12"
-              },
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
               {
                 "name": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "name": "apikey",
+                "value": "E24A6298-300E-4794-89C8-23783D858B12"
               }
             ]
           },

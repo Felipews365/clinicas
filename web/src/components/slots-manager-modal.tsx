@@ -12,6 +12,11 @@ import { professionalAvatarPublicUrl } from "@/lib/professional-avatar";
 import { resolveProfessionalCardStyle } from "@/lib/professional-palette";
 import { ProfessionalAvatar } from "@/components/professional-avatar";
 import { parseSlotHour } from "@/lib/slots-expediente";
+import {
+  clinicClosedDayHintPt,
+  clinicVisibleHoursForDayKey,
+  type ClinicAgendaWeekendConfig,
+} from "@/lib/clinic-agenda-hours";
 
 const DISPLAY_HOUR_START = 7;
 const DISPLAY_HOUR_END = 19;
@@ -41,8 +46,8 @@ type Props = {
   onAutoAdvanceDay?: (ymd: string) => void;
   /** Atualiza o dia do painel quando o utilizador muda a data dentro deste modal. */
   onDayKeyChange?: (ymd: string) => void;
-  /** Horas 6–22 habilitadas globalmente pela clínica (`clinics.agenda_visible_hours`) — única grade oficial desta tela. */
-  clinicVisibleHours: number[];
+  /** Grade da clínica: dias úteis + regras de sábado/domingo (alinhado à BD). */
+  clinicAgendaConfig: ClinicAgendaWeekendConfig;
   /** Reservado (ex.: compatibilidade); rótulos e grelha usam só `clinicVisibleHours`. */
   clinicSlotsExpediente?: unknown;
   presentation?: "modal" | "panel";
@@ -206,7 +211,7 @@ export function SlotsManagerModal({
   dayKey,
   onAutoAdvanceDay,
   onDayKeyChange,
-  clinicVisibleHours,
+  clinicAgendaConfig,
   clinicSlotsExpediente: _clinicSlotsExpediente,
   presentation = "modal",
 }: Props) {
@@ -429,16 +434,22 @@ export function SlotsManagerModal({
     return map;
   }, [rows]);
 
-  /** Só horas que a clínica marcou em «Configurar horários da clínica». */
-  const clinicGridHours = useMemo(
-    () =>
-      [...new Set(clinicVisibleHours.filter((h) => h >= 6 && h <= 22))].sort(
-        (a, b) => a - b
-      ),
-    [clinicVisibleHours]
-  );
+  const labelKeyEffective = labelKey || activeDayKey;
+
+  /** Só horas que a clínica marcou para este dia da semana. */
+  const clinicGridHours = useMemo(() => {
+    if (!labelKeyEffective) return [];
+    const hrs = clinicVisibleHoursForDayKey(labelKeyEffective, clinicAgendaConfig);
+    return [...new Set(hrs.filter((h) => h >= 6 && h <= 22))].sort((a, b) => a - b);
+  }, [labelKeyEffective, clinicAgendaConfig]);
+
+  const closedDayExplanation = useMemo(() => {
+    if (!labelKeyEffective) return null;
+    return clinicClosedDayHintPt(labelKeyEffective, clinicAgendaConfig);
+  }, [labelKeyEffective, clinicAgendaConfig]);
 
   const displayGridHours = useMemo(() => {
+    if (!clinicGridHours.length) return [];
     const s = new Set<number>();
     for (let h = DISPLAY_HOUR_START; h <= DISPLAY_HOUR_END; h++) s.add(h);
     for (const h of clinicGridHours) {
@@ -953,6 +964,16 @@ export function SlotsManagerModal({
             </p>
           ) : loading ? (
             <p className="text-sm text-[var(--text-muted)]">A carregar horários…</p>
+          ) : !clinicGridHours.length && labelKeyEffective ? (
+            <p className="text-sm leading-relaxed text-[var(--text-muted)]">
+              {closedDayExplanation ?? (
+                <>
+                  Neste dia a clínica não tem horários na agenda. Ajuste em{" "}
+                  <strong className="font-medium text-[var(--text)]">Configurar horários da clínica</strong> ou
+                  escolha outra data.
+                </>
+              )}
+            </p>
           ) : rows.length === 0 ? (
             <p className="text-sm leading-relaxed text-[var(--text-muted)]">
               {isYmdToday(activeDayKey) ? (

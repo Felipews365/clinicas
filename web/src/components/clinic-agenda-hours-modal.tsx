@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   COMMERCIAL_AGENDA_HOURS,
@@ -8,18 +8,25 @@ import {
   formatAgendaHourLabel,
   FULL_CLINIC_AGENDA_HOURS,
   normalizeAgendaVisibleHours,
+  normalizeSabadoAgendaHours,
 } from "@/lib/clinic-agenda-hours";
 import { professionalInitials } from "@/lib/professional-avatar";
 import { resolveProfessionalCardStyle } from "@/lib/professional-palette";
 
 type Prof = { id: string; name: string; specialty: string | null };
 
+export type ClinicAgendaHoursSaved = {
+  agenda_visible_hours: number[];
+  sabado_aberto: boolean;
+  sabado_agenda_hours: number[] | null;
+};
+
 type Props = {
   open: boolean;
   onClose: () => void;
   supabase: SupabaseClient;
   clinicId: string;
-  onSaved: (hours: number[]) => void;
+  onSaved: (payload: ClinicAgendaHoursSaved) => void;
   presentation?: "modal" | "panel";
 };
 
@@ -39,19 +46,38 @@ export function ClinicAgendaHoursModal({
   const [selected, setSelected] = useState<Set<number>>(
     () => new Set(DEFAULT_AGENDA_VISIBLE_HOURS)
   );
+  const [sabadoAberto, setSabadoAberto] = useState(false);
+  /** Se false, sábado usa os mesmos blocos que dias úteis (guardado como sabado_agenda_hours null). */
+  const [sabadoHorarioProprio, setSabadoHorarioProprio] = useState(false);
+  const [selectedSaturday, setSelectedSaturday] = useState<Set<number>>(
+    () => new Set(COMMERCIAL_AGENDA_HOURS)
+  );
   const [professionals, setProfessionals] = useState<Prof[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const successClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function clearSuccessToastTimer() {
+    if (successClearRef.current != null) {
+      clearTimeout(successClearRef.current);
+      successClearRef.current = null;
+    }
+  }
+
+  useEffect(() => () => clearSuccessToastTimer(), []);
 
   const load = useCallback(async () => {
     if (!open || !clinicId) return;
     setLoading(true);
     setError(null);
+    setSaveSuccess(false);
+    clearSuccessToastTimer();
     const [cRes, pRes] = await Promise.all([
       supabase
         .from("clinics")
-        .select("agenda_visible_hours")
+        .select("agenda_visible_hours, sabado_aberto, sabado_agenda_hours")
         .eq("id", clinicId)
         .maybeSingle(),
       supabase
@@ -74,10 +100,26 @@ export function ClinicAgendaHoursModal({
       return;
     }
 
-    const hrs = normalizeAgendaVisibleHours(
-      (cRes.data as { agenda_visible_hours?: unknown } | null)?.agenda_visible_hours
-    );
+    const row = cRes.data as {
+      agenda_visible_hours?: unknown;
+      sabado_aberto?: unknown;
+      sabado_agenda_hours?: unknown;
+    } | null;
+    const hrs = normalizeAgendaVisibleHours(row?.agenda_visible_hours);
     setSelected(new Set(hrs));
+    const sabOpen =
+      row?.sabado_aberto === true ||
+      row?.sabado_aberto === "true" ||
+      row?.sabado_aberto === 1;
+    setSabadoAberto(sabOpen);
+    const sabH = normalizeSabadoAgendaHours(row?.sabado_agenda_hours);
+    if (sabOpen && sabH != null && sabH.length > 0) {
+      setSabadoHorarioProprio(true);
+      setSelectedSaturday(new Set(sabH));
+    } else {
+      setSabadoHorarioProprio(false);
+      setSelectedSaturday(new Set(hrs.length ? hrs : COMMERCIAL_AGENDA_HOURS));
+    }
     setProfessionals((pRes.data ?? []) as Prof[]);
     if (pRes.error) {
       setProfessionals([]);
@@ -97,9 +139,26 @@ export function ClinicAgendaHoursModal({
     () => [...selected].sort((a, b) => a - b),
     [selected]
   );
+  const sortedSaturdaySelection = useMemo(
+    () => [...selectedSaturday].sort((a, b) => a - b),
+    [selectedSaturday]
+  );
 
   function toggleHour(h: number) {
     setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(h)) {
+        if (next.size <= 1) return prev;
+        next.delete(h);
+      } else {
+        next.add(h);
+      }
+      return next;
+    });
+  }
+
+  function toggleSaturdayHour(h: number) {
+    setSelectedSaturday((prev) => {
       const next = new Set(prev);
       if (next.has(h)) {
         if (next.size <= 1) return prev;
@@ -121,27 +180,50 @@ export function ClinicAgendaHoursModal({
 
   async function handleSave() {
     if (selected.size === 0) {
-      setError("Selecione pelo menos um horário.");
+      setError("Selecione pelo menos um horário para os dias úteis.");
+      return;
+    }
+    if (sabadoAberto && sabadoHorarioProprio && selectedSaturday.size === 0) {
+      setError("Para sábado com horário próprio, escolha pelo menos um bloco.");
       return;
     }
     setSaving(true);
     setError(null);
+    setSaveSuccess(false);
+    clearSuccessToastTimer();
     const hours = sortedSelection;
+    const sabadoPayload: number[] | null =
+      sabadoAberto && sabadoHorarioProprio ? sortedSaturdaySelection : null;
     const { error: e } = await supabase
       .from("clinics")
-      .update({ agenda_visible_hours: hours })
+      .update({
+        agenda_visible_hours: hours,
+        sabado_aberto: sabadoAberto,
+        sabado_agenda_hours: sabadoPayload,
+      })
       .eq("id", clinicId);
     setSaving(false);
     if (e) {
       setError(
         e.message +
-          (e.message.includes("agenda_visible_hours")
-            ? " — Execute supabase/migration_clinic_agenda_visible_hours.sql."
+          (e.message.includes("agenda_visible_hours") ||
+          e.message.includes("sabado_")
+            ? " — Confirme a migração `clinic_weekend_hours` no Supabase."
             : "")
       );
       return;
     }
-    onSaved(hours);
+    onSaved({
+      agenda_visible_hours: hours,
+      sabado_aberto: sabadoAberto,
+      sabado_agenda_hours: sabadoPayload,
+    });
+    setSaveSuccess(true);
+    clearSuccessToastTimer();
+    successClearRef.current = setTimeout(() => {
+      setSaveSuccess(false);
+      successClearRef.current = null;
+    }, 4500);
     if (presentation !== "panel") onClose();
   }
 
@@ -172,7 +254,7 @@ export function ClinicAgendaHoursModal({
     <div
       className="grid gap-1.5 [grid-template-columns:repeat(auto-fit,minmax(5.5rem,1fr))]"
       role="group"
-      aria-label="Blocos de hora da clínica"
+      aria-label="Blocos de hora da clínica (dias úteis)"
     >
       {FULL_CLINIC_AGENDA_HOURS.map((h) => {
         const on = selected.has(h);
@@ -189,6 +271,106 @@ export function ClinicAgendaHoursModal({
         );
       })}
     </div>
+  );
+
+  const saturdayHourGrid = (
+    <div
+      className="grid gap-1.5 [grid-template-columns:repeat(auto-fit,minmax(5.5rem,1fr))]"
+      role="group"
+      aria-label="Blocos de hora aos sábados"
+    >
+      {FULL_CLINIC_AGENDA_HOURS.map((h) => {
+        const on = selectedSaturday.has(h);
+        return (
+          <button
+            key={h}
+            type="button"
+            onClick={() => toggleSaturdayHour(h)}
+            aria-pressed={on}
+            className={on ? hourBtnOn : hourBtnOff}
+          >
+            {formatAgendaHourLabel(h)}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const weekendBlock = (
+    <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
+      <h2 className="text-sm font-semibold text-[var(--text)]">Fim de semana</h2>
+      <p className="mt-2 text-xs leading-relaxed text-[var(--text-muted)]">
+        <strong className="font-medium text-[var(--text)]">Domingo:</strong> sem atendimento (regra fixa para o agente e para a agenda).
+      </p>
+      <div className="mt-4 flex flex-col gap-3">
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-4 py-3">
+          <input
+            type="checkbox"
+            checked={sabadoAberto}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setSabadoAberto(on);
+              if (!on) setSabadoHorarioProprio(false);
+            }}
+            className="mt-1 h-4 w-4 shrink-0 rounded border-[var(--border)]"
+          />
+          <span className="text-sm text-[var(--text)]">
+            <span className="font-medium">Abrir aos sábados</span>
+            <span className="mt-1 block text-xs text-[var(--text-muted)]">
+              Se desligado, o agente e o painel tratam o sábado como dia fechado.
+            </span>
+          </span>
+        </label>
+        {sabadoAberto ? (
+          <>
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-4 py-3">
+              <input
+                type="checkbox"
+                checked={!sabadoHorarioProprio}
+                onChange={(e) => {
+                  const sameAsWeekday = e.target.checked;
+                  setSabadoHorarioProprio(!sameAsWeekday);
+                  if (sameAsWeekday) {
+                    setSelectedSaturday(new Set(sortedSelection));
+                  }
+                }}
+                className="mt-1 h-4 w-4 shrink-0 rounded border-[var(--border)]"
+              />
+              <span className="text-sm text-[var(--text)]">
+                <span className="font-medium">Mesmo horário que segunda a sexta</span>
+                <span className="mt-1 block text-xs text-[var(--text-muted)]">
+                  Usa a grade «dias úteis» acima. Desmarque para definir blocos só para o sábado.
+                </span>
+              </span>
+            </label>
+            {sabadoHorarioProprio ? (
+              <div className="rounded-xl border border-teal-900/40 bg-teal-950/20 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-teal-200/90">
+                  Grade só de sábado
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSaturday(new Set(sortedSelection))}
+                    className="rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface)]"
+                  >
+                    Copiar dias úteis
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSaturday(new Set(COMMERCIAL_AGENDA_HOURS))}
+                    className="rounded-lg border border-teal-800/40 bg-teal-950/50 px-3 py-1.5 text-xs font-semibold text-teal-100 hover:bg-teal-950/70"
+                  >
+                    Preset comercial
+                  </button>
+                </div>
+                <div className="mt-4">{saturdayHourGrid}</div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </section>
   );
 
   const legend = (
@@ -251,6 +433,17 @@ export function ClinicAgendaHoursModal({
     </section>
   );
 
+  const successBlock =
+    saveSuccess ? (
+      <p
+        role="status"
+        aria-live="polite"
+        className="mt-4 rounded-xl border border-emerald-800/50 bg-emerald-950/45 px-4 py-3 text-sm font-medium text-emerald-100"
+      >
+        Salvo com sucesso.
+      </p>
+    ) : null;
+
   const errorBlock =
     error != null ? (
       <p className="mt-4 rounded-xl border border-red-800/50 bg-red-950/40 px-4 py-3 text-sm text-red-100">
@@ -271,11 +464,16 @@ export function ClinicAgendaHoursModal({
       </button>
       <button
         type="button"
-        disabled={saving || loading || selected.size === 0}
+        disabled={
+          saving ||
+          loading ||
+          selected.size === 0 ||
+          (sabadoAberto && sabadoHorarioProprio && selectedSaturday.size === 0)
+        }
         onClick={() => void handleSave()}
         className="rounded-xl bg-[var(--primary)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:opacity-95 disabled:opacity-50"
       >
-        {saving ? "A guardar…" : "Guardar alterações"}
+        {saving ? "A salvar…" : "Salvar"}
       </button>
     </div>
   );
@@ -301,9 +499,10 @@ export function ClinicAgendaHoursModal({
             </h1>
             <p className="mt-3 max-w-4xl text-sm leading-relaxed text-[var(--text-muted)]">
               Defina quais blocos de <strong className="font-medium text-[var(--text)]">6h às 22h</strong>{" "}
-              aparecem na agenda, calendário e grelhas. Horários desmarcados ficam{" "}
+              aparecem na agenda, calendário e grelhas <strong className="font-medium text-[var(--text)]">de
+              segunda a sexta</strong>. Horários desmarcados ficam{" "}
               <strong className="font-medium text-[var(--text)]">ocultos</strong> para todos os médicos e para
-              o agente.
+              o agente. Domingo está sempre fechado; o sábado configura-se abaixo.
             </p>
           </div>
         </header>
@@ -320,7 +519,7 @@ export function ClinicAgendaHoursModal({
             </section>
 
             <section className="mb-6 rounded-2xl border border-[var(--border)] bg-[var(--bg)] p-5 shadow-sm">
-              <h2 className="text-sm font-semibold text-[var(--text)]">Grade de horários</h2>
+              <h2 className="text-sm font-semibold text-[var(--text)]">Dias úteis (segunda a sexta)</h2>
               <p className="mt-1 text-xs text-[var(--text-muted)]">
                 Toque ou clique em cada hora para alternar visibilidade na clínica.
               </p>
@@ -328,7 +527,10 @@ export function ClinicAgendaHoursModal({
               {legend}
             </section>
 
+            <div className="mb-6">{weekendBlock}</div>
+
             {doctorsBlock}
+            {successBlock}
             {errorBlock}
             {footerActions(false)}
           </>
@@ -355,10 +557,8 @@ export function ClinicAgendaHoursModal({
               Configurar horários da clínica
             </h2>
             <p className="mt-1 text-sm leading-relaxed text-[var(--text-muted)]">
-              Escolha quais blocos das <strong className="font-medium">6h às 22h</strong> aparecem na
-              agenda e nas grelhas. Horários não marcados ficam{" "}
-              <strong className="font-medium">não listados</strong> para todos os médicos e para o
-              agente.
+              Dias úteis: blocos das <strong className="font-medium">6h às 22h</strong> na agenda. Domingo
+              fechado; sábado opcional abaixo.
             </p>
           </div>
           <button
@@ -380,8 +580,12 @@ export function ClinicAgendaHoursModal({
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               Blocos de 1 hora
             </p>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              Dias úteis
+            </p>
             {hourGrid}
             {legend}
+            <div className="mt-5 max-h-[40vh] overflow-y-auto pr-1">{weekendBlock}</div>
             <div className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-4 py-3">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 Médicos do painel
@@ -418,6 +622,7 @@ export function ClinicAgendaHoursModal({
                 </ul>
               )}
             </div>
+            {successBlock}
             {errorBlock}
           </>
         )}

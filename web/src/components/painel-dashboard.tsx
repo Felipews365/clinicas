@@ -30,8 +30,6 @@ import {
   one,
 } from "@/types/appointments";
 
-const HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18] as const;
-
 function rowProfessionalId(r: AppointmentRow): string | null {
   const raw = one(r.professionals)?.id;
   if (raw == null || raw === "") return null;
@@ -286,6 +284,8 @@ export type PainelDashboardProps = {
   filterIdle: string;
   viewToggleActive: string;
   viewToggleIdle: string;
+  /** Horas (6–22) em que a clínica atende no dia selecionado (varia com sábado/domingo). */
+  gridVisibleHours: number[];
 };
 
 export function PainelDashboard({
@@ -320,8 +320,15 @@ export function PainelDashboard({
   filterIdle,
   viewToggleActive,
   viewToggleIdle,
+  gridVisibleHours,
 }: PainelDashboardProps) {
   const router = useRouter();
+
+  const gridHoursSorted = useMemo(() => {
+    return [...new Set(gridVisibleHours.filter((h) => h >= 6 && h <= 22))].sort(
+      (a, b) => a - b
+    );
+  }, [gridVisibleHours]);
 
   const [gridModalAppt, setGridModalAppt] = useState<AppointmentRow | null>(null);
   const [gridModalBusy, setGridModalBusy] = useState(false);
@@ -1164,16 +1171,25 @@ export function PainelDashboard({
       </div>
 
       {viewMode === "grid" && dayKey ? (
+        gridHoursSorted.length === 0 ? (
+          <div className="mb-8 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
+            <p className="text-sm text-[var(--text-muted)]">
+              Neste dia a clínica não tem blocos de agenda (domingo, sábado fechado ou sem horários
+              configurados). Altere a data ou ajuste «Configurar horários da clínica».
+            </p>
+          </div>
+        ) : (
         <div className="mb-8 overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-            Grade do dia (07h–19h) · actualizado{" "}
+            Grade do dia (
+            {Math.min(...gridHoursSorted)}h–{Math.max(...gridHoursSorted) + 1}h) · actualizado{" "}
             {dataUpdatedAt
               ? new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")
               : "—"}
           </p>
           <div className="flex min-w-max gap-1 text-[10px] text-[var(--text-muted)]">
             <div className="w-24 shrink-0" />
-            {HOURS.map((h) => (
+            {gridHoursSorted.map((h) => (
               <div key={h} className="w-10 shrink-0 text-center font-medium">
                 {h}h
               </div>
@@ -1196,7 +1212,7 @@ export function PainelDashboard({
                   />
                   <span className="truncate">{p.name}</span>
                 </div>
-                {HOURS.map((h) => {
+                {gridHoursSorted.map((h) => {
                   const st = gridCell(p.id, h);
                   const bg =
                     st === "agendado"
@@ -1234,6 +1250,7 @@ export function PainelDashboard({
             Legenda: teal agendado · verde livre · laranja em curso · vermelho bloqueado
           </p>
         </div>
+        )
       ) : null}
 
       {listError ? (

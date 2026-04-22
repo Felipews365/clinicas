@@ -32,7 +32,10 @@ import { PainelDashboard } from "@/components/painel-dashboard";
 import { useAgendaNotifications } from "@/hooks/use-agenda-notifications";
 import {
   calendarSlotBoundsFromVisibleHours,
+  clinicVisibleHoursForDayKey,
   normalizeAgendaVisibleHours,
+  normalizeSabadoAgendaHours,
+  type ClinicAgendaWeekendConfig,
 } from "@/lib/clinic-agenda-hours";
 import { resolveProfessionalCardStyle } from "@/lib/professional-palette";
 import { hasFullAccess } from "@/lib/crm-access";
@@ -244,6 +247,10 @@ export function AgendaPortal() {
   const [clinicAgendaHours, setClinicAgendaHours] = useState<number[]>(() =>
     normalizeAgendaVisibleHours(null)
   );
+  const [clinicSabadoAberto, setClinicSabadoAberto] = useState(false);
+  const [clinicSabadoAgendaHours, setClinicSabadoAgendaHours] = useState<
+    number[] | null
+  >(null);
   const [clinicSlotsExpediente, setClinicSlotsExpediente] = useState<unknown>(
     null
   );
@@ -461,16 +468,26 @@ export function AgendaPortal() {
     if (!supabase || access?.kind !== "clinic") return;
     const { data, error } = await supabase
       .from("clinics")
-      .select("agenda_visible_hours, slots_expediente")
+      .select(
+        "agenda_visible_hours, slots_expediente, sabado_aberto, sabado_agenda_hours"
+      )
       .eq("id", access.clinicId)
       .maybeSingle();
     if (error) return;
     const row = data as {
       agenda_visible_hours?: unknown;
       slots_expediente?: unknown;
+      sabado_aberto?: unknown;
+      sabado_agenda_hours?: unknown;
     } | null;
     if (row) {
       setClinicAgendaHours(normalizeAgendaVisibleHours(row.agenda_visible_hours));
+      setClinicSabadoAberto(
+        row.sabado_aberto === true ||
+          row.sabado_aberto === "true" ||
+          row.sabado_aberto === 1
+      );
+      setClinicSabadoAgendaHours(normalizeSabadoAgendaHours(row.sabado_agenda_hours));
       setClinicSlotsExpediente(row.slots_expediente ?? null);
     }
   }, [supabase, access]);
@@ -482,6 +499,20 @@ export function AgendaPortal() {
   const calendarSlotBounds = useMemo(
     () => calendarSlotBoundsFromVisibleHours(clinicAgendaHours),
     [clinicAgendaHours]
+  );
+
+  const clinicAgendaConfig = useMemo<ClinicAgendaWeekendConfig>(
+    () => ({
+      weekdayHours: clinicAgendaHours,
+      sabadoAberto: clinicSabadoAberto,
+      sabadoAgendaHours: clinicSabadoAgendaHours,
+    }),
+    [clinicAgendaHours, clinicSabadoAberto, clinicSabadoAgendaHours]
+  );
+
+  const gridHoursForSelectedDay = useMemo(
+    () => clinicVisibleHoursForDayKey(dayKey, clinicAgendaConfig),
+    [dayKey, clinicAgendaConfig]
   );
 
   const tabFilteredRows = useMemo(() => {
@@ -1180,7 +1211,7 @@ export function AgendaPortal() {
             onSuccess={() => void loadAppointments()}
             supabase={supabase}
             clinicId={access.clinicId}
-            clinicVisibleHours={clinicAgendaHours}
+            clinicAgendaConfig={clinicAgendaConfig}
           />
           <ProceduresManagerModal
             open={proceduresOpen}
@@ -1634,6 +1665,7 @@ export function AgendaPortal() {
               filterIdle={filterIdle}
               viewToggleActive={viewToggleActive}
               viewToggleIdle={viewToggleIdle}
+              gridVisibleHours={gridHoursForSelectedDay}
             />
           ) : null
         ) : supabase ? (
@@ -1658,7 +1690,7 @@ export function AgendaPortal() {
                 dayKey={dayKey}
                 onAutoAdvanceDay={setDayKey}
                 onDayKeyChange={setDayKey}
-                clinicVisibleHours={clinicAgendaHours}
+                clinicAgendaConfig={clinicAgendaConfig}
                 clinicSlotsExpediente={clinicSlotsExpediente}
               />
             ) : null}
@@ -1678,7 +1710,11 @@ export function AgendaPortal() {
                 onClose={() => setSidebarPage("dashboard")}
                 supabase={supabase}
                 clinicId={access.clinicId}
-                onSaved={(hours) => setClinicAgendaHours(hours)}
+                onSaved={(p) => {
+                  setClinicAgendaHours(p.agenda_visible_hours);
+                  setClinicSabadoAberto(p.sabado_aberto);
+                  setClinicSabadoAgendaHours(p.sabado_agenda_hours);
+                }}
               />
             ) : null}
             {sidebarPage === "whatsapp-human" ? (
