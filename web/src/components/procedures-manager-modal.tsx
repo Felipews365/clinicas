@@ -522,7 +522,7 @@ export function ProceduresManagerModal({
               disabled={busy === "add"}
               className="w-full rounded-lg bg-[#4D6D66] py-2 text-sm font-semibold text-white hover:bg-[#3f5c56] disabled:opacity-50"
             >
-              {busy === "add" ? "A guardar…" : "Adicionar procedimento"}
+              {busy === "add" ? "A salvar…" : "Adicionar procedimento"}
             </button>
           </form>
 
@@ -725,8 +725,8 @@ export function ProceduresManagerModal({
                                 className="rounded-md bg-[#4D6D66] px-4 py-2 text-xs font-semibold text-white hover:bg-[#3f5c56] disabled:opacity-50"
                               >
                                 {busy === r.id
-                                  ? "A guardar…"
-                                  : "Guardar alterações"}
+                                  ? "A salvar…"
+                                  : "Salvar alterações"}
                               </button>
                               <button
                                 type="button"
@@ -738,7 +738,7 @@ export function ProceduresManagerModal({
                               </button>
                             </div>
                             <p className="text-[10px] text-[#9a9288]">
-                              Último guardado: ~{r.duration_minutes} min ·{" "}
+                              Último salvo: ~{r.duration_minutes} min ·{" "}
                               {paymentSummary(r)}
                             </p>
                           </div>

@@ -301,7 +301,7 @@ export function ClinicSubscriptionPanel({ clinicId }: Props) {
       setTimeout(() => setSavedNumero(false), 2500);
       void load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Falha ao guardar.");
+      setError(e instanceof Error ? e.message : "Falha ao salvar.");
     } finally {
       setSavingNumero(false);
     }
@@ -483,10 +483,10 @@ export function ClinicSubscriptionPanel({ clinicId }: Props) {
               disabled={savingNumero}
               className="rounded-xl bg-[var(--primary)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[var(--primary-strong)] disabled:opacity-40"
             >
-              {savingNumero ? "A guardar…" : "Guardar número"}
+              {savingNumero ? "A salvar…" : "Salvar número"}
             </button>
             {savedNumero ? (
-              <span className="text-sm font-medium text-[var(--success-text)]">Guardado.</span>
+              <span className="text-sm font-medium text-[var(--success-text)]">Salvo.</span>
             ) : null}
           </div>
         )}

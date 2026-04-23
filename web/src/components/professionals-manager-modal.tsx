@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ProfessionalAvatar } from "@/components/professional-avatar";
 import {
@@ -18,8 +18,9 @@ import {
 import {
   FULL_CLINIC_AGENDA_HOURS,
   formatAgendaHourLabel,
-  normalizeAgendaVisibleHours,
 } from "@/lib/clinic-agenda-hours";
+import { formatLocalYmd } from "@/lib/local-day";
+import { normalizeProfessionalWhatsappBr } from "@/lib/br-whatsapp";
 
 type Row = {
   id: string;
@@ -32,7 +33,24 @@ type Row = {
   avatar_path: string | null;
   avatar_emoji: string | null;
   agenda_hours: number[] | null;
+  /** Se false, sem grade aos sábados (quando a clínica abre ao sábado). */
+  works_saturday?: boolean | null;
+  /** Ligação a `cs_profissionais.id` para RPCs da agenda (horário extra, etc.). */
+  cs_profissional_id: string | null;
 };
+
+function normWorksSaturday(raw: unknown): boolean {
+  return !(raw === false || raw === 0 || raw === "false");
+}
+
+function normProfName(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function rowPaletteValue(r: Row): string {
   return r.panel_color?.trim()
@@ -196,9 +214,31 @@ type Props = {
   supabase: SupabaseClient;
   clinicId: string;
   onChanged: () => void;
+  /** Dia da agenda do painel (YYYY-MM-DD) — pré-preenche «horário extra» só neste dia. */
+  agendaDayKey?: string;
+  /** Abre já em edição o profissional com este nome (ex.: vindo da grelha de horários). */
+  focusProfessionalName?: string | null;
+  onFocusProfessionalConsumed?: () => void;
   /** `panel` = conteúdo na área principal do painel (sem overlay). */
   presentation?: "modal" | "panel";
 };
+
+function mapAddProfHourError(code: string): string {
+  switch (code) {
+    case "clinic_closed_day":
+      return "Neste dia a clínica não tem agenda. Escolha outra data ou ajuste os horários da clínica.";
+    case "profissional_not_found":
+      return "Profissional não encontrado ou inactivo.";
+    case "invalid_hour":
+      return "Hora inválida.";
+    case "invalid_scope":
+      return "Opção inválida.";
+    case "hour_not_effective":
+      return "Não foi possível activar esta hora. Tente de novo ou contacte o suporte.";
+    default:
+      return code ? `Não foi possível salvar (${code}).` : "Não foi possível salvar.";
+  }
+}
 
 export function ProfessionalsManagerModal({
   open,
@@ -206,6 +246,9 @@ export function ProfessionalsManagerModal({
   supabase,
   clinicId,
   onChanged,
+  agendaDayKey,
+  focusProfessionalName,
+  onFocusProfessionalConsumed,
   presentation = "modal",
 }: Props) {
   const [rows, setRows] = useState<Row[]>([]);
@@ -214,6 +257,7 @@ export function ProfessionalsManagerModal({
   const [name, setName] = useState("");
   const [specialty, setSpecialty] = useState("");
   const [newWhatsapp, setNewWhatsapp] = useState("");
+  const [newWhatsappErr, setNewWhatsappErr] = useState<string | null>(null);
   const [newColor, setNewColor] = useState(DEFAULT_PROFESSIONAL_PANEL_COLOR);
   const [newEmoji, setNewEmoji] = useState("");
   const [newPhotoFile, setNewPhotoFile] = useState<File | null>(null);
@@ -223,36 +267,77 @@ export function ProfessionalsManagerModal({
   const [editName, setEditName] = useState("");
   const [editSpecialty, setEditSpecialty] = useState("");
   const [editWhatsapp, setEditWhatsapp] = useState("");
+  const [editWhatsappErr, setEditWhatsappErr] = useState<string | null>(null);
   const [editAgendaCustom, setEditAgendaCustom] = useState(false);
   const [editAgendaHours, setEditAgendaHours] = useState<Set<number>>(new Set());
+  const [editWorksSaturday, setEditWorksSaturday] = useState(true);
+  const [newWorksSaturday, setNewWorksSaturday] = useState(true);
+  const [clinicSabadoOpen, setClinicSabadoOpen] = useState(false);
+  const [extraHourYmd, setExtraHourYmd] = useState("");
+  const [extraHourPick, setExtraHourPick] = useState<number | null>(null);
+  const [extraHourBusy, setExtraHourBusy] = useState(false);
+  const [extraHourErr, setExtraHourErr] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  /** Evita consumir `focusProfessionalName` antes do 1.º `load()` terminar (rows ainda []). */
+  const listSettledRef = useRef(false);
 
   const revokePreview = useCallback((url: string | null) => {
     if (url) URL.revokeObjectURL(url);
   }, []);
 
   const load = useCallback(async () => {
+    listSettledRef.current = false;
     setLoading(true);
     setError(null);
-    const { data, error: e } = await supabase
-      .from("professionals")
-      .select(
-        "id, name, specialty, whatsapp, is_active, sort_order, panel_color, avatar_path, avatar_emoji, agenda_hours"
-      )
-      .eq("clinic_id", clinicId)
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
-    setLoading(false);
-    if (e) {
-      setError(e.message);
-      setRows([]);
-      return;
+    try {
+      const { data, error: e } = await supabase
+        .from("professionals")
+        .select(
+          "id, name, specialty, whatsapp, is_active, sort_order, panel_color, avatar_path, avatar_emoji, agenda_hours, works_saturday, cs_profissional_id"
+        )
+        .eq("clinic_id", clinicId)
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true });
+      if (e) {
+        setError(e.message);
+        setRows([]);
+        return;
+      }
+      setRows((data ?? []) as Row[]);
+    } finally {
+      setLoading(false);
+      listSettledRef.current = true;
     }
-    setRows((data ?? []) as Row[]);
   }, [supabase, clinicId]);
 
   useEffect(() => {
+    if (!open || !clinicId) return;
+    void supabase
+      .from("clinics")
+      .select("sabado_aberto")
+      .eq("id", clinicId)
+      .maybeSingle()
+      .then(({ data }) => {
+        const row = data as { sabado_aberto?: unknown } | null;
+        setClinicSabadoOpen(
+          row?.sabado_aberto === true ||
+            row?.sabado_aberto === 1 ||
+            row?.sabado_aberto === "true"
+        );
+      });
+  }, [open, clinicId, supabase]);
+
+  useEffect(() => {
     if (!open) {
+      listSettledRef.current = false;
       setEditingId(null);
+      setNewWhatsappErr(null);
+      setEditWhatsappErr(null);
+      setExtraHourYmd("");
+      setExtraHourPick(null);
+      setExtraHourErr(null);
+      setExtraHourBusy(false);
+      setSaveNotice(null);
       setNewPhotoPreview((prev) => {
         revokePreview(prev);
         return null;
@@ -265,8 +350,10 @@ export function ProfessionalsManagerModal({
     setName("");
     setSpecialty("");
     setNewWhatsapp("");
+    setNewWhatsappErr(null);
     setNewColor(DEFAULT_PROFESSIONAL_PANEL_COLOR);
     setNewEmoji("");
+    setNewWorksSaturday(true);
     setNewPhotoFile(null);
     setNewPhotoPreview((prev) => {
       revokePreview(prev);
@@ -274,6 +361,12 @@ export function ProfessionalsManagerModal({
     });
     setError(null);
   }, [open, load, revokePreview]);
+
+  useEffect(() => {
+    if (!saveNotice) return;
+    const t = window.setTimeout(() => setSaveNotice(null), 4500);
+    return () => clearTimeout(t);
+  }, [saveNotice]);
 
   useEffect(() => {
     if (!open) return;
@@ -296,6 +389,12 @@ export function ProfessionalsManagerModal({
     e.preventDefault();
     const n = name.trim();
     if (!n) return;
+    const wNorm = normalizeProfessionalWhatsappBr(newWhatsapp);
+    if (!wNorm.ok) {
+      setNewWhatsappErr(wNorm.error);
+      return;
+    }
+    setNewWhatsappErr(null);
     setBusy("add");
     setError(null);
     const maxSort = rows.reduce((m, r) => Math.max(m, r.sort_order), -1);
@@ -305,12 +404,13 @@ export function ProfessionalsManagerModal({
         clinic_id: clinicId,
         name: n,
         specialty: specialty.trim() || null,
-        whatsapp: newWhatsapp.trim() || null,
+        whatsapp: wNorm.digits,
         is_active: true,
         sort_order: maxSort + 1,
         panel_color: newColor,
         avatar_emoji: newEmoji.trim() || null,
         avatar_path: null,
+        ...(clinicSabadoOpen ? { works_saturday: newWorksSaturday } : {}),
       })
       .select("id")
       .single();
@@ -347,13 +447,17 @@ export function ProfessionalsManagerModal({
 
     setBusy(null);
     if (uploadErr) {
-      setError(`Profissional criado, mas a foto não foi guardada: ${uploadErr}`);
+      setError(`Profissional criado, mas a foto não foi salva: ${uploadErr}`);
+    } else {
+      setSaveNotice("Profissional adicionado com sucesso.");
     }
     setName("");
     setSpecialty("");
     setNewWhatsapp("");
+    setNewWhatsappErr(null);
     setNewColor(DEFAULT_PROFESSIONAL_PANEL_COLOR);
     setNewEmoji("");
+    setNewWorksSaturday(true);
     setNewPhotoFile(null);
     setNewPhotoPreview((prev) => {
       revokePreview(prev);
@@ -478,28 +582,111 @@ export function ProfessionalsManagerModal({
     onChanged();
   }
 
-  function startEditRow(r: Row) {
-    setEditingId(r.id);
-    setEditName(r.name);
-    setEditSpecialty(r.specialty ?? "");
-    setEditWhatsapp(r.whatsapp ?? "");
-    setError(null);
-    if (r.agenda_hours && r.agenda_hours.length > 0) {
-      setEditAgendaCustom(true);
-      setEditAgendaHours(new Set(r.agenda_hours));
-    } else {
-      setEditAgendaCustom(false);
-      setEditAgendaHours(new Set());
+  const startEditRow = useCallback(
+    (r: Row) => {
+      setEditingId(r.id);
+      setEditName(r.name);
+      setEditSpecialty(r.specialty ?? "");
+      setEditWhatsapp(r.whatsapp ?? "");
+      setEditWhatsappErr(null);
+      setError(null);
+      setExtraHourErr(null);
+      setExtraHourPick(null);
+      setExtraHourYmd((agendaDayKey && agendaDayKey.trim()) || formatLocalYmd(new Date()));
+      if (r.agenda_hours && r.agenda_hours.length > 0) {
+        setEditAgendaCustom(true);
+        setEditAgendaHours(new Set(r.agenda_hours));
+      } else {
+        setEditAgendaCustom(false);
+        setEditAgendaHours(new Set());
+      }
+      setEditWorksSaturday(normWorksSaturday(r.works_saturday));
+    },
+    [agendaDayKey]
+  );
+
+  useEffect(() => {
+    if (!open || !focusProfessionalName?.trim() || !onFocusProfessionalConsumed) return;
+    if (loading || !listSettledRef.current) return;
+    const n = normProfName(focusProfessionalName);
+    const match =
+      rows.find((r) => normProfName(r.name) === n) ??
+      rows.find(
+        (r) =>
+          n.length >= 4 &&
+          (normProfName(r.name).includes(n) || n.includes(normProfName(r.name)))
+      );
+    if (match) {
+      startEditRow(match);
+      requestAnimationFrame(() => {
+        document.getElementById("prof-card-" + match.id)?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+      });
     }
-  }
+    onFocusProfessionalConsumed();
+  }, [
+    open,
+    focusProfessionalName,
+    loading,
+    rows,
+    onFocusProfessionalConsumed,
+    startEditRow,
+  ]);
 
   function cancelEditRow() {
     setEditingId(null);
     setEditName("");
     setEditSpecialty("");
     setEditWhatsapp("");
+    setEditWhatsappErr(null);
     setEditAgendaCustom(false);
     setEditAgendaHours(new Set());
+    setEditWorksSaturday(true);
+    setExtraHourYmd("");
+    setExtraHourPick(null);
+    setExtraHourErr(null);
+  }
+
+  async function submitExtraHour(r: Row, escopo: "dia_unico" | "recorrente") {
+    if (!r.cs_profissional_id) {
+      setExtraHourErr(
+        "Este profissional ainda não está ligado ao módulo de agenda. Salve o cadastro e tente de novo, ou contacte o suporte."
+      );
+      return;
+    }
+    if (!extraHourYmd.trim()) {
+      setExtraHourErr("Indique a data.");
+      return;
+    }
+    if (extraHourPick == null) {
+      setExtraHourErr("Escolha uma hora.");
+      return;
+    }
+    setExtraHourBusy(true);
+    setExtraHourErr(null);
+    const { data, error } = await supabase.rpc("painel_cs_add_profissional_hora", {
+      p_clinic_id: clinicId,
+      p_profissional_id: r.cs_profissional_id,
+      p_data: extraHourYmd.trim(),
+      p_hora: extraHourPick,
+      p_escopo: escopo,
+    });
+    setExtraHourBusy(false);
+    if (error) {
+      setExtraHourErr(error.message);
+      return;
+    }
+    const o = data as { ok?: unknown; error?: unknown } | null;
+    if (!o || o.ok !== true) {
+      const code = typeof o?.error === "string" ? o.error : "";
+      setExtraHourErr(mapAddProfHourError(code));
+      return;
+    }
+    await load();
+    onChanged();
+    setSaveNotice("Horário extra salvo.");
   }
 
   async function saveRowDetails(r: Row) {
@@ -508,6 +695,12 @@ export function ProfessionalsManagerModal({
       setError("Indique o nome do profissional.");
       return;
     }
+    const wNorm = normalizeProfessionalWhatsappBr(editWhatsapp);
+    if (!wNorm.ok) {
+      setEditWhatsappErr(wNorm.error);
+      return;
+    }
+    setEditWhatsappErr(null);
     setBusy(r.id);
     setError(null);
     const agendaHours = editAgendaCustom && editAgendaHours.size > 0
@@ -516,7 +709,13 @@ export function ProfessionalsManagerModal({
 
     const { error: u } = await supabase
       .from("professionals")
-      .update({ name: n, specialty: editSpecialty.trim() || null, whatsapp: editWhatsapp.trim() || null, agenda_hours: agendaHours })
+      .update({
+        name: n,
+        specialty: editSpecialty.trim() || null,
+        whatsapp: wNorm.digits,
+        agenda_hours: agendaHours,
+        ...(clinicSabadoOpen ? { works_saturday: editWorksSaturday } : {}),
+      })
       .eq("id", r.id)
       .eq("clinic_id", clinicId);
     if (u) {
@@ -529,6 +728,7 @@ export function ProfessionalsManagerModal({
     cancelEditRow();
     await load();
     onChanged();
+    setSaveNotice("Alterações salvas com sucesso.");
   }
 
   async function removeRow(r: Row) {
@@ -588,12 +788,36 @@ export function ProfessionalsManagerModal({
       <div>
         <p className="mb-1 text-xs font-semibold text-[#5c5348]">WhatsApp para notificações (opcional)</p>
         <input
-          placeholder="Ex.: 5511999999999"
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          placeholder="Ex.: 11999999999 ou 5511999999999"
           value={newWhatsapp}
-          onChange={(e) => setNewWhatsapp(e.target.value)}
-          className="w-full rounded-xl border border-[#d4cfc4] px-3 py-2.5 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
+          onChange={(e) => {
+            setNewWhatsapp(e.target.value);
+            setNewWhatsappErr(null);
+          }}
+          onBlur={() => {
+            const r = normalizeProfessionalWhatsappBr(newWhatsapp);
+            if (!r.ok) {
+              if (newWhatsapp.trim()) setNewWhatsappErr(r.error);
+              return;
+            }
+            setNewWhatsappErr(null);
+            setNewWhatsapp(r.digits ?? "");
+          }}
+          className={`w-full rounded-xl border px-3 py-2.5 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2 ${
+            newWhatsappErr ? "border-red-400" : "border-[#d4cfc4]"
+          }`}
         />
-        <p className="mt-1 text-[11px] text-[#8a8278]">Código do país + DDD + número, sem espaços ou traços.</p>
+        {newWhatsappErr ? (
+          <p className="mt-1 text-[11px] text-red-600">{newWhatsappErr}</p>
+        ) : (
+          <p className="mt-1 text-[11px] text-[#8a8278]">
+            Pode colar com +55, espaços ou traços — ao sair do campo ajustamos para o formato correto (só dígitos,
+            com 55).
+          </p>
+        )}
       </div>
       <div className="rounded-2xl border border-[#e6e1d8] bg-[#faf8f4] p-4">
         <p className="text-xs font-semibold text-[#5c5348]">Avatar</p>
@@ -649,12 +873,30 @@ export function ProfessionalsManagerModal({
         onChange={setNewColor}
         disabled={busy === "add"}
       />
+      {clinicSabadoOpen ? (
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e6e1d8] bg-[#faf8f4] px-4 py-3">
+          <input
+            type="checkbox"
+            checked={newWorksSaturday}
+            onChange={(e) => setNewWorksSaturday(e.target.checked)}
+            disabled={busy === "add"}
+            className="mt-1 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
+          />
+          <span className="text-sm text-[#2c2825]">
+            <span className="font-medium">Atende aos sábados</span>
+            <span className="mt-1 block text-[11px] text-[#8a8278]">
+              Desligue se este profissional não tiver vagas ao sábado (outros profissionais podem continuar a
+              atender).
+            </span>
+          </span>
+        </label>
+      ) : null}
       <button
         type="submit"
         disabled={busy === "add"}
         className="w-full rounded-xl bg-[#0f766e] py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0d6560] disabled:opacity-50"
       >
-        {busy === "add" ? "A guardar…" : "Adicionar profissional"}
+        {busy === "add" ? "A salvar…" : "Adicionar profissional"}
       </button>
     </form>
   );
@@ -679,6 +921,7 @@ export function ProfessionalsManagerModal({
                 : r.name;
               return (
               <li
+                id={"prof-card-" + r.id}
                 key={r.id}
                 className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white px-4 py-3 shadow-sm ${
                   isEditing
@@ -714,11 +957,35 @@ export function ProfessionalsManagerModal({
                         <p className="text-[11px] font-semibold text-[#5c5348]">WhatsApp para notificações</p>
                         <input
                           aria-label="WhatsApp do profissional"
-                          placeholder="5511999999999"
+                          type="tel"
+                          inputMode="tel"
+                          autoComplete="tel"
+                          placeholder="11999999999 ou 5511999999999"
                           value={editWhatsapp}
-                          onChange={(e) => setEditWhatsapp(e.target.value)}
-                          className="mt-1 w-full rounded-xl border border-[#d4cfc4] px-3 py-2 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
+                          onChange={(e) => {
+                            setEditWhatsapp(e.target.value);
+                            setEditWhatsappErr(null);
+                          }}
+                          onBlur={() => {
+                            const r = normalizeProfessionalWhatsappBr(editWhatsapp);
+                            if (!r.ok) {
+                              if (editWhatsapp.trim()) setEditWhatsappErr(r.error);
+                              return;
+                            }
+                            setEditWhatsappErr(null);
+                            setEditWhatsapp(r.digits ?? "");
+                          }}
+                          className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2 ${
+                            editWhatsappErr ? "border-red-400" : "border-[#d4cfc4]"
+                          }`}
                         />
+                        {editWhatsappErr ? (
+                          <p className="mt-1 text-[11px] text-red-600">{editWhatsappErr}</p>
+                        ) : (
+                          <p className="mt-0.5 text-[10px] text-[#8a8278]">
+                            Máscara ou +55: ao sair do campo normalizamos.
+                          </p>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -729,6 +996,9 @@ export function ProfessionalsManagerModal({
                       ) : null}
                       {r.whatsapp ? (
                         <p className="mt-0.5 text-[11px] text-[#0f766e]">📲 {r.whatsapp}</p>
+                      ) : null}
+                      {clinicSabadoOpen && !normWorksSaturday(r.works_saturday) ? (
+                        <p className="mt-0.5 text-[11px] font-medium text-[#8a8278]">Sem atendimento ao sábado</p>
                       ) : null}
                     </>
                   )}
@@ -851,6 +1121,99 @@ export function ProfessionalsManagerModal({
                             Usa os horários configurados em «Horários da clínica».
                           </p>
                         )}
+                        {clinicSabadoOpen ? (
+                          <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-[#e6e1d8] bg-white px-3 py-2.5">
+                            <input
+                              type="checkbox"
+                              checked={editWorksSaturday}
+                              onChange={(e) => setEditWorksSaturday(e.target.checked)}
+                              disabled={busy === r.id}
+                              className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
+                            />
+                            <span className="text-sm text-[#2c2825]">
+                              <span className="font-medium">Atende aos sábados</span>
+                              <span className="mt-0.5 block text-[11px] text-[#8a8278]">
+                                Se desligar, o agente e o painel não mostram este profissional ao sábado.
+                              </span>
+                            </span>
+                          </label>
+                        ) : (
+                          <p className="mt-3 text-[11px] text-[#8a8278]">
+                            A clínica não abre aos sábados — a regra é a mesma para toda a equipa.
+                          </p>
+                        )}
+                      </div>
+                      <div className="mt-3 rounded-xl border border-[#e6e1d8] bg-white p-3">
+                        <p className="text-xs font-semibold text-[#5c5348]">Horário extra (fora da grade)</p>
+                        <p className="mt-1 text-[11px] leading-relaxed text-[#8a8278]">
+                          Bloco que não está em «Horários da clínica», só para este profissional. Escolha a data e a
+                          hora; depois indique se vale só nesse dia ou em todos os dias em que a clínica tem agenda.
+                        </p>
+                        <label className="mt-2 block text-[11px] font-semibold text-[#5c5348]">
+                          Data
+                          <input
+                            type="date"
+                            value={extraHourYmd}
+                            onChange={(e) => {
+                              setExtraHourYmd(e.target.value);
+                              setExtraHourErr(null);
+                            }}
+                            disabled={busy === r.id || extraHourBusy}
+                            className="mt-1 w-full rounded-lg border border-[#d4cfc4] bg-white px-2 py-1.5 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
+                          />
+                        </label>
+                        {!r.cs_profissional_id ? (
+                          <p className="mt-2 text-[11px] font-medium text-amber-800">
+                            Ligação à agenda automática pendente. Salve o profissional e volte a abrir a edição, ou
+                            contacte o suporte.
+                          </p>
+                        ) : null}
+                        <div className="mt-2 grid gap-1 [grid-template-columns:repeat(auto-fit,minmax(4.5rem,1fr))]">
+                          {FULL_CLINIC_AGENDA_HOURS.map((h) => {
+                            const on = extraHourPick === h;
+                            return (
+                              <button
+                                key={h}
+                                type="button"
+                                disabled={busy === r.id || extraHourBusy}
+                                onClick={() => {
+                                  setExtraHourPick((prev) => (prev === h ? null : h));
+                                  setExtraHourErr(null);
+                                }}
+                                className={`rounded-lg border py-1.5 text-xs font-semibold tabular-nums transition-colors disabled:opacity-50 ${
+                                  on
+                                    ? "border-teal-700/70 bg-teal-950/90 text-teal-100"
+                                    : "border-dashed border-[#d4cfc4] bg-[#faf8f4] text-[#6b635a] hover:bg-[#f0ebe3]"
+                                }`}
+                              >
+                                {formatAgendaHourLabel(h)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {extraHourErr ? (
+                          <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-800">
+                            {extraHourErr}
+                          </p>
+                        ) : null}
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                          <button
+                            type="button"
+                            disabled={busy === r.id || extraHourBusy || !r.cs_profissional_id}
+                            onClick={() => void submitExtraHour(r, "dia_unico")}
+                            className="rounded-lg border border-[#d4cfc4] bg-white px-3 py-2 text-xs font-semibold text-[#2c2825] hover:bg-[#f7f4ef] disabled:opacity-50"
+                          >
+                            {extraHourBusy ? "A salvar…" : "Só neste dia"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy === r.id || extraHourBusy || !r.cs_profissional_id}
+                            onClick={() => void submitExtraHour(r, "recorrente")}
+                            className="rounded-lg border border-[#0f766e] bg-[#0f766e] px-3 py-2 text-xs font-semibold text-white hover:bg-[#0d6560] disabled:opacity-50"
+                          >
+                            {extraHourBusy ? "A salvar…" : "Todos os dias com agenda"}
+                          </button>
+                        </div>
                       </div>
                     </>
                   ) : null}
@@ -864,7 +1227,7 @@ export function ProfessionalsManagerModal({
                         onClick={() => void saveRowDetails(r)}
                         className="rounded-lg border border-[#0f766e] bg-[#0f766e] px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-[#0d6560] disabled:opacity-50"
                       >
-                        {busy === r.id ? "A guardar…" : "Guardar"}
+                        {busy === r.id ? "A salvar…" : "Salvar"}
                       </button>
                       <button
                         type="button"
@@ -933,6 +1296,15 @@ export function ProfessionalsManagerModal({
         {error ? (
           <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
             {error}
+          </p>
+        ) : null}
+        {saveNotice ? (
+          <p
+            className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900"
+            role="status"
+            aria-live="polite"
+          >
+            {saveNotice}
           </p>
         ) : null}
         <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
@@ -1032,18 +1404,44 @@ export function ProfessionalsManagerModal({
               onChange={setNewColor}
               disabled={busy === "add"}
             />
+            {clinicSabadoOpen ? (
+              <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-[#e6e1d8] bg-[#faf8f4] px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={newWorksSaturday}
+                  onChange={(e) => setNewWorksSaturday(e.target.checked)}
+                  disabled={busy === "add"}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
+                />
+                <span className="text-xs text-[#2c2825]">
+                  <span className="font-medium">Atende aos sábados</span>
+                  <span className="mt-0.5 block text-[10px] text-[#8a8278]">
+                    Desligue se não houver vagas ao sábado para este profissional.
+                  </span>
+                </span>
+              </label>
+            ) : null}
             <button
               type="submit"
               disabled={busy === "add"}
               className="w-full rounded-lg bg-[#4D6D66] py-2 text-sm font-semibold text-white hover:bg-[#3f5c56] disabled:opacity-50"
             >
-              {busy === "add" ? "A guardar…" : "Adicionar profissional"}
+              {busy === "add" ? "A salvar…" : "Adicionar profissional"}
             </button>
           </form>
 
           {error ? (
             <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
               {error}
+            </p>
+          ) : null}
+          {saveNotice ? (
+            <p
+              className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900"
+              role="status"
+              aria-live="polite"
+            >
+              {saveNotice}
             </p>
           ) : null}
 
@@ -1063,6 +1461,7 @@ export function ProfessionalsManagerModal({
                     : r.name;
                   return (
                   <li
+                    id={"prof-card-" + r.id}
                     key={r.id}
                     className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-white px-3 py-3 ${
                       isEditing
@@ -1100,6 +1499,9 @@ export function ProfessionalsManagerModal({
                           <p className="font-medium text-[#2c2825]">{r.name}</p>
                           {r.specialty ? (
                             <p className="text-xs text-[#7a7268]">{r.specialty}</p>
+                          ) : null}
+                          {clinicSabadoOpen && !normWorksSaturday(r.works_saturday) ? (
+                            <p className="mt-0.5 text-[10px] font-medium text-[#8a8278]">Sem sábado</p>
                           ) : null}
                         </>
                       )}
@@ -1151,6 +1553,86 @@ export function ProfessionalsManagerModal({
                             busy={busy === r.id}
                             onPick={(v) => void updatePanelColor(r, v)}
                           />
+                          {clinicSabadoOpen ? (
+                            <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-lg border border-[#e6e1d8] bg-[#faf8f4] px-2 py-2">
+                              <input
+                                type="checkbox"
+                                checked={editWorksSaturday}
+                                onChange={(e) => setEditWorksSaturday(e.target.checked)}
+                                disabled={busy === r.id}
+                                className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
+                              />
+                              <span className="text-xs text-[#2c2825]">
+                                <span className="font-medium">Atende aos sábados</span>
+                                <span className="mt-0.5 block text-[10px] text-[#8a8278]">
+                                  Desligue para ocultar ao sábado no agente e na agenda.
+                                </span>
+                              </span>
+                            </label>
+                          ) : null}
+                          <div className="mt-2 rounded-lg border border-[#e6e1d8] bg-white p-2">
+                            <p className="text-[11px] font-semibold text-[#5c5348]">Horário extra</p>
+                            <p className="mt-0.5 text-[10px] text-[#8a8278]">
+                              Fora da grade da clínica — data, hora, só este dia ou todos os dias com agenda.
+                            </p>
+                            <input
+                              type="date"
+                              value={extraHourYmd}
+                              onChange={(e) => {
+                                setExtraHourYmd(e.target.value);
+                                setExtraHourErr(null);
+                              }}
+                              disabled={busy === r.id || extraHourBusy}
+                              className="mt-1.5 w-full rounded border border-[#d4cfc4] px-1.5 py-1 text-xs"
+                            />
+                            {!r.cs_profissional_id ? (
+                              <p className="mt-1 text-[10px] text-amber-800">Ligação à agenda pendente.</p>
+                            ) : null}
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {FULL_CLINIC_AGENDA_HOURS.map((h) => {
+                                const on = extraHourPick === h;
+                                return (
+                                  <button
+                                    key={h}
+                                    type="button"
+                                    disabled={busy === r.id || extraHourBusy}
+                                    onClick={() => {
+                                      setExtraHourPick((prev) => (prev === h ? null : h));
+                                      setExtraHourErr(null);
+                                    }}
+                                    className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold tabular-nums disabled:opacity-50 ${
+                                      on
+                                        ? "border-teal-700 bg-teal-950 text-teal-100"
+                                        : "border-[#d4cfc4] bg-[#faf8f4] text-[#6b635a]"
+                                    }`}
+                                  >
+                                    {formatAgendaHourLabel(h)}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {extraHourErr ? (
+                              <p className="mt-1 text-[10px] text-red-700">{extraHourErr}</p>
+                            ) : null}
+                            <div className="mt-2 flex flex-col gap-1">
+                              <button
+                                type="button"
+                                disabled={busy === r.id || extraHourBusy || !r.cs_profissional_id}
+                                onClick={() => void submitExtraHour(r, "dia_unico")}
+                                className="rounded border border-[#d4cfc4] py-1 text-[10px] font-semibold text-[#2c2825] disabled:opacity-50"
+                              >
+                                {extraHourBusy ? "…" : "Só neste dia"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy === r.id || extraHourBusy || !r.cs_profissional_id}
+                                onClick={() => void submitExtraHour(r, "recorrente")}
+                                className="rounded bg-[#4D6D66] py-1 text-[10px] font-semibold text-white disabled:opacity-50"
+                              >
+                                {extraHourBusy ? "…" : "Todos os dias com agenda"}
+                              </button>
+                            </div>
+                          </div>
                         </>
                       ) : null}
                     </div>
@@ -1163,7 +1645,7 @@ export function ProfessionalsManagerModal({
                             onClick={() => void saveRowDetails(r)}
                             className="rounded-lg border border-[#4D6D66] bg-[#4D6D66] px-2 py-1.5 text-xs font-semibold text-white hover:bg-[#3f5c56] disabled:opacity-50"
                           >
-                            {busy === r.id ? "…" : "Guardar"}
+                            {busy === r.id ? "…" : "Salvar"}
                           </button>
                           <button
                             type="button"

@@ -265,7 +265,7 @@ export function PatientDrawer({ clinicId, open, paciente, canEdit, onClose, onSa
                 disabled={saving}
                 className="rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
-                {saving ? "A guardar…" : "Guardar funil, tags e origem"}
+                {saving ? "A salvar…" : "Salvar funil, tags e origem"}
               </button>
             </>
           ) : null}

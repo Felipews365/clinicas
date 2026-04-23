@@ -471,7 +471,7 @@ export function ClinicProfilePanel({
                   : "bg-[var(--primary)] text-white hover:-translate-y-px hover:shadow-md"
               }`}
             >
-              {saving ? "A guardar…" : saved ? "✓ Guardado" : "Guardar"}
+              {saving ? "A salvar…" : saved ? "✓ Salvo" : "Salvar"}
             </button>
           </div>
         </div>

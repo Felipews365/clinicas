@@ -162,7 +162,7 @@ export default function RedefinirSenhaPage() {
               disabled={busy}
               className="w-full rounded-xl bg-[#3d5852] px-4 py-3.5 text-sm font-semibold text-white shadow-md hover:bg-[#354a45] disabled:opacity-50"
             >
-              {busy ? "A guardar…" : "Guardar senha"}
+              {busy ? "A salvar…" : "Salvar senha"}
             </button>
           </form>
           <p className="mt-6 text-center">

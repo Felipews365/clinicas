@@ -410,7 +410,7 @@ export function ProceduresSectionInline({
           </div>
 
           <button type="submit" disabled={busy === "add"} className="w-full rounded-lg bg-[#4D6D66] py-2 text-sm font-semibold text-white hover:bg-[#3f5c56] disabled:opacity-50">
-            {busy === "add" ? "A guardar…" : "Adicionar procedimento"}
+            {busy === "add" ? "A salvar…" : "Adicionar procedimento"}
           </button>
         </form>
 
@@ -498,14 +498,14 @@ export function ProceduresSectionInline({
 
                           <div className="flex flex-wrap gap-2 border-t border-[#efeae3] pt-3">
                             <button type="button" disabled={busy === r.id} onClick={(e) => { e.stopPropagation(); void saveRowEdits(r); }} className="rounded-md bg-[#4D6D66] px-4 py-2 text-xs font-semibold text-white hover:bg-[#3f5c56] disabled:opacity-50">
-                              {busy === r.id ? "A guardar…" : "Guardar alterações"}
+                              {busy === r.id ? "A salvar…" : "Salvar alterações"}
                             </button>
                             <button type="button" disabled={busy === r.id} onClick={() => void removeRow(r)} className="rounded-md border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50">
                               Apagar
                             </button>
                           </div>
                           <p className="text-[10px] text-[#9a9288]">
-                            Último guardado: ~{r.duration_minutes} min · {paymentSummary(r)}
+                            Último salvo: ~{r.duration_minutes} min · {paymentSummary(r)}
                           </p>
                         </div>
                       )}
@@ -1042,7 +1042,7 @@ export function AgentConfigModal({
                 </p>
                 <p className="mt-2 text-[11px] text-[#9a9288]">
                   Ao mudar o modelo, os textos das secções abaixo são preenchidos com o perfil
-                  correspondente (pode editar antes de guardar). «Outro» inicia em branco para
+                  correspondente (pode editar antes de salvar). «Outro» inicia em branco para
                   configuração totalmente manual.
                 </p>
 
@@ -1406,7 +1406,7 @@ export function AgentConfigModal({
                   : "bg-gradient-to-b from-[#4a7c72] to-[#3d6b62] text-white hover:-translate-y-px hover:shadow-md"
               }`}
             >
-              {saving ? "A guardar…" : saved ? "✓ Guardado" : "Guardar"}
+              {saving ? "A salvar…" : saved ? "✓ Salvo" : "Salvar"}
             </button>
           </div>
         </div>

@@ -31,8 +31,8 @@ export type CsSlotRow = {
   data: string;
   horario: string;
   disponivel: boolean;
-  /** Só quando `disponivel` é false: ocupado por agendamento ativo vs bloqueio manual no painel. */
-  indisponivel_por: "cliente" | "medico" | null;
+  /** Só quando `disponivel` é false: cliente, bloqueio manual explícito, ou só indisponível (sem bloqueio). */
+  indisponivel_por: "cliente" | "medico" | "indisponivel" | null;
 };
 
 type Props = {
@@ -51,12 +51,15 @@ type Props = {
   /** Reservado (ex.: compatibilidade); rótulos e grelha usam só `clinicVisibleHours`. */
   clinicSlotsExpediente?: unknown;
   presentation?: "modal" | "panel";
+  /** Célula fora da grade: navegar para Profissionais (edição / horário extra). Se omitido, mostra só o aviso. */
+  onGoToProfessionalsExtraHour?: (profissionalNome: string) => void;
 };
 
-function parseIndisponivelPorApi(o: Record<string, unknown>): "cliente" | "medico" | null {
+function parseIndisponivelPorApi(o: Record<string, unknown>): "cliente" | "medico" | "indisponivel" | null {
   const p = o.indisponivel_por;
   if (p === "cliente") return "cliente";
   if (p === "medico") return "medico";
+  if (p === "indisponivel") return "indisponivel";
   return null;
 }
 
@@ -64,9 +67,8 @@ function parseIndisponivelPorApi(o: Record<string, unknown>): "cliente" | "medic
  * Monta o estado de UI alinhado à regra de negócio:
  * - DISPONÍVEL por defeito na grade da clínica.
  * - COM CLIENTE só com motivo explícito (indisponivel_por ou nome de procedimento / reserva).
- * - BLOQUEADO só com `bloqueio_manual` explícito verdadeiro (ou, sem essa chave, indisponivel_por === "medico").
- * Fora COM CLIENTE e BLOQUEADO manual, a célula é sempre DISPONÍVEL — não usar a coluna `disponivel`
- *   (seed/expediente legado punha false sem ser bloqueio do médico).
+ * - BLOQUEADO (Bloq.) só com `bloqueio_manual` explícito.
+ * - INDISPONÍVEL: `disponivel` false na BD sem bloqueio — agente não oferece; não é o estado vermelho.
  */
 function parseSlots(raw: unknown): CsSlotRow[] {
   if (raw == null) return [];
@@ -88,28 +90,31 @@ function parseSlots(raw: unknown): CsSlotRow[] {
         ? null
         : String(o.nome_procedimento).trim();
 
-    const por = parseIndisponivelPorApi(o);
-    const comCliente = por === "cliente" || Boolean(nomeProcedimento);
-    /**
-     * BLOQUEADO só com flag explícita na BD. Sem chave `bloqueio_manual` (RPC velho), cai no fallback
-     * indisponivel_por === "medico". Ignorar `disponivel` na coluna quando não há cliente nem bloqueio
-     * manual — o seed e dados legados usam disponivel=false para «fora do expediente» sem ser bloqueio.
-     */
+    const porApi = parseIndisponivelPorApi(o);
+    const comCliente = porApi === "cliente" || Boolean(nomeProcedimento);
     const hasBmKey = "bloqueio_manual" in o && o.bloqueio_manual != null;
     const bloqueioManual = hasBmKey
       ? o.bloqueio_manual === true ||
         o.bloqueio_manual === 1 ||
         String(o.bloqueio_manual).toLowerCase() === "true"
-      : por === "medico";
+      : porApi === "medico";
+
+    const rawDisponivelFalse =
+      o.disponivel === false ||
+      o.disponivel === 0 ||
+      String(o.disponivel).toLowerCase() === "false";
 
     let disponivel: boolean;
     let indisponivel_por: CsSlotRow["indisponivel_por"];
     if (comCliente) {
       disponivel = false;
       indisponivel_por = "cliente";
-    } else if (bloqueioManual) {
+    } else if (porApi === "medico" || (porApi == null && bloqueioManual)) {
       disponivel = false;
       indisponivel_por = "medico";
+    } else if (porApi === "indisponivel" || (porApi == null && rawDisponivelFalse && !bloqueioManual)) {
+      disponivel = false;
+      indisponivel_por = "indisponivel";
     } else {
       disponivel = true;
       indisponivel_por = null;
@@ -185,7 +190,16 @@ function SlotsLegend({ className = "" }: { className?: string }) {
     { dot: "bg-teal-400 ring-1 ring-teal-300/90", label: "Agendado", title: "Com reserva" },
     { dot: "bg-orange-500 ring-1 ring-orange-400/90", label: "Agora", title: "Em curso nesta hora" },
     { dot: "bg-red-950 ring-1 ring-red-800/90", label: "Bloq.", title: "Bloqueado manualmente" },
-    { dot: "bg-zinc-600 ring-1 ring-zinc-500/80", label: "Fora", title: "Fora da configuração da clínica" },
+    {
+      dot: "bg-zinc-500 ring-1 ring-zinc-400/70",
+      label: "Indisp.",
+      title: "Indisponível — o agente não oferece, sem bloqueio vermelho",
+    },
+    {
+      dot: "bg-zinc-600 ring-1 ring-zinc-500/80",
+      label: "Fora",
+      title: "Fora da grade base da clínica — configure em Profissionais",
+    },
   ];
   return (
     <div
@@ -214,6 +228,7 @@ export function SlotsManagerModal({
   clinicAgendaConfig,
   clinicSlotsExpediente: _clinicSlotsExpediente,
   presentation = "modal",
+  onGoToProfessionalsExtraHour,
 }: Props) {
   void _clinicSlotsExpediente;
   const [rows, setRows] = useState<CsSlotRow[]>([]);
@@ -248,6 +263,12 @@ export function SlotsManagerModal({
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [confirmDone, setConfirmDone] = useState(false);
   const [confirmingLiberar, setConfirmingLiberar] = useState(false);
+
+  /** Célula fora da grade: só orienta a abrir Profissionais. */
+  const [outsideGridHint, setOutsideGridHint] = useState<{ profNome: string } | null>(null);
+
+  /** Livre → só bloqueio explícito (Bloq.). */
+  const [blockSlotPrompt, setBlockSlotPrompt] = useState<CsSlotRow | null>(null);
 
   useEffect(() => {
     const id = window.setInterval(() => setClockTick((t) => t + 1), 30_000);
@@ -303,6 +324,8 @@ export function SlotsManagerModal({
       setViewDayKey(null);
       setMobileProfId(null);
       setDesktopProfFilter("");
+      setOutsideGridHint(null);
+      setBlockSlotPrompt(null);
       return;
     }
     if (dayKey) setActiveDayKey(dayKey);
@@ -488,7 +511,8 @@ export function SlotsManagerModal({
   function renderSlotButton(s: CsSlotRow, slotHour: number): ReactNode {
     const livre = s.disponivel;
     const porCliente = !livre && s.indisponivel_por === "cliente";
-    const bloqueado = !livre && !porCliente;
+    const bloqueado = !livre && s.indisponivel_por === "medico";
+    const indisponivelSuave = !livre && s.indisponivel_por === "indisponivel";
     const busy = busyId === s.horario_id;
     const procLabel = s.nome_procedimento?.trim() ?? null;
     const emCurso = isViewToday && porCliente && slotHour === currentHour;
@@ -501,6 +525,9 @@ export function SlotsManagerModal({
     } else if (bloqueado) {
       estadoLabel = "indisponível — bloqueio manual no painel";
       chipLabel = "Bloq.";
+    } else if (indisponivelSuave) {
+      estadoLabel = "indisponível — sem bloqueio explícito";
+      chipLabel = "Indisp.";
     } else if (emCurso) {
       estadoLabel = "consulta em curso nesta hora";
       chipLabel = "Agora";
@@ -512,7 +539,7 @@ export function SlotsManagerModal({
     const ariaProc = procLabel ? " Procedimento: " + procLabel + "." : "";
 
     const title = livre
-      ? "Marcar como indisponível (bloqueio manual — o agente deixa de listar esta vaga)"
+      ? "Bloquear este horário (card vermelho Bloq.)"
       : porCliente
         ? (procLabel ? procLabel + " — " : "") +
           "Tornar disponível (confirme se quer libertar a vaga com agendamento)"
@@ -522,6 +549,9 @@ export function SlotsManagerModal({
     if (bloqueado) {
       shell =
         "border border-red-900/70 bg-red-950/75 text-red-300 shadow-sm hover:-translate-y-px focus-visible:outline-red-700";
+    } else if (indisponivelSuave) {
+      shell =
+        "border border-zinc-600/80 bg-zinc-900/85 text-zinc-200 shadow-sm hover:-translate-y-px focus-visible:outline-zinc-500";
     } else if (emCurso) {
       shell =
         "border-2 border-orange-400 bg-orange-500 text-white shadow-[0_0_12px_rgba(249,115,22,0.55)] hover:-translate-y-px hover:shadow-[0_0_18px_rgba(249,115,22,0.7)] focus-visible:outline-orange-400";
@@ -535,18 +565,22 @@ export function SlotsManagerModal({
 
     const chipTone = bloqueado
       ? "text-red-400"
-      : emCurso
-        ? "text-orange-100 font-extrabold"
-        : porCliente
-          ? "text-teal-100 font-extrabold"
-          : "text-teal-600";
+      : indisponivelSuave
+        ? "text-zinc-300"
+        : emCurso
+          ? "text-orange-100 font-extrabold"
+          : porCliente
+            ? "text-teal-100 font-extrabold"
+            : "text-teal-600";
 
     const procTone =
       porCliente || emCurso
         ? "text-white/90"
         : livre
           ? "text-teal-600/80"
-          : "text-red-300/90";
+          : indisponivelSuave
+            ? "text-zinc-400/90"
+            : "text-red-300/90";
 
     return (
       <button
@@ -660,22 +694,25 @@ export function SlotsManagerModal({
     finally { setConfirmFetching(false); }
   }
 
-  async function execToggleSlot(slot: CsSlotRow) {
-    const next = !slot.disponivel;
+  /**
+   * @param pDisponivel — destino da coluna disponivel
+   * @param pBloqueioWhenHidden — quando pDisponivel é false: true = Bloq., false = só Indisp.
+   */
+  async function execSetSlot(slot: CsSlotRow, pDisponivel: boolean, pBloqueioWhenHidden?: boolean) {
     setBusyId(slot.horario_id);
     setError(null);
-    const { data, error: e } = await supabase.rpc(
-      "painel_cs_set_slot_disponivel",
-      {
-        p_clinic_id: clinicId,
-        p_horario_id: slot.horario_id,
-        p_disponivel: next,
-      }
-    );
+    const args = {
+      p_clinic_id: clinicId,
+      p_horario_id: slot.horario_id,
+      p_disponivel: pDisponivel,
+      /** Sempre enviar os 4 parâmetros evita ambiguidade se existir sobrecarga (uuid,uuid,bool). */
+      p_bloqueio_manual: pDisponivel ? false : (pBloqueioWhenHidden ?? true),
+    };
+    const { data, error: e } = await supabase.rpc("painel_cs_set_slot_disponivel", args);
     setBusyId(null);
     if (e) {
       setError(e.message);
-      return;
+      return false;
     }
     const ok =
       data &&
@@ -689,30 +726,39 @@ export function SlotsManagerModal({
           ? "Este horário não está na configuração global da clínica. Abra «Configurar horários da clínica» e habilite o bloco antes de alterar a vaga."
           : "Não foi possível atualizar este horário."
       );
-      return;
+      return false;
     }
+    const nextPor: CsSlotRow["indisponivel_por"] = pDisponivel
+      ? null
+      : (pBloqueioWhenHidden ?? true)
+        ? "medico"
+        : "indisponivel";
     setRows((prev) =>
       prev.map((x) =>
         x.horario_id === slot.horario_id
           ? {
               ...x,
-              disponivel: next,
-              indisponivel_por: next ? null : "medico",
+              disponivel: pDisponivel,
+              indisponivel_por: nextPor,
             }
           : x
       )
     );
+    return true;
   }
 
   async function toggleSlot(slot: CsSlotRow) {
     if (busyId) return;
-    const next = !slot.disponivel;
-    if (next && slot.indisponivel_por === "cliente") {
-      // Abre modal estilizado em vez de window.confirm
+    if (slot.disponivel) {
+      setError(null);
+      setBlockSlotPrompt(slot);
+      return;
+    }
+    if (slot.indisponivel_por === "cliente") {
       await openClienteModal(slot);
       return;
     }
-    await execToggleSlot(slot);
+    await execSetSlot(slot, true);
   }
 
   async function handleConfirmLiberarSlot() {
@@ -742,7 +788,7 @@ export function SlotsManagerModal({
         return;
       }
     }
-    await execToggleSlot(confirmSlot);
+    await execSetSlot(confirmSlot, true);
     setConfirmBusy(false);
     setConfirmDone(true);
   }
@@ -772,12 +818,19 @@ export function SlotsManagerModal({
       return;
     }
     // Libera o slot também
-    await execToggleSlot(confirmSlot);
+    await execSetSlot(confirmSlot, true);
     setConfirmBusy(false);
     setConfirmDone(true);
   }
 
-  function renderSlotsRow(slots: CsSlotRow[], _compact: boolean) {
+  async function applyBlockBloqueio() {
+    if (!blockSlotPrompt || busyId) return;
+    setError(null);
+    const ok = await execSetSlot(blockSlotPrompt, false, true);
+    if (ok) setBlockSlotPrompt(null);
+  }
+
+  function renderSlotsRow(profId: string, profNome: string, slots: CsSlotRow[], _compact: boolean) {
     void _compact;
     const dk = labelKey || activeDayKey;
     const gridClass =
@@ -789,9 +842,15 @@ export function SlotsManagerModal({
     }
     // Horários permitidos = clínica + horários personalizados retornados pela RPC para este profissional
     const allowed = new Set([...clinicGridHours, ...byHour.keys()]);
+    const hideIndispOutsideClinicGrid = (s: CsSlotRow) => {
+      const hr = parseSlotHour(s.horario);
+      if (clinicGridHours.includes(hr)) return false;
+      return !s.disponivel && s.indisponivel_por === "indisponivel";
+    };
+
     if (!dk) {
       const fallback = [...slots]
-        .filter((s) => allowed.has(parseSlotHour(s.horario)))
+        .filter((s) => allowed.has(parseSlotHour(s.horario)) && !hideIndispOutsideClinicGrid(s))
         .sort((a, b) => parseSlotHour(a.horario) - parseSlotHour(b.horario));
       return (
         <div className={gridClass}>
@@ -802,18 +861,38 @@ export function SlotsManagerModal({
     const hint = (
       <p className="col-span-full text-[10px] leading-snug text-[var(--text-muted)]">
         Blocos conforme{" "}
-        <strong className="font-medium text-[var(--text)]">Configurar horários da clínica</strong>. Toque
-        para bloquear ou libertar vagas (exceto fora da configuração).
+        <strong className="font-medium text-[var(--text)]">Configurar horários da clínica</strong>. Num horário{" "}
+        <strong className="font-medium text-[var(--text)]">Livre</strong>, toque para{" "}
+        <strong className="font-medium text-[var(--text)]">bloquear</strong>; nos outros estados (excepto com
+        agendamento), toque para libertar. Nas células <strong className="font-medium text-[var(--text)]">—</strong>{" "}
+        (fora da grade), use a aba <strong className="font-medium text-[var(--text)]">Profissionais</strong> para
+        acrescentar horário extra para{" "}
+        <span className="font-medium text-[var(--text)]">{profNome}</span>.
       </p>
     );
 
     const outsideCell = (hour: number) => {
       const label = String(hour).padStart(2, "0") + ":00";
+      const canTap = Boolean(profId) && !loading && !busyId;
       return (
-        <div
+        <button
           key={"outside-" + hour}
-          className="flex h-12 w-full min-w-0 flex-col items-center justify-center gap-0 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-0.5 py-0 text-center opacity-75 md:h-14 md:min-w-[72px]"
-          title="Fora dos horários que a clínica configurou para aparecer na agenda"
+          type="button"
+          disabled={!canTap}
+          onClick={() => {
+            if (!canTap || !profId) return;
+            if (onGoToProfessionalsExtraHour) {
+              onGoToProfessionalsExtraHour(profNome);
+              return;
+            }
+            setOutsideGridHint({ profNome });
+          }}
+          className="flex h-12 w-full min-w-0 flex-col items-center justify-center gap-0 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-0.5 py-0 text-center opacity-75 transition-colors hover:bg-[var(--surface-2)] hover:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-50 md:h-14 md:min-w-[72px]"
+          title={
+            onGoToProfessionalsExtraHour
+              ? "Fora da grade — abre Profissionais para configurar horário extra"
+              : "Fora da grade base — abra Profissionais para acrescentar horário extra"
+          }
         >
           <span className="text-center text-xs font-semibold tabular-nums text-[var(--text-muted)] md:text-sm">
             {label}
@@ -821,7 +900,7 @@ export function SlotsManagerModal({
           <span className="text-center text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] md:text-xs">
             —
           </span>
-        </div>
+        </button>
       );
     };
 
@@ -847,6 +926,7 @@ export function SlotsManagerModal({
       if (!allowed.has(h)) return outsideCell(h);
       const slot = byHour.get(h);
       if (!slot) return missingCell(h);
+      if (hideIndispOutsideClinicGrid(slot)) return outsideCell(h);
       return renderSlotButton(slot, h);
     });
 
@@ -884,12 +964,13 @@ export function SlotsManagerModal({
             </h2>
             <p id="slots-modal-desc" className="mt-1 text-[var(--text-muted)]">
               <span className="block text-xs sm:hidden">
-                Escolha o médico e ajuste as vagas só nos horários que a clínica liberou.
+                Bloqueie ou liberte vagas. Horário extra fora da grade: aba Profissionais.
               </span>
               <span className="hidden text-sm sm:block">
                 Só aparecem os blocos que a clínica marcou em{" "}
-                <strong className="font-medium text-[var(--text)]">Configurar horários da clínica</strong>. Por médico, indique o que o
-                agente pode oferecer.
+                <strong className="font-medium text-[var(--text)]">Configurar horários da clínica</strong>. Aqui só bloqueia ou
+                liberta vagas. Para horário extra fora da grade, use a aba{" "}
+                <strong className="font-medium text-[var(--text)]">Profissionais</strong>.
               </span>
             </p>
             {labelKey ? (
@@ -1040,7 +1121,7 @@ export function SlotsManagerModal({
                             </p>
                           ) : null}
                           <div className={procsLine ? "" : "mt-2"}>
-                            {renderSlotsRow(slots, true)}
+                            {renderSlotsRow(profId, head.profissional_nome, slots, true)}
                           </div>
                         </li>
                       );
@@ -1079,7 +1160,7 @@ export function SlotsManagerModal({
                           </p>
                         ) : null}
                         <div className={procsLine ? "" : "mt-2"}>
-                          {renderSlotsRow(slots, false)}
+                          {renderSlotsRow(profId, head.profissional_nome, slots, false)}
                         </div>
                       </li>
                     );
@@ -1093,6 +1174,124 @@ export function SlotsManagerModal({
 
       </div>
   );
+
+  /* ─── Modal: bloquear horário livre ─────────────────────────────────────── */
+  const blockSlotModal = blockSlotPrompt ? (() => {
+    const slot = blockSlotPrompt;
+    const labelT = slot.horario.slice(0, 5);
+    const busy = busyId === slot.horario_id;
+    const close = () => {
+      if (!busy) setBlockSlotPrompt(null);
+    };
+    return (
+      <div
+        className="fixed inset-0 z-[96] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[3px]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="block-slot-title"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) close();
+        }}
+      >
+        <div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface-soft)] p-5 shadow-2xl">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 id="block-slot-title" className="font-display text-lg font-semibold text-[var(--text)]">
+                Bloquear horário?
+              </h3>
+              <p className="mt-1 text-sm text-[var(--text-muted)]">
+                <span className="font-medium text-[var(--text)]">{slot.profissional_nome}</span>
+                {" · "}
+                <span className="tabular-nums">{labelT}</span>
+                {dateLabel ? (
+                  <>
+                    {" · "}
+                    <span className="capitalize">{dateLabel}</span>
+                  </>
+                ) : null}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={close}
+              disabled={busy}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-[var(--surface-2)] disabled:opacity-50"
+              aria-label="Fechar"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)]">
+            O agente deixa de oferecer esta vaga e o painel mostra o card vermelho{" "}
+            <strong className="text-[var(--text)]">Bloq.</strong>
+          </p>
+          {error ? (
+            <p className="mt-3 rounded-xl border border-red-800/50 bg-red-950/40 px-3 py-2 text-sm text-red-100">
+              {error}
+            </p>
+          ) : null}
+          {busy ? (
+            <p className="mt-3 text-center text-sm text-[var(--text-muted)]">A aplicar…</p>
+          ) : null}
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={close}
+              className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-2.5 text-sm font-semibold text-[var(--text)] hover:bg-[var(--bg)] disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void applyBlockBloqueio()}
+              className="rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--primary-strong)] disabled:opacity-50"
+            >
+              Bloquear
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  })() : null;
+
+  const outsideGridModal = outsideGridHint ? (
+    <div
+      className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[3px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="outside-grid-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) setOutsideGridHint(null);
+      }}
+    >
+      <div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface-soft)] p-5 shadow-2xl">
+        <h3 id="outside-grid-title" className="font-display text-lg font-semibold text-[var(--text)]">
+          Horário fora da grade
+        </h3>
+        <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)]">
+          Para acrescentar um bloco que não está em{" "}
+          <strong className="text-[var(--text)]">Configurar horários da clínica</strong>, abra a aba{" "}
+          <strong className="text-[var(--text)]">Profissionais</strong>, edite{" "}
+          <span className="font-medium text-[var(--text)]">{outsideGridHint.profNome}</span> e use{" "}
+          <strong className="text-[var(--text)]">Horário extra</strong> (só na data escolhida ou em todos os dias com
+          agenda).
+        </p>
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setOutsideGridHint(null)}
+            className="rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--primary-strong)]"
+          >
+            Percebi
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   /* ─── Modal de confirmação "cliente agendou" ─────────────────────────────── */
   const clienteModal = confirmSlot ? (() => {
@@ -1323,6 +1522,8 @@ export function SlotsManagerModal({
   if (isPanel) {
     return (
       <>
+        {blockSlotModal}
+        {outsideGridModal}
         {clienteModal}
         <div className="w-full min-w-0 max-w-none text-left" role="region" aria-label="Horários por médico">
           {shell}
@@ -1333,6 +1534,8 @@ export function SlotsManagerModal({
 
   return (
     <>
+      {blockSlotModal}
+      {outsideGridModal}
       {clienteModal}
       <div
         className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4"

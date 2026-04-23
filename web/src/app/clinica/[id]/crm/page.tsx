@@ -346,7 +346,7 @@ export default function ClinicaCrmPage() {
               disabled={reSaving}
               className="mt-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
-              {reSaving ? "A guardar…" : "Guardar mensagem"}
+              {reSaving ? "A salvar…" : "Salvar mensagem"}
             </button>
           </section>
         ) : null}

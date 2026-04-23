@@ -179,7 +179,7 @@ export function AdminPlanosManager() {
       startNew();
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Falha ao guardar.");
+      setError(e instanceof Error ? e.message : "Falha ao salvar.");
     } finally {
       setSaving(false);
     }
@@ -442,7 +442,7 @@ export function AdminPlanosManager() {
             onClick={() => void save()}
             className="rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-semibold text-neutral-950 transition-colors hover:bg-amber-400 disabled:opacity-50"
           >
-            {saving ? "A guardar…" : editingId ? "Atualizar plano" : "Criar plano"}
+            {saving ? "A salvar…" : editingId ? "Atualizar plano" : "Criar plano"}
           </button>
         </div>
       </section>

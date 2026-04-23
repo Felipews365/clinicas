@@ -196,6 +196,44 @@ function IconClose({ className }: { className?: string }) {
   );
 }
 
+function IconChevronLeft({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  );
+}
+
+function IconChevronRight({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 18l6-6-6-6" />
+    </svg>
+  );
+}
+
 
 export function AgendaPortal() {
   const router = useRouter();
@@ -239,6 +277,10 @@ export function AgendaPortal() {
     | "alerts"
     | "crm";
   const [sidebarPage, setSidebarPage] = useState<SidebarPage>("dashboard");
+  /** Vindo da grelha de horários: abrir Profissionais já em edição deste nome. */
+  const [professionalsOpenIntent, setProfessionalsOpenIntent] = useState<{
+    focusName: string;
+  } | null>(null);
   const [crmSubscription, setCrmSubscription] = useState<
     | { loaded: false }
     | { loaded: true; hasAccess: boolean; tipo_plano: string }
@@ -255,6 +297,8 @@ export function AgendaPortal() {
     null
   );
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  /** Menu lateral em desktop (sm+); mobile continua a usar o drawer. */
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [humanQueueCount, setHumanQueueCount] = useState(0);
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const handleWhatsappStatusChange = useCallback(
@@ -319,6 +363,15 @@ export function AgendaPortal() {
     },
     []
   );
+
+  const clearProfessionalsOpenIntent = useCallback(() => {
+    setProfessionalsOpenIntent(null);
+  }, []);
+
+  const goToProfessionalsForExtraHour = useCallback((profissionalNome: string) => {
+    setProfessionalsOpenIntent({ focusName: profissionalNome.trim() });
+    setSidebarPage("professionals");
+  }, []);
 
   useEffect(() => {
     const id = window.setInterval(() => setNowTick(new Date()), 1000);
@@ -1222,8 +1275,13 @@ export function AgendaPortal() {
         </>
       ) : null}
 
-      {/* Sidebar desktop: largura fixa, altura viewport, scroll só no nav */}
-      <aside className="z-20 hidden h-full w-[280px] shrink-0 flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--sidebar-bg)] shadow-sm transition-colors duration-300 sm:flex sm:flex-col">
+      {/* Sidebar desktop: wrapper não usa overflow-hidden para o puxador na borda */}
+      {desktopSidebarOpen ? (
+        <div className="relative z-20 hidden h-full w-[280px] shrink-0 sm:block">
+          <aside
+            id="painel-sidebar-desktop"
+            className="flex h-full w-full flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--sidebar-bg)] shadow-sm transition-colors duration-300"
+          >
         {/* Logo */}
         <button
           type="button"
@@ -1346,9 +1404,35 @@ export function AgendaPortal() {
             Sair
           </button>
         </div>
-      </aside>
+          </aside>
+          <button
+            type="button"
+            onClick={() => setDesktopSidebarOpen(false)}
+            className="absolute top-1/2 left-full z-30 flex h-14 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-r-lg border border-[var(--border)] border-l-0 bg-[var(--sidebar-bg)] text-[var(--text-muted)] shadow-md transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--text)]"
+            title="Recolher menu"
+            aria-label="Recolher menu lateral"
+            aria-expanded={true}
+            aria-controls="painel-sidebar-desktop"
+          >
+            <IconChevronLeft className="shrink-0" />
+          </button>
+        </div>
+      ) : null}
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      {!desktopSidebarOpen ? (
+        <button
+          type="button"
+          onClick={() => setDesktopSidebarOpen(true)}
+          className="absolute top-1/2 left-0 z-30 hidden h-14 w-6 -translate-y-1/2 items-center justify-center rounded-r-lg border border-[var(--border)] border-l-0 bg-[var(--surface)] text-[var(--text-muted)] shadow-md transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--text)] sm:flex"
+          title="Abrir menu"
+          aria-label="Abrir menu lateral"
+          aria-controls="painel-sidebar-desktop"
+          aria-expanded={false}
+        >
+          <IconChevronRight className="shrink-0" />
+        </button>
+      ) : null}
       <NotificationToastStack
         toasts={agendaNotif.toasts}
         dismissToast={agendaNotif.dismissToast}
@@ -1677,6 +1761,9 @@ export function AgendaPortal() {
                 onClose={() => setSidebarPage("dashboard")}
                 supabase={supabase}
                 clinicId={access.clinicId}
+                agendaDayKey={dayKey}
+                focusProfessionalName={professionalsOpenIntent?.focusName ?? null}
+                onFocusProfessionalConsumed={clearProfessionalsOpenIntent}
                 onChanged={() => void loadAppointments()}
               />
             ) : null}
@@ -1692,6 +1779,7 @@ export function AgendaPortal() {
                 onDayKeyChange={setDayKey}
                 clinicAgendaConfig={clinicAgendaConfig}
                 clinicSlotsExpediente={clinicSlotsExpediente}
+                onGoToProfessionalsExtraHour={goToProfessionalsForExtraHour}
               />
             ) : null}
             {sidebarPage === "clinic-profile" ? (
