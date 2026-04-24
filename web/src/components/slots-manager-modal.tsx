@@ -58,6 +58,8 @@ type Props = {
   presentation?: "modal" | "panel";
   /** Célula fora da grade: navegar para Profissionais (edição / horário extra). Se omitido, mostra só o aviso. */
   onGoToProfessionalsExtraHour?: (profissionalNome: string) => void;
+  /** Atalho no aviso “fora da grade”: abrir ecrã de configurar horários da clínica (menu lateral). */
+  onGoToClinicAgendaSettings?: () => void;
 };
 
 function parseIndisponivelPorApi(o: Record<string, unknown>): "cliente" | "medico" | "indisponivel" | null {
@@ -361,6 +363,7 @@ export function SlotsManagerModal({
   clinicSlotsExpediente: _clinicSlotsExpediente,
   presentation = "modal",
   onGoToProfessionalsExtraHour,
+  onGoToClinicAgendaSettings,
 }: Props) {
   void _clinicSlotsExpediente;
   const [rows, setRows] = useState<CsSlotRow[]>([]);
@@ -396,8 +399,12 @@ export function SlotsManagerModal({
   const [confirmDone, setConfirmDone] = useState(false);
   const [confirmingLiberar, setConfirmingLiberar] = useState(false);
 
-  /** Célula fora da grade: só orienta a abrir Profissionais. */
-  const [outsideGridHint, setOutsideGridHint] = useState<{ profNome: string } | null>(null);
+  /** Célula fora da grade (traço “—”): modal com onde activar o horário. */
+  const [outsideGridHint, setOutsideGridHint] = useState<{
+    profNome: string;
+    hour: number;
+    variant: "not_in_clinic_hours" | "indisp_outside";
+  } | null>(null);
 
   /** Livre → só bloqueio explícito (Bloq.). */
   const [blockSlotPrompt, setBlockSlotPrompt] = useState<CsSlotRow | null>(null);
@@ -1110,28 +1117,20 @@ export function SlotsManagerModal({
       </p>
     );
 
-    const outsideCell = (hour: number) => {
+    const outsideCell = (hour: number, variant: "not_in_clinic_hours" | "indisp_outside") => {
       const label = String(hour).padStart(2, "0") + ":00";
       const canTap = Boolean(profId) && !loading && !busyId;
       return (
         <button
-          key={"outside-" + hour}
+          key={"outside-" + hour + "-" + variant}
           type="button"
           disabled={!canTap}
           onClick={() => {
             if (!canTap || !profId) return;
-            if (onGoToProfessionalsExtraHour) {
-              onGoToProfessionalsExtraHour(profNome);
-              return;
-            }
-            setOutsideGridHint({ profNome });
+            setOutsideGridHint({ profNome, hour, variant });
           }}
           className="flex h-12 w-full min-w-0 flex-col items-center justify-center gap-0 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-0.5 py-0 text-center opacity-75 transition-colors hover:bg-[var(--surface-2)] hover:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-50 md:h-14 md:min-w-[72px]"
-          title={
-            onGoToProfessionalsExtraHour
-              ? "Fora da grade — abre Profissionais para configurar horário extra"
-              : "Fora da grade base — abra Profissionais para acrescentar horário extra"
-          }
+          title="Fora da grade — toque para ver onde activar este horário"
         >
           <span className="text-center text-xs font-semibold tabular-nums text-[var(--text-muted)] md:text-sm">
             {label}
@@ -1162,10 +1161,10 @@ export function SlotsManagerModal({
     };
 
     const hoursRow = displayGridHours.map((h) => {
-      if (!allowed.has(h)) return outsideCell(h);
+      if (!allowed.has(h)) return outsideCell(h, "not_in_clinic_hours");
       const slot = byHour.get(h);
       if (!slot) return missingCell(h);
-      if (hideIndispOutsideClinicGrid(slot)) return outsideCell(h);
+      if (hideIndispOutsideClinicGrid(slot)) return outsideCell(h, "indisp_outside");
       return renderSlotButton(slot, h);
     });
 
@@ -1497,40 +1496,85 @@ export function SlotsManagerModal({
     );
   })() : null;
 
-  const outsideGridModal = outsideGridHint ? (
-    <div
-      className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[3px]"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="outside-grid-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) setOutsideGridHint(null);
-      }}
-    >
-      <div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface-soft)] p-5 shadow-2xl">
-        <h3 id="outside-grid-title" className="font-display text-lg font-semibold text-[var(--text)]">
-          Horário fora da grade
-        </h3>
-        <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)]">
-          Para acrescentar um bloco que não está em{" "}
-          <strong className="text-[var(--text)]">Configurar horários da clínica</strong>, abra a aba{" "}
-          <strong className="text-[var(--text)]">Profissionais</strong>, edite{" "}
-          <span className="font-medium text-[var(--text)]">{outsideGridHint.profNome}</span> e use{" "}
-          <strong className="text-[var(--text)]">Horário extra</strong> (só na data escolhida ou em todos os dias com
-          agenda).
-        </p>
-        <div className="mt-5 flex justify-end">
-          <button
-            type="button"
-            onClick={() => setOutsideGridHint(null)}
-            className="rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--primary-strong)]"
-          >
-            Percebi
-          </button>
+  const outsideGridModal = outsideGridHint ? (() => {
+    const h = outsideGridHint.hour;
+    const labelH = String(h).padStart(2, "0") + ":00";
+    const isIndisp = outsideGridHint.variant === "indisp_outside";
+    return (
+      <div
+        className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[3px]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="outside-grid-title"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setOutsideGridHint(null);
+        }}
+      >
+        <div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface-soft)] p-5 shadow-2xl">
+          <h3 id="outside-grid-title" className="font-display text-lg font-semibold text-[var(--text)]">
+            {isIndisp ? "Indisponível fora da grade" : "Horário fora da grade da clínica"}
+          </h3>
+          <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)]">
+            O bloco das <strong className="text-[var(--text)]">{labelH}</strong> para{" "}
+            <span className="font-medium text-[var(--text)]">{outsideGridHint.profNome}</span>             não entra na grade
+            ativa — por isso vê <strong className="text-[var(--text)]">—</strong> em vez de Livre / Bloq.
+          </p>
+          {isIndisp ? (
+            <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
+              Existe registo de indisponibilidade neste horário;               para alinhar com o resto da agenda, amplie a grade
+              da clínica ou trate a exceção em Profissionais.
+            </p>
+          ) : null}
+          <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-relaxed text-[var(--text-muted)]">
+            <li>
+              <strong className="text-[var(--text)]">Grade para toda a clínica:</strong> no menu lateral, abra{" "}
+              <strong className="text-[var(--text)]">Configurar horários da clínica</strong> e inclua este dia da semana
+              e intervalos que cubram <strong className="text-[var(--text)]">{labelH}</strong>.
+            </li>
+            <li>
+              <strong className="text-[var(--text)]">Só este profissional:</strong> abra{" "}
+              <strong className="text-[var(--text)]">Profissionais</strong>, edite{" "}
+              <span className="font-medium text-[var(--text)]">{outsideGridHint.profNome}</span> e use{" "}
+              <strong className="text-[var(--text)]">Horário extra</strong> (data específica ou padrão com agenda).
+            </li>
+          </ul>
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+            {onGoToClinicAgendaSettings ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onGoToClinicAgendaSettings();
+                  setOutsideGridHint(null);
+                }}
+                className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-semibold text-[var(--text)] hover:bg-[var(--surface-2)]"
+              >
+                Configurar horários da clínica
+              </button>
+            ) : null}
+            {onGoToProfessionalsExtraHour ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onGoToProfessionalsExtraHour(outsideGridHint.profNome);
+                  setOutsideGridHint(null);
+                }}
+                className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-semibold text-[var(--text)] hover:bg-[var(--surface-2)]"
+              >
+                Abrir Profissionais
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setOutsideGridHint(null)}
+              className="rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--primary-strong)]"
+            >
+              Percebi
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  ) : null;
+    );
+  })() : null;
 
   /* ─── Modal de confirmação "cliente agendou" ─────────────────────────────── */
   const clienteModal = confirmSlot ? (() => {

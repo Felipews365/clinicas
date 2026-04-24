@@ -1861,6 +1861,7 @@ export function AgendaPortal() {
                 clinicAgendaConfig={clinicAgendaConfig}
                 clinicSlotsExpediente={clinicSlotsExpediente}
                 onGoToProfessionalsExtraHour={goToProfessionalsForExtraHour}
+                onGoToClinicAgendaSettings={() => setSidebarPage("clinic-hours")}
               />
             ) : null}
             {sidebarPage === "clinic-profile" ? (
