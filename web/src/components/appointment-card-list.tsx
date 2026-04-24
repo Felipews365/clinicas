@@ -62,26 +62,29 @@ function formatTimeLine(iso: string) {
   }).format(new Date(iso));
 }
 
-function formatPhoneDisplay(phone: string): string {
+function stripCountryCode(phone: string): string {
   const d = phone.replace(/\D/g, "");
-  if (d.length >= 11 && phone.includes("55")) {
-    const rest = d.slice(-11);
-    return `(${rest.slice(0, 2)}) ${rest.slice(2, 7)}-${rest.slice(7)}`;
+  // Remove +55 Brazil country code when present (result must be 10 or 11 digits)
+  if (d.startsWith("55") && (d.length === 12 || d.length === 13)) return d.slice(2);
+  return d;
+}
+
+function formatPhoneDisplay(phone: string): string {
+  const local = stripCountryCode(phone);
+  if (local.length === 11) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
   }
-  if (d.length === 11) {
-    return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
-  }
-  if (d.length === 10) {
-    return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  if (local.length === 10) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
   }
   return phone || "—";
 }
 
-function telHref(raw: string): string | null {
+function waHref(raw: string): string | null {
   const d = raw.replace(/\D/g, "");
   if (d.length < 8) return null;
-  if (d.length <= 11 && !d.startsWith("55")) return "tel:+55" + d;
-  return "tel:+" + d;
+  const withCountry = d.startsWith("55") ? d : "55" + d;
+  return `https://wa.me/${withCountry}`;
 }
 
 function IconCalendar({ className }: { className?: string }) {
@@ -318,7 +321,7 @@ export function AppointmentCardList({
         const prof = one(r.professionals);
         const name = patient?.name ?? "Paciente";
         const phone = patient?.phone ?? "—";
-        const phoneHref = telHref(phone);
+        const phoneHref = waHref(phone);
         const profName = prof?.name?.trim() || null;
         const pending = r.status === "scheduled" && awaitsConfirmation(r);
         const confirmed = r.status === "scheduled" && isClinicConfirmed(r);
@@ -459,9 +462,14 @@ export function AppointmentCardList({
                       {phoneHref ? (
                         <a
                           href={phoneHref}
-                          className="inline-block text-base font-bold tabular-nums leading-snug text-[var(--text)] transition-colors hover:text-[var(--primary)] hover:underline"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-base font-bold tabular-nums leading-snug text-[var(--text)] transition-colors hover:text-[#25d366] hover:underline"
                         >
                           {formatPhoneDisplay(phone)}
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="shrink-0 opacity-60">
+                            <path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.12.55 4.18 1.6 6L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.19-1.25-6.21-3.48-8.52ZM12 22c-1.85 0-3.66-.5-5.23-1.44l-.37-.22-3.88 1.02 1.04-3.8-.24-.38A9.95 9.95 0 0 1 2 12C2 6.47 6.47 2 12 2a9.95 9.95 0 0 1 7.07 2.93A9.95 9.95 0 0 1 22 12c0 5.53-4.47 10-10 10Z"/>
+                          </svg>
                         </a>
                       ) : (
                         <span className="text-base font-bold tabular-nums leading-snug text-[var(--text)]">

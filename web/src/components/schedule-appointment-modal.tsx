@@ -7,6 +7,11 @@ import {
   clinicVisibleHoursForDayKey,
   type ClinicAgendaWeekendConfig,
 } from "@/lib/clinic-agenda-hours";
+import {
+  normalizeProfissionalGenero,
+  profWhatsAppNovoAgendamento,
+} from "@/lib/professional-notify-message";
+import { withProfessionalsGenderFallback } from "@/lib/supabase-gender-column-fallback";
 
 const CONSULTATION_TYPES = [
   "Consulta Inicial",
@@ -29,7 +34,19 @@ function buildHourlyStarts(clinicVisibleHours: number[]): string[] {
   return h.map((x) => `${String(x).padStart(2, "0")}:00`);
 }
 
-type Prof = { id: string; name: string; specialty: string | null };
+type Prof = {
+  id: string;
+  name: string;
+  specialty: string | null;
+  whatsapp: string | null;
+  gender?: string | null;
+};
+
+type ClinicProcedure = {
+  id: string;
+  name: string;
+  duration_minutes: number;
+};
 
 type Props = {
   open: boolean;
@@ -61,8 +78,18 @@ export function ScheduleAppointmentModal({
   const [prefDate, setPrefDate] = useState("");
   const [prefTime, setPrefTime] = useState("");
   const [professionalId, setProfessionalId] = useState("");
-  const [consultType, setConsultType] = useState<string>("");
+  /** Quando há catálogo `clinic_procedures`, guarda o id do procedimento. */
+  const [consultProcedureId, setConsultProcedureId] = useState("");
+  /** Sem catálogo, usa tipos genéricos. */
+  const [consultLegacyType, setConsultLegacyType] = useState("");
   const [notes, setNotes] = useState("");
+
+  const [procedureCatalog, setProcedureCatalog] = useState<ClinicProcedure[]>(
+    [],
+  );
+  const [profProcedureIds, setProfProcedureIds] = useState<
+    Map<string, Set<string>>
+  >(() => new Map());
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -90,36 +117,100 @@ export function ScheduleAppointmentModal({
     setPrefDate("");
     setPrefTime("");
     setProfessionalId("");
-    setConsultType("");
+    setConsultProcedureId("");
+    setConsultLegacyType("");
     setNotes("");
     setSubmitError(null);
   }, []);
 
+  const filteredProcedures = useMemo(() => {
+    if (!professionalId || procedureCatalog.length === 0) return [];
+    const allowed = profProcedureIds.get(professionalId);
+    if (!allowed || allowed.size === 0) return procedureCatalog;
+    return procedureCatalog.filter((p) => allowed.has(p.id));
+  }, [professionalId, procedureCatalog, profProcedureIds]);
+
   const loadProfessionals = useCallback(async () => {
     setLoadingMeta(true);
     setLoadError(null);
-    const { data: pros, error: pErr } = await supabase
-      .from("professionals")
-      .select("id, name, specialty")
-      .eq("clinic_id", clinicId)
-      .eq("is_active", true)
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
+    const { data: pros, error: pErr } = await withProfessionalsGenderFallback(
+      (includeGender) =>
+        supabase
+          .from("professionals")
+          .select(
+            includeGender
+              ? "id, name, specialty, whatsapp, gender"
+              : "id, name, specialty, whatsapp"
+          )
+          .eq("clinic_id", clinicId)
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true })
+          .order("name", { ascending: true })
+    );
 
-    setLoadingMeta(false);
     if (pErr) {
+      setLoadingMeta(false);
       setLoadError(pErr.message);
       setProfessionals([]);
+      setProcedureCatalog([]);
+      setProfProcedureIds(new Map());
       return;
     }
     const list = (pros ?? []) as Prof[];
     setProfessionals(list);
+
+    const proIds = list.map((p) => p.id);
+    const [procsRes, linksRes] = await Promise.all([
+      supabase
+        .from("clinic_procedures")
+        .select("id, name, duration_minutes")
+        .eq("clinic_id", clinicId)
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true }),
+      proIds.length
+        ? supabase
+            .from("professional_procedures")
+            .select("professional_id, clinic_procedure_id")
+            .in("professional_id", proIds)
+        : Promise.resolve({ data: null as null, error: null as null }),
+    ]);
+
+    setLoadingMeta(false);
+
+    if (procsRes.error) {
+      setProcedureCatalog([]);
+    } else {
+      setProcedureCatalog((procsRes.data ?? []) as ClinicProcedure[]);
+    }
+
+    const linkMap = new Map<string, Set<string>>();
+    if (!linksRes.error && linksRes.data) {
+      for (const row of linksRes.data as {
+        professional_id: string;
+        clinic_procedure_id: string;
+      }[]) {
+        const pid = row.professional_id;
+        const cid = row.clinic_procedure_id;
+        if (!linkMap.has(pid)) linkMap.set(pid, new Set());
+        linkMap.get(pid)!.add(cid);
+      }
+    }
+    setProfProcedureIds(linkMap);
+
     if (!list.length) {
       setLoadError(
         "Não há profissionais ativos. Abra «Profissionais» no painel e cadastre pelo menos um."
       );
     }
   }, [supabase, clinicId]);
+
+  useEffect(() => {
+    if (!consultProcedureId || procedureCatalog.length === 0) return;
+    if (!filteredProcedures.some((p) => p.id === consultProcedureId)) {
+      setConsultProcedureId("");
+    }
+  }, [filteredProcedures, consultProcedureId, procedureCatalog.length]);
 
   useEffect(() => {
     if (!open) return;
@@ -149,8 +240,18 @@ export function ScheduleAppointmentModal({
       setSubmitError("Escolha data e horário.");
       return;
     }
-    if (!professionalId || !consultType) {
-      setSubmitError("Selecione o profissional e o tipo de consulta.");
+    const useCatalog = procedureCatalog.length > 0;
+    if (!professionalId) {
+      setSubmitError("Selecione o profissional.");
+      return;
+    }
+    if (useCatalog) {
+      if (!consultProcedureId) {
+        setSubmitError("Selecione o tipo de consulta (procedimento).");
+        return;
+      }
+    } else if (!consultLegacyType) {
+      setSubmitError("Selecione o tipo de consulta.");
       return;
     }
 
@@ -162,7 +263,23 @@ export function ScheduleAppointmentModal({
       setSubmitError("Data ou horário inválidos.");
       return;
     }
-    const ends = new Date(starts.getTime() + SLOT_MINUTES * 60 * 1000);
+
+    let serviceName: string;
+    let slotMinutes = SLOT_MINUTES;
+    if (useCatalog) {
+      const proc = procedureCatalog.find((x) => x.id === consultProcedureId);
+      if (!proc) {
+        setSubmitError("Procedimento inválido.");
+        return;
+      }
+      serviceName = proc.name;
+      const d = Number(proc.duration_minutes);
+      if (Number.isFinite(d) && d > 0) slotMinutes = d;
+    } else {
+      serviceName = consultLegacyType;
+    }
+
+    const ends = new Date(starts.getTime() + slotMinutes * 60 * 1000);
 
     setSubmitting(true);
 
@@ -224,7 +341,7 @@ export function ScheduleAppointmentModal({
       patient_id: patientId,
       starts_at: starts.toISOString(),
       ends_at: ends.toISOString(),
-      service_name: consultType,
+      service_name: serviceName,
       status: "scheduled",
       source: "painel",
       notes: notes.trim() || null,
@@ -246,6 +363,27 @@ export function ScheduleAppointmentModal({
         );
       }
       return;
+    }
+
+    // Notificar profissional via WhatsApp (fire-and-forget)
+    const prof = professionals.find((p) => p.id === professionalId);
+    if (prof?.whatsapp?.trim()) {
+      const [y, m, d] = prefDate.split("-");
+      const dataFmt = `${d}/${m}/${y}`;
+      const text = profWhatsAppNovoAgendamento({
+        profissional: prof.name?.trim() || null,
+        profissionalGenero: normalizeProfissionalGenero(prof.gender),
+        cliente: fullName.trim(),
+        clienteTelefone: phoneStored,
+        servico: serviceName,
+        data: dataFmt,
+        hora: prefTime,
+      });
+      void fetch("/api/whatsapp/notify-professional", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clinic_id: clinicId, phone: prof.whatsapp.trim(), text }),
+      }).catch(() => {});
     }
 
     resetForm();
@@ -300,7 +438,11 @@ export function ScheduleAppointmentModal({
             <select
               required
               value={professionalId}
-              onChange={(e) => setProfessionalId(e.target.value)}
+              onChange={(e) => {
+                setProfessionalId(e.target.value);
+                setConsultProcedureId("");
+                setConsultLegacyType("");
+              }}
               className="w-full rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2.5 text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
             >
               <option value="">Selecione quem atende</option>
@@ -349,7 +491,19 @@ export function ScheduleAppointmentModal({
                 type="date"
                 value={prefDate}
                 onChange={(e) => setPrefDate(e.target.value)}
-                className="w-full rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2.5 text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
+                onClick={(e) => {
+                  const el = e.currentTarget as HTMLInputElement & {
+                    showPicker?: () => void;
+                  };
+                  if (typeof el.showPicker === "function") {
+                    try {
+                      el.showPicker();
+                    } catch {
+                      /* alguns browsers bloqueiam fora de gesto do utilizador */
+                    }
+                  }
+                }}
+                className="w-full cursor-pointer rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2.5 text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
               />
               {closedDayHint ? (
                 <p className="mt-1.5 text-xs font-medium text-amber-800">{closedDayHint}</p>
@@ -387,14 +541,37 @@ export function ScheduleAppointmentModal({
               </span>
               <select
                 required
-                value={consultType}
-                onChange={(e) => setConsultType(e.target.value)}
-                className="w-full rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2.5 text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
+                value={
+                  procedureCatalog.length > 0
+                    ? consultProcedureId
+                    : consultLegacyType
+                }
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (procedureCatalog.length > 0) setConsultProcedureId(v);
+                  else setConsultLegacyType(v);
+                }}
+                disabled={
+                  !professionalId ||
+                  (procedureCatalog.length > 0 &&
+                    filteredProcedures.length === 0)
+                }
+                className="w-full rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2.5 text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <option value="">Selecione</option>
-                {CONSULTATION_TYPES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+                <option value="">
+                  {!professionalId
+                    ? "Selecione o profissional primeiro"
+                    : procedureCatalog.length > 0 &&
+                        filteredProcedures.length === 0
+                      ? "Sem procedimentos — cadastre no catálogo ou em «Profissionais»"
+                      : "Selecione"}
+                </option>
+                {(procedureCatalog.length > 0
+                  ? filteredProcedures
+                  : CONSULTATION_TYPES.map((name) => ({ id: name, name }))
+                ).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
                   </option>
                 ))}
               </select>

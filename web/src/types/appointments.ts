@@ -3,6 +3,8 @@ export type ProfessionalEmbed = {
   id?: string | null;
   name: string;
   specialty: string | null;
+  /** M = Dr., F = Dra. em notificações; opcional. */
+  gender?: string | null;
   /** Hex da paleta do painel (ex.: #E7F7EE); opcional em dados antigos. */
   panel_color?: string | null;
   /** Caminho no bucket `professional-avatars`. */

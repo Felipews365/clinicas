@@ -12,6 +12,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
+import { AgendaDatePickerPopover } from "@/components/agenda-date-picker-popover";
 import { AppointmentCardList } from "@/components/appointment-card-list";
 import { AppointmentsCalendar } from "@/components/appointments-calendar";
 import { useAnimatedNumber } from "@/hooks/use-animated-number";
@@ -29,6 +30,11 @@ import {
   serviceNamesFromAppointment,
   one,
 } from "@/types/appointments";
+import {
+  csAgendamentoUuidFromPanelId,
+  fireNotifyProfessionalAfterPanelCancel,
+  painelRpcCancelCsErrorMessage,
+} from "@/lib/painel-notify-professional";
 
 function rowProfessionalId(r: AppointmentRow): string | null {
   const raw = one(r.professionals)?.id;
@@ -241,6 +247,7 @@ type ProfRosterEntry = {
   panel_color: string | null;
   cs_profissional_id?: string | null;
   is_active?: boolean;
+  whatsapp?: string | null;
 };
 
 export type PainelDashboardProps = {
@@ -435,18 +442,29 @@ export function PainelDashboard({
     setGridModalError(null);
     const id = gridModalAppt.id;
     let errMsg: string | null = null;
-    if (id.startsWith("cs:")) {
-      const { error } = await supabase.rpc("painel_cancel_cs_agendamento", {
-        p_clinic_id: clinicId,
-        p_cs_agendamento_id: id.slice(3),
-      });
+    const csUuid = csAgendamentoUuidFromPanelId(id);
+    if (csUuid) {
+      const { data: cancelData, error } = await supabase.rpc(
+        "painel_cancel_cs_agendamento",
+        {
+          p_clinic_id: clinicId,
+          p_cs_agendamento_id: csUuid,
+        }
+      );
       if (error) errMsg = error.message;
+      else {
+        errMsg = painelRpcCancelCsErrorMessage(cancelData);
+        if (!errMsg) fireNotifyProfessionalAfterPanelCancel(clinicId, cancelData, id);
+      }
     } else {
-      const { error } = await supabase
+      const { data: upd, error } = await supabase
         .from("appointments")
         .update({ status: "cancelled" })
-        .eq("id", id);
+        .eq("id", id)
+        .select("id")
+        .maybeSingle();
       if (error) errMsg = error.message;
+      else if (!upd) errMsg = "Agendamento não encontrado.";
     }
     setGridModalBusy(false);
     if (errMsg) {
@@ -705,174 +723,10 @@ export function PainelDashboard({
         );
       })() : null}
 
-
-      {kpiLoading && !kpiData ? (
-        <DashboardSkeleton />
-      ) : null}
-
-      {kpiData ? (
-        <>
-          <div className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Receita projectada (mês)
-              </p>
-              <p className="mt-2 font-display text-3xl font-semibold tabular-nums text-[var(--primary)]">
-                {formatBRL(animRev)}
-              </p>
-              <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-                Confirmados × preço (estimativa)
-              </p>
-              <DeltaRow
-                current={month!.revenue}
-                previous={month!.revenue_prev}
-              />
-            </div>
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Novos pacientes
-              </p>
-              <p className="mt-2 font-display text-3xl font-semibold tabular-nums text-[var(--primary)]">
-                {Math.round(animNew)}
-              </p>
-              <DeltaRow
-                current={month!.new_patients}
-                previous={month!.new_patients_prev}
-              />
-            </div>
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Taxa confirmação
-              </p>
-              <p className="mt-2 font-display text-3xl font-semibold tabular-nums text-[var(--primary)]">
-                {animConf.toFixed(1)}%
-              </p>
-              <DeltaRow
-                current={month!.confirmation_rate}
-                previous={month!.confirmation_rate_prev}
-              />
-            </div>
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Ocupação hoje
-              </p>
-              <p className="mt-2 font-display text-3xl font-semibold tabular-nums text-teal-400">
-                {animOcc.toFixed(1)}%
-              </p>
-              <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-                Horas reservadas / capacidade 07h–19h
-              </p>
-            </div>
-          </div>
-
-          <div className="mb-8 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-              Insights
-            </p>
-            <div className="mt-4 flex flex-wrap justify-around gap-6 sm:justify-between">
-              <RingMetric
-                label="Confirmação"
-                value={insights!.confirmation_pct}
-                color="var(--primary)"
-              />
-              <RingMetric
-                label="Retorno (90d)"
-                value={insights!.return_pct}
-                color="#2dd4bf"
-              />
-              <RingMetric
-                label="Ocupação"
-                value={insights!.occupancy_pct}
-                color="#34d399"
-              />
-            </div>
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl bg-[var(--surface-soft)] p-4">
-                <p className="text-sm font-semibold text-[var(--text)]">
-                  Retorno vencido
-                </p>
-                <p className="mt-1 text-2xl font-bold text-amber-400">
-                  {insights!.alerts.retorno_vencido_count}
-                </p>
-                <p className="mt-1 text-xs text-[var(--text-muted)]">
-                  Sem consulta há 180d+ (não sumidos)
-                </p>
-                <button
-                  type="button"
-                  className="mt-3 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-white"
-                  onClick={() =>
-                    router.push(`/clinica/${encodeURIComponent(clinicId)}/crm`)
-                  }
-                >
-                  Ver no CRM
-                </button>
-              </div>
-              <div className="rounded-xl bg-[var(--surface-soft)] p-4">
-                <p className="text-sm font-semibold text-[var(--text)]">
-                  Receita represada
-                </p>
-                <p className="mt-1 text-2xl font-bold text-orange-400">
-                  {formatBRL(insights!.alerts.receita_represada)}
-                </p>
-                <p className="mt-1 text-xs text-[var(--text-muted)]">
-                  Pendentes de confirmação (mês)
-                </p>
-              </div>
-              <div className="rounded-xl bg-[var(--surface-soft)] p-4">
-                <p className="text-sm font-semibold text-[var(--text)]">
-                  Agenda com buracos
-                </p>
-                <p className="mt-1 text-2xl font-bold text-teal-400">
-                  {insights!.alerts.agenda_buracos_count}
-                </p>
-                <p className="mt-1 text-xs text-[var(--text-muted)]">
-                  Horas livres entre marcações (hoje)
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {topServices.length > 0 ? (
-            <div className="mb-8 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Serviços do mês
-              </p>
-              <ul className="mt-4 space-y-3">
-                {topServices.map((s, idx) => {
-                  const hue = (idx * 47) % 360;
-                  const w = (s.count / maxTop) * 100;
-                  return (
-                    <li key={s.name} className="min-w-0">
-                      <div className="flex justify-between text-sm">
-                        <span className="truncate font-medium text-[var(--text)]">
-                          {s.name}
-                        </span>
-                        <span className="shrink-0 tabular-nums text-[var(--text-muted)]">
-                          {s.count} · {formatBRL(Number(s.revenue))}
-                        </span>
-                      </div>
-                      <div className="mt-1 h-2 overflow-hidden rounded-full bg-[var(--surface-soft)]">
-                        <div
-                          className="h-full rounded-full transition-all duration-500"
-                          style={{
-                            width: `${w}%`,
-                            background: `hsl(${hue} 65% 45%)`,
-                          }}
-                        />
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-
       <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
         <div className="agenda-animate-in max-w-xl" style={{ animationDelay: "0ms" }}>
           <p className="text-xs font-semibold uppercase tracking-widest text-[var(--primary)]">
-            Dashboard
+            Agenda
           </p>
           <h1 className="mt-2 font-bold text-3xl text-[var(--text)] sm:text-4xl">
             Agenda do dia
@@ -1019,19 +873,12 @@ export function PainelDashboard({
           >
             Dia anterior
           </button>
-          <label className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
-            <span className="sr-only sm:not-sr-only">Data</span>
-            <input
-              type="date"
-              disabled={!dayKey}
-              value={dayKey}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v) setDayKey(v);
-              }}
-              className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 font-sans text-[var(--text)] shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] disabled:opacity-50"
-            />
-          </label>
+          <AgendaDatePickerPopover
+            dayKey={dayKey}
+            disabled={!dayKey}
+            onSelectDay={(ymd) => setDayKey(ymd)}
+            label="Data"
+          />
           <button
             type="button"
             disabled={!dayKey}
@@ -1262,7 +1109,7 @@ export function PainelDashboard({
         </p>
       ) : null}
 
-      {kpiLoading && !kpiData ? null : viewMode === "calendar" ? (
+      {viewMode === "calendar" ? (
         <div className={listLoading && !profFilteredRows.length ? "min-h-[200px]" : ""}>
           {listLoading && !profFilteredRows.length ? (
             <p className="py-16 text-center text-sm text-[var(--text-muted)]">
@@ -1299,6 +1146,186 @@ export function PainelDashboard({
           onRemove={onRemoveAppointment}
         />
       ) : null}
+
+      <section
+        className="mt-14 border-t border-[var(--border)] pt-10"
+        aria-label="Indicadores do mês"
+      >
+        <div className="mb-8">
+          <p className="text-xs font-semibold uppercase tracking-widest text-[var(--primary)]">
+            Indicadores
+          </p>
+          <h2 className="mt-2 font-display text-xl font-semibold text-[var(--text)] sm:text-2xl">
+            Resumo e serviços do mês
+          </h2>
+          <p className="mt-1 max-w-prose text-sm text-[var(--text-muted)]">
+            Receita prevista, confirmação e ocupação — desça para ver o detalhe.
+          </p>
+        </div>
+
+        {kpiLoading && !kpiData ? (
+          <DashboardSkeleton />
+        ) : null}
+
+        {kpiData ? (
+          <>
+            <div className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                  Receita projectada (mês)
+                </p>
+                <p className="mt-2 font-display text-3xl font-semibold tabular-nums text-[var(--primary)]">
+                  {formatBRL(animRev)}
+                </p>
+                <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+                  Confirmados × preço (estimativa)
+                </p>
+                <DeltaRow
+                  current={month!.revenue}
+                  previous={month!.revenue_prev}
+                />
+              </div>
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                  Novos pacientes
+                </p>
+                <p className="mt-2 font-display text-3xl font-semibold tabular-nums text-[var(--primary)]">
+                  {Math.round(animNew)}
+                </p>
+                <DeltaRow
+                  current={month!.new_patients}
+                  previous={month!.new_patients_prev}
+                />
+              </div>
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                  Taxa confirmação
+                </p>
+                <p className="mt-2 font-display text-3xl font-semibold tabular-nums text-[var(--primary)]">
+                  {animConf.toFixed(1)}%
+                </p>
+                <DeltaRow
+                  current={month!.confirmation_rate}
+                  previous={month!.confirmation_rate_prev}
+                />
+              </div>
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                  Ocupação hoje
+                </p>
+                <p className="mt-2 font-display text-3xl font-semibold tabular-nums text-teal-400">
+                  {animOcc.toFixed(1)}%
+                </p>
+                <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+                  Horas reservadas / capacidade 07h–19h
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-8 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                Insights
+              </p>
+              <div className="mt-4 flex flex-wrap justify-around gap-6 sm:justify-between">
+                <RingMetric
+                  label="Confirmação"
+                  value={insights!.confirmation_pct}
+                  color="var(--primary)"
+                />
+                <RingMetric
+                  label="Retorno (90d)"
+                  value={insights!.return_pct}
+                  color="#2dd4bf"
+                />
+                <RingMetric
+                  label="Ocupação"
+                  value={insights!.occupancy_pct}
+                  color="#34d399"
+                />
+              </div>
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl bg-[var(--surface-soft)] p-4">
+                  <p className="text-sm font-semibold text-[var(--text)]">
+                    Retorno vencido
+                  </p>
+                  <p className="mt-1 text-2xl font-bold text-amber-400">
+                    {insights!.alerts.retorno_vencido_count}
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">
+                    Sem consulta há 180d+ (não sumidos)
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-3 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-white"
+                    onClick={() =>
+                      router.push(`/clinica/${encodeURIComponent(clinicId)}/crm`)
+                    }
+                  >
+                    Ver no CRM
+                  </button>
+                </div>
+                <div className="rounded-xl bg-[var(--surface-soft)] p-4">
+                  <p className="text-sm font-semibold text-[var(--text)]">
+                    Receita represada
+                  </p>
+                  <p className="mt-1 text-2xl font-bold text-orange-400">
+                    {formatBRL(insights!.alerts.receita_represada)}
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">
+                    Pendentes de confirmação (mês)
+                  </p>
+                </div>
+                <div className="rounded-xl bg-[var(--surface-soft)] p-4">
+                  <p className="text-sm font-semibold text-[var(--text)]">
+                    Agenda com buracos
+                  </p>
+                  <p className="mt-1 text-2xl font-bold text-teal-400">
+                    {insights!.alerts.agenda_buracos_count}
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">
+                    Horas livres entre marcações (hoje)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {topServices.length > 0 ? (
+              <div className="mb-8 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                  Serviços do mês
+                </p>
+                <ul className="mt-4 space-y-3">
+                  {topServices.map((s, idx) => {
+                    const hue = (idx * 47) % 360;
+                    const w = (s.count / maxTop) * 100;
+                    return (
+                      <li key={s.name} className="min-w-0">
+                        <div className="flex justify-between text-sm">
+                          <span className="truncate font-medium text-[var(--text)]">
+                            {s.name}
+                          </span>
+                          <span className="shrink-0 tabular-nums text-[var(--text-muted)]">
+                            {s.count} · {formatBRL(Number(s.revenue))}
+                          </span>
+                        </div>
+                        <div className="mt-1 h-2 overflow-hidden rounded-full bg-[var(--surface-soft)]">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${w}%`,
+                              background: `hsl(${hue} 65% 45%)`,
+                            }}
+                          />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </section>
     </>
   );
 }

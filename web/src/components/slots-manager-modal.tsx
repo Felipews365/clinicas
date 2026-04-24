@@ -17,6 +17,11 @@ import {
   clinicVisibleHoursForDayKey,
   type ClinicAgendaWeekendConfig,
 } from "@/lib/clinic-agenda-hours";
+import {
+  csAgendamentoUuidFromPanelId,
+  fireNotifyProfessionalAfterPanelCancel,
+  painelRpcCancelCsErrorMessage,
+} from "@/lib/painel-notify-professional";
 
 const DISPLAY_HOUR_START = 7;
 const DISPLAY_HOUR_END = 19;
@@ -138,6 +143,133 @@ function parseSlots(raw: unknown): CsSlotRow[] {
 }
 
 const MAX_DAYS_SCAN = 21;
+
+/** Liga `profissional_id` da grelha (cs_profissionais.id) ao `professionals.id` do painel. */
+function panelProfessionalIdForSlot(
+  pros: { id: string; cs_profissional_id: string | null }[],
+  slotProfissionalId: string
+): string | null {
+  const sid = slotProfissionalId.trim();
+  if (!sid) return null;
+  for (const p of pros) {
+    if (p.id === sid) return p.id;
+    if (p.cs_profissional_id != null && String(p.cs_profissional_id) === sid) return p.id;
+  }
+  return null;
+}
+
+/** Nome para casar painel ↔ rótulo vindo da RPC (títulos, acentos). */
+function normProfNameLoose(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/^\s*(dra\.?|dr\.?|prof\.?|profa\.?)\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+type PanelProForSlotFilter = {
+  id: string;
+  name: string;
+  cs_profissional_id: string | null;
+  is_active: boolean | null;
+};
+
+/** Linha mínima de `appointments` para marcar vaga ocupada na grelha CS. */
+type PainelAppointmentForSlots = {
+  starts_at: string;
+  professional_id?: string | null;
+  service_name?: string | null;
+  professionals?: unknown;
+};
+
+function painelAppointmentMatchesCsSlot(
+  appt: PainelAppointmentForSlots,
+  slot: CsSlotRow,
+  panelPros: { id: string; cs_profissional_id: string | null }[]
+): boolean {
+  const apptDay = formatLocalYmd(new Date(appt.starts_at));
+  if (apptDay !== slot.data) return false;
+  const slotHour = parseInt(slot.horario.slice(0, 2), 10);
+  if (
+    !Number.isFinite(slotHour) ||
+    new Date(appt.starts_at).getHours() !== slotHour
+  ) {
+    return false;
+  }
+  const panelProfId = panelProfessionalIdForSlot(panelPros, slot.profissional_id);
+  const emb = Array.isArray(appt.professionals)
+    ? appt.professionals[0]
+    : appt.professionals;
+  const rowPid =
+    appt.professional_id != null && String(appt.professional_id).trim() !== ""
+      ? String(appt.professional_id)
+      : emb != null && typeof emb === "object" && emb !== null && "id" in emb
+        ? String((emb as { id?: string }).id ?? "")
+        : "";
+  const embCs =
+    emb != null && typeof emb === "object" && emb !== null && "cs_profissional_id" in emb
+      ? (emb as { cs_profissional_id?: string | null }).cs_profissional_id
+      : null;
+  if (panelProfId && rowPid === panelProfId) return true;
+  if (embCs != null && String(embCs) === slot.profissional_id) return true;
+  if (rowPid === slot.profissional_id) return true;
+  return false;
+}
+
+/** `painel_cs_slots_dia` não inclui `appointments` (marcações só no painel). */
+function mergePainelAppointmentsIntoSlotRows(
+  rows: CsSlotRow[],
+  appts: PainelAppointmentForSlots[] | null | undefined,
+  panelPros: { id: string; cs_profissional_id: string | null }[]
+): CsSlotRow[] {
+  if (!appts?.length) return rows;
+  return rows.map((slot) => {
+    const hit = appts.find((a) => painelAppointmentMatchesCsSlot(a, slot, panelPros));
+    if (!hit) return slot;
+    const fromCs =
+      !slot.disponivel &&
+      slot.indisponivel_por === "cliente" &&
+      Boolean(slot.nome_procedimento?.trim());
+    if (fromCs) return slot;
+    const svc =
+      (hit.service_name ?? "").trim() ||
+      slot.nome_procedimento?.trim() ||
+      "Consulta (painel)";
+    return {
+      ...slot,
+      disponivel: false,
+      indisponivel_por: "cliente",
+      nome_procedimento: svc,
+    };
+  });
+}
+
+/**
+ * Mantém só horários de profissionais com registo activo no painel.
+ * Evita linhas extra por `cs_profissionais` órfãos ou duplicados na BD.
+ */
+function filterSlotRowsByActivePanelProfessionals(
+  rows: CsSlotRow[],
+  panelPros: PanelProForSlotFilter[]
+): CsSlotRow[] {
+  const active = panelPros.filter((p) => p.is_active !== false);
+  const allow = new Set<string>();
+  for (const p of active) {
+    if (p.cs_profissional_id) allow.add(String(p.cs_profissional_id));
+  }
+  const unlinked = active.filter((p) => !p.cs_profissional_id);
+  if (unlinked.length) {
+    for (const r of rows) {
+      if (allow.has(r.profissional_id)) continue;
+      const rn = normProfNameLoose(r.profissional_nome);
+      if (unlinked.some((p) => normProfNameLoose(p.name) === rn)) allow.add(r.profissional_id);
+    }
+  }
+  if (allow.size === 0) return rows;
+  return rows.filter((r) => allow.has(r.profissional_id));
+}
 
 function uniqueProceduresFromSlots(slots: CsSlotRow[]): string[] {
   const seen = new Set<string>();
@@ -365,6 +497,29 @@ export function SlotsManagerModal({
     const parseDayRows = (raw: unknown) => parseSlots(raw);
 
     try {
+      const { data: panelProsRaw } = await supabase
+        .from("professionals")
+        .select("id, name, cs_profissional_id, is_active")
+        .eq("clinic_id", clinicId);
+      const panelPros = (panelProsRaw ?? []) as PanelProForSlotFilter[];
+      const prosForMerge = panelPros.map((p) => ({
+        id: p.id,
+        cs_profissional_id: p.cs_profissional_id,
+      }));
+      const filterVisible = (visible: CsSlotRow[]) =>
+        filterSlotRowsByActivePanelProfessionals(visible, panelPros);
+
+      const fetchPainelAppointments = (dayYmd: string) =>
+        supabase
+          .from("appointments")
+          .select(
+            "professional_id, service_name, starts_at, professionals(id, cs_profissional_id)"
+          )
+          .eq("clinic_id", clinicId)
+          .eq("status", "scheduled")
+          .gte("starts_at", `${dayYmd}T00:00:00`)
+          .lt("starts_at", `${addDaysToYmd(dayYmd, 1)}T00:00:00`);
+
       if (isYmdToday(activeDayKey)) {
         let k = activeDayKey;
         for (let i = 0; i < MAX_DAYS_SCAN; i++) {
@@ -372,7 +527,10 @@ export function SlotsManagerModal({
             p_clinic_id: clinicId,
             p_data: k,
           });
-          const { data, error: e } = await fetchDay(k);
+          const [{ data, error: e }, { data: painelAppts }] = await Promise.all([
+            fetchDay(k),
+            fetchPainelAppointments(k),
+          ]);
           if (e) {
             setError(
               e.message +
@@ -383,7 +541,11 @@ export function SlotsManagerModal({
             setRows([]);
             return;
           }
-          const visible = parseDayRows(data);
+          const visible = mergePainelAppointmentsIntoSlotRows(
+            filterVisible(parseDayRows(data)),
+            (painelAppts ?? []) as PainelAppointmentForSlots[],
+            prosForMerge
+          );
           if (visible.length > 0) {
             if (k !== activeDayKey) {
               onAutoAdvanceDay?.(k);
@@ -405,7 +567,10 @@ export function SlotsManagerModal({
         p_clinic_id: clinicId,
         p_data: activeDayKey,
       });
-      const { data, error: e } = await fetchDay(activeDayKey);
+      const [{ data, error: e }, { data: painelAppts }] = await Promise.all([
+        fetchDay(activeDayKey),
+        fetchPainelAppointments(activeDayKey),
+      ]);
       if (e) {
         setError(
           e.message +
@@ -417,7 +582,13 @@ export function SlotsManagerModal({
         return;
       }
       setViewDayKey(activeDayKey);
-      setRows(parseDayRows(data));
+      setRows(
+        mergePainelAppointmentsIntoSlotRows(
+          filterVisible(parseDayRows(data)),
+          (painelAppts ?? []) as PainelAppointmentForSlots[],
+          prosForMerge
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -639,24 +810,52 @@ export function SlotsManagerModal({
     try {
       const slotHour = parseInt(slot.horario.slice(0, 2), 10);
 
-      // Busca em appointments (painel) e cs_agendamentos (IA) em paralelo
-      const [{ data: rows }, { data: csRaw }] = await Promise.all([
+      // Busca em appointments (painel), cs_agendamentos (IA) e roster (ligação cs ↔ painel)
+      const [{ data: rows }, { data: csRaw }, { data: pros }] = await Promise.all([
         supabase
           .from("appointments")
-          .select("id, patients(name, phone), service_name, source, starts_at, ends_at")
+          .select(
+            `
+            id,
+            professional_id,
+            patients(name, phone),
+            professionals(id, cs_profissional_id),
+            service_name,
+            source,
+            starts_at,
+            ends_at
+          `
+          )
           .eq("clinic_id", clinicId)
           .neq("status", "cancelled")
           .gte("starts_at", `${slot.data}T00:00:00`)
           .lt("starts_at", `${slot.data}T23:59:59`)
           .order("starts_at", { ascending: true }),
         supabase.rpc("painel_list_cs_agendamentos", { p_clinic_id: clinicId }),
+        supabase
+          .from("professionals")
+          .select("id, cs_profissional_id")
+          .eq("clinic_id", clinicId),
       ]);
 
       const matchHour = (startsAt: string) =>
         new Date(startsAt).getHours() === slotHour;
 
-      // Tenta primeiro em appointments (painel)
-      const found = (rows ?? []).find((r) => matchHour(r.starts_at));
+      const prosList = (pros ?? []) as {
+        id: string;
+        cs_profissional_id: string | null;
+      }[];
+
+      // Tenta primeiro em appointments (painel) — mesma hora **e** mesmo profissional
+      const found = (rows ?? []).find(
+        (r) =>
+          matchHour(r.starts_at) &&
+          painelAppointmentMatchesCsSlot(
+            r as PainelAppointmentForSlots,
+            slot,
+            prosList
+          )
+      );
       if (found) {
         const p = Array.isArray(found.patients) ? found.patients[0] : found.patients;
         setConfirmAppt({
@@ -671,11 +870,29 @@ export function SlotsManagerModal({
         return;
       }
 
-      // Tenta em cs_agendamentos (IA/WhatsApp)
+      // Tenta em cs_agendamentos (IA/WhatsApp) — filtrar pelo profissional da célula
       const csRows = Array.isArray(csRaw) ? csRaw : [];
-      const csFound = (csRows as Record<string, unknown>[]).find(
-        (r) => typeof r.starts_at === "string" && matchHour(r.starts_at)
+      const csCandidates = (csRows as Record<string, unknown>[]).filter(
+        (r) => typeof r.starts_at === "string" && matchHour(r.starts_at as string)
       );
+      const slotNome = slot.profissional_nome.trim().toLowerCase();
+      let csFound: Record<string, unknown> | undefined;
+      if (panelProfId) {
+        csFound = csCandidates.find((r) => {
+          const prof = r.professionals as { id?: string | null } | null;
+          return prof?.id === panelProfId;
+        });
+      }
+      if (!csFound && slotNome) {
+        csFound = csCandidates.find((r) => {
+          const prof = r.professionals as { name?: string | null } | null;
+          const n = (prof?.name ?? "").trim().toLowerCase();
+          return n !== "" && n === slotNome;
+        });
+      }
+      if (!csFound && csCandidates.length === 1) {
+        csFound = csCandidates[0];
+      }
       if (csFound) {
         const p = Array.isArray(csFound.patients)
           ? (csFound.patients as Record<string, unknown>[])[0]
@@ -769,18 +986,29 @@ export function SlotsManagerModal({
     if (confirmAppt) {
       const id = confirmAppt.id;
       let errMsg: string | null = null;
-      if (id.startsWith("cs:")) {
-        const { error } = await supabase.rpc("painel_cancel_cs_agendamento", {
-          p_clinic_id: clinicId,
-          p_cs_agendamento_id: id.slice(3),
-        });
+      const csUuid = csAgendamentoUuidFromPanelId(id);
+      if (csUuid) {
+        const { data: cancelData, error } = await supabase.rpc(
+          "painel_cancel_cs_agendamento",
+          {
+            p_clinic_id: clinicId,
+            p_cs_agendamento_id: csUuid,
+          }
+        );
         if (error) errMsg = error.message;
+        else {
+          errMsg = painelRpcCancelCsErrorMessage(cancelData);
+          if (!errMsg) fireNotifyProfessionalAfterPanelCancel(clinicId, cancelData, id);
+        }
       } else {
-        const { error } = await supabase
+        const { data: upd, error } = await supabase
           .from("appointments")
           .update({ status: "cancelled" })
-          .eq("id", id);
+          .eq("id", id)
+          .select("id")
+          .maybeSingle();
         if (error) errMsg = error.message;
+        else if (!upd) errMsg = "Agendamento não encontrado.";
       }
       if (errMsg) {
         setConfirmError(errMsg);
@@ -799,18 +1027,29 @@ export function SlotsManagerModal({
     setConfirmError(null);
     const id = confirmAppt.id;
     let errMsg: string | null = null;
-    if (id.startsWith("cs:")) {
-      const { error } = await supabase.rpc("painel_cancel_cs_agendamento", {
-        p_clinic_id: clinicId,
-        p_cs_agendamento_id: id.slice(3),
-      });
+    const csUuid = csAgendamentoUuidFromPanelId(id);
+    if (csUuid) {
+      const { data: cancelData, error } = await supabase.rpc(
+        "painel_cancel_cs_agendamento",
+        {
+          p_clinic_id: clinicId,
+          p_cs_agendamento_id: csUuid,
+        }
+      );
       if (error) errMsg = error.message;
+      else {
+        errMsg = painelRpcCancelCsErrorMessage(cancelData);
+        if (!errMsg) fireNotifyProfessionalAfterPanelCancel(clinicId, cancelData, id);
+      }
     } else {
-      const { error } = await supabase
+      const { data: upd, error } = await supabase
         .from("appointments")
         .update({ status: "cancelled" })
-        .eq("id", id);
+        .eq("id", id)
+        .select("id")
+        .maybeSingle();
       if (error) errMsg = error.message;
+      else if (!upd) errMsg = "Agendamento não encontrado.";
     }
     if (errMsg) {
       setConfirmError(errMsg);

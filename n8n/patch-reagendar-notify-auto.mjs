@@ -47,42 +47,55 @@ const HTTP_ID = "a1b2notify-0003-4000-8000-000000000003";
 
 const codeJs = `const item = { ...$input.first().json };
 
-function parseLast(nodeName) {
-  try {
-    const rows = $(nodeName).all();
-    if (!rows?.length) return null;
-    const raw = rows[rows.length - 1].json?.response;
-    if (raw == null) return null;
-    return typeof raw === 'string' ? JSON.parse(raw) : raw;
-  } catch (e) {
-    return null;
-  }
-}
-
 const ctx = $('Monta Contexto').first().json;
 const inst = String($('Edit Fields1').first().json.instanceName || '').trim();
 const nome = String(ctx.nome_cliente || 'Cliente').trim();
+const tail = String(item.output || '').trim().slice(-400);
+const out = String(item.output || '');
+
+const looksLikeMutation =
+  /(reagendad|agendad\\s+com\\s+sucesso|agendamento[^\\n]{0,120}sucesso|cancelad|cancelamento)/i.test(
+    out,
+  );
+
 let notify = null;
 
-const ag = parseLast('agd_cs_agendar');
-const re = parseLast('agd_cs_reagendar');
-const ca = parseLast('agd_cs_cancelar');
-const tail = String(item.output || '').trim().slice(-400);
+if (looksLikeMutation && ctx.clinic_id) {
+  const remoteJid = String(ctx.remoteJid || '');
+  const SUPABASE_URL = 'https://xkwdwioawosthwjqijfb.supabase.co';
+  const SUPABASE_KEY =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDUyNzUzMywiZXhwIjoyMDkwMTAzNTMzfQ._CoWPqn1bDqNRJ-g6EzGnqE86YI_LW5T_N6At3CPal4';
 
-if (ag?.ok && ag.profissional_whatsapp) {
-  const num = String(ag.profissional_whatsapp).replace(/\\D/g, '');
-  if (num.length >= 10) {
-    notify = { number: num, instanceName: inst, text: '📅 Novo agendamento (IA): ' + nome + (tail ? ('\\n' + tail) : '\\nVerifique o painel da clínica.') };
+  let rpc = null;
+  try {
+    rpc = await $helpers.httpRequest({
+      method: 'POST',
+      url: SUPABASE_URL.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_profissional_whatsapp_mudanca_recente',
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ p_clinic_id: ctx.clinic_id, p_telefone: remoteJid }),
+    });
+  } catch {
+    rpc = null;
   }
-} else if (re?.ok && re.profissional_whatsapp) {
-  const num = String(re.profissional_whatsapp).replace(/\\D/g, '');
-  if (num.length >= 10) {
-    notify = { number: num, instanceName: inst, text: '🔄 Reagendamento (IA): ' + nome + (tail ? ('\\n' + tail) : '\\nVerifique o painel da clínica.') };
-  }
-} else if (ca?.ok && ca.profissional_whatsapp) {
-  const num = String(ca.profissional_whatsapp).replace(/\\D/g, '');
-  if (num.length >= 10) {
-    notify = { number: num, instanceName: inst, text: '❌ Cancelamento (IA): ' + nome + (tail ? ('\\n' + tail) : '\\nVerifique o painel da clínica.') };
+
+  if (rpc && rpc.ok === true && rpc.profissional_whatsapp) {
+    const num = String(rpc.profissional_whatsapp).replace(/\\D/g, '');
+    if (num.length >= 12) {
+      const prefix = /reagendad/i.test(out)
+        ? '🔄 Reagendamento (IA): '
+        : /cancel/i.test(out)
+          ? '❌ Cancelamento (IA): '
+          : '📅 Novo agendamento (IA): ';
+      notify = {
+        number: num,
+        instanceName: inst,
+        text: prefix + nome + (tail ? '\\n' + tail : '\\nVerifique o painel da clínica.'),
+      };
+    }
   }
 }
 

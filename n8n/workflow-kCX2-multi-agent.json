@@ -2743,8 +2743,8 @@
           "conditions": [
             {
               "id": "f59e7243-5b97-4052-87a9-19d85de44f51",
-              "leftValue": "558196454656@s.whatsapp.net",
-              "rightValue": "={{ $json.body.data.key.remoteJid }}",
+              "leftValue": "={{ String($json.body?.data?.key?.remoteJid || '').replace(/\\D/g, '') }}",
+              "rightValue": "558196454656",
               "operator": {
                 "type": "string",
                 "operation": "equals",
@@ -2754,7 +2754,7 @@
           ],
           "combinator": "and"
         },
-        "looseTypeValidation": "={{ false }}",
+        "looseTypeValidation": "={{ true }}",
         "options": {}
       },
       "type": "n8n-nodes-base.filter",
@@ -2778,8 +2778,8 @@
           "conditions": [
             {
               "id": "f59e7243-5b97-4052-87a9-19d85de44f51",
-              "leftValue": "558196454656@s.whatsapp.net",
-              "rightValue": "={{ $json.body.data.key.remoteJid }}",
+              "leftValue": "={{ String($json.body?.data?.key?.remoteJid || '').replace(/\\D/g, '') }}",
+              "rightValue": "558196454656",
               "operator": {
                 "type": "string",
                 "operation": "equals",
@@ -2789,7 +2789,7 @@
           ],
           "combinator": "and"
         },
-        "looseTypeValidation": "={{ false }}",
+        "looseTypeValidation": "={{ true }}",
         "options": {}
       },
       "type": "n8n-nodes-base.filter",
@@ -8238,8 +8238,8 @@
             "conditions": [
               {
                 "id": "f59e7243-5b97-4052-87a9-19d85de44f51",
-                "leftValue": "558196454656@s.whatsapp.net",
-                "rightValue": "={{ $json.body.data.key.remoteJid }}",
+                "leftValue": "={{ String($json.body?.data?.key?.remoteJid || '').replace(/\\D/g, '') }}",
+                "rightValue": "558196454656",
                 "operator": {
                   "type": "string",
                   "operation": "equals",
@@ -8249,7 +8249,7 @@
             ],
             "combinator": "and"
           },
-          "looseTypeValidation": "={{ false }}",
+          "looseTypeValidation": "={{ true }}",
           "options": {}
         },
         "type": "n8n-nodes-base.filter",
@@ -8273,8 +8273,8 @@
             "conditions": [
               {
                 "id": "f59e7243-5b97-4052-87a9-19d85de44f51",
-                "leftValue": "558196454656@s.whatsapp.net",
-                "rightValue": "={{ $json.body.data.key.remoteJid }}",
+                "leftValue": "={{ String($json.body?.data?.key?.remoteJid || '').replace(/\\D/g, '') }}",
+                "rightValue": "558196454656",
                 "operator": {
                   "type": "string",
                   "operation": "equals",
@@ -8284,7 +8284,7 @@
             ],
             "combinator": "and"
           },
-          "looseTypeValidation": "={{ false }}",
+          "looseTypeValidation": "={{ true }}",
           "options": {}
         },
         "type": "n8n-nodes-base.filter",

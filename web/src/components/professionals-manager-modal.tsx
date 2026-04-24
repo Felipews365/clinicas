@@ -16,11 +16,19 @@ import {
   storagePathForProfessionalAvatar,
 } from "@/lib/professional-avatar";
 import {
+  COMMERCIAL_AGENDA_HOURS,
   FULL_CLINIC_AGENDA_HOURS,
   formatAgendaHourLabel,
+  normalizeAgendaVisibleHours,
+  normalizeSabadoAgendaHours,
 } from "@/lib/clinic-agenda-hours";
 import { formatLocalYmd } from "@/lib/local-day";
 import { normalizeProfessionalWhatsappBr } from "@/lib/br-whatsapp";
+import {
+  isMissingGenderColumnError,
+  withProfessionalsGenderFallback,
+} from "@/lib/supabase-gender-column-fallback";
+import { isMissingProfessionalProceduresTableError } from "@/lib/supabase-schema-cache-errors";
 
 type Row = {
   id: string;
@@ -35,12 +43,32 @@ type Row = {
   agenda_hours: number[] | null;
   /** Se false, sem grade aos sábados (quando a clínica abre ao sábado). */
   works_saturday?: boolean | null;
+  /** Blocos ao sábado; null = mesma lógica que dias úteis (agenda_hours ou grade da clínica). */
+  sabado_agenda_hours?: number[] | null;
   /** Ligação a `cs_profissionais.id` para RPCs da agenda (horário extra, etc.). */
   cs_profissional_id: string | null;
+  /** M = Dr., F = Dra. em WhatsApp ao profissional; null = Dr. */
+  gender?: string | null;
 };
 
 function normWorksSaturday(raw: unknown): boolean {
   return !(raw === false || raw === 0 || raw === "false");
+}
+
+function buildDefaultSaturdayHours(
+  clinicSat: number[],
+  rowSpec: unknown,
+  agendaCustom: boolean,
+  weekdayHours: Set<number>,
+): Set<number> {
+  const spec = normalizeSabadoAgendaHours(rowSpec);
+  if (spec != null && spec.length > 0) return new Set(spec);
+  if (agendaCustom && weekdayHours.size > 0) {
+    const inter = clinicSat.filter((h) => weekdayHours.has(h));
+    if (inter.length > 0) return new Set(inter);
+  }
+  const base = clinicSat.length > 0 ? clinicSat : [...COMMERCIAL_AGENDA_HOURS];
+  return new Set(base);
 }
 
 function normProfName(s: string): string {
@@ -273,13 +301,27 @@ export function ProfessionalsManagerModal({
   const [editWorksSaturday, setEditWorksSaturday] = useState(true);
   const [newWorksSaturday, setNewWorksSaturday] = useState(true);
   const [clinicSabadoOpen, setClinicSabadoOpen] = useState(false);
+  /** Grade efetiva ao sábado na clínica (sabado_agenda_hours ou dias úteis). */
+  const [clinicSaturdayHours, setClinicSaturdayHours] = useState<number[]>([]);
+  const [editSaturdayHours, setEditSaturdayHours] = useState<Set<number>>(new Set());
+  const [newSaturdayHours, setNewSaturdayHours] = useState<Set<number>>(new Set());
+  /** "" = Dr. padrão; M = Dr. (homem); F = Dra. */
+  const [newNotifyGender, setNewNotifyGender] = useState<"" | "M" | "F">("");
+  const [editNotifyGender, setEditNotifyGender] = useState<"" | "M" | "F">("");
   const [extraHourYmd, setExtraHourYmd] = useState("");
   const [extraHourPick, setExtraHourPick] = useState<number | null>(null);
   const [extraHourBusy, setExtraHourBusy] = useState(false);
   const [extraHourErr, setExtraHourErr] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const saveNoticeRef = useRef<HTMLParagraphElement | null>(null);
   /** Evita consumir `focusProfessionalName` antes do 1.º `load()` terminar (rows ainda []). */
   const listSettledRef = useRef(false);
+
+  type ClinicProcRow = { id: string; name: string; sort_order: number };
+  const [clinicProcedures, setClinicProcedures] = useState<ClinicProcRow[]>([]);
+  const [editProcedureIds, setEditProcedureIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const revokePreview = useCallback((url: string | null) => {
     if (url) URL.revokeObjectURL(url);
@@ -290,14 +332,19 @@ export function ProfessionalsManagerModal({
     setLoading(true);
     setError(null);
     try {
-      const { data, error: e } = await supabase
-        .from("professionals")
-        .select(
-          "id, name, specialty, whatsapp, is_active, sort_order, panel_color, avatar_path, avatar_emoji, agenda_hours, works_saturday, cs_profissional_id"
-        )
-        .eq("clinic_id", clinicId)
-        .order("sort_order", { ascending: true })
-        .order("name", { ascending: true });
+      const { data, error: e } = await withProfessionalsGenderFallback(
+        (includeGender) =>
+          supabase
+            .from("professionals")
+            .select(
+              includeGender
+                ? "id, name, specialty, whatsapp, gender, is_active, sort_order, panel_color, avatar_path, avatar_emoji, agenda_hours, works_saturday, sabado_agenda_hours, cs_profissional_id"
+                : "id, name, specialty, whatsapp, is_active, sort_order, panel_color, avatar_path, avatar_emoji, agenda_hours, works_saturday, sabado_agenda_hours, cs_profissional_id"
+            )
+            .eq("clinic_id", clinicId)
+            .order("sort_order", { ascending: true })
+            .order("name", { ascending: true })
+      );
       if (e) {
         setError(e.message);
         setRows([]);
@@ -314,18 +361,79 @@ export function ProfessionalsManagerModal({
     if (!open || !clinicId) return;
     void supabase
       .from("clinics")
-      .select("sabado_aberto")
+      .select("sabado_aberto, sabado_agenda_hours, agenda_visible_hours")
       .eq("id", clinicId)
       .maybeSingle()
       .then(({ data }) => {
-        const row = data as { sabado_aberto?: unknown } | null;
+        const row = data as {
+          sabado_aberto?: unknown;
+          sabado_agenda_hours?: unknown;
+          agenda_visible_hours?: unknown;
+        } | null;
         setClinicSabadoOpen(
           row?.sabado_aberto === true ||
             row?.sabado_aberto === 1 ||
             row?.sabado_aberto === "true"
         );
+        const weekday = normalizeAgendaVisibleHours(row?.agenda_visible_hours);
+        const satOwn = normalizeSabadoAgendaHours(row?.sabado_agenda_hours);
+        setClinicSaturdayHours(
+          satOwn != null && satOwn.length > 0 ? satOwn : weekday
+        );
       });
   }, [open, clinicId, supabase]);
+
+  useEffect(() => {
+    if (!open || !clinicId) return;
+    let cancelled = false;
+    void supabase
+      .from("clinic_procedures")
+      .select("id, name, sort_order")
+      .eq("clinic_id", clinicId)
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true })
+      .then(({ data, error: pe }) => {
+        if (cancelled) return;
+        if (pe) {
+          setClinicProcedures([]);
+          return;
+        }
+        setClinicProcedures((data ?? []) as ClinicProcRow[]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, clinicId, supabase]);
+
+  useEffect(() => {
+    if (!editingId) {
+      setEditProcedureIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    void supabase
+      .from("professional_procedures")
+      .select("clinic_procedure_id")
+      .eq("professional_id", editingId)
+      .then(({ data, error: le }) => {
+        if (cancelled) return;
+        if (le) {
+          if (isMissingProfessionalProceduresTableError(le.message)) {
+            setEditProcedureIds(new Set());
+          }
+          return;
+        }
+        setEditProcedureIds(
+          new Set(
+            (data ?? []).map((x) => x.clinic_procedure_id as string),
+          ),
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editingId, supabase]);
 
   useEffect(() => {
     if (!open) {
@@ -354,6 +462,8 @@ export function ProfessionalsManagerModal({
     setNewColor(DEFAULT_PROFESSIONAL_PANEL_COLOR);
     setNewEmoji("");
     setNewWorksSaturday(true);
+    setNewSaturdayHours(new Set());
+    setNewNotifyGender("");
     setNewPhotoFile(null);
     setNewPhotoPreview((prev) => {
       revokePreview(prev);
@@ -364,7 +474,10 @@ export function ProfessionalsManagerModal({
 
   useEffect(() => {
     if (!saveNotice) return;
-    const t = window.setTimeout(() => setSaveNotice(null), 4500);
+    const scroll = () =>
+      saveNoticeRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    window.requestAnimationFrame(() => window.requestAnimationFrame(scroll));
+    const t = window.setTimeout(() => setSaveNotice(null), 6000);
     return () => clearTimeout(t);
   }, [saveNotice]);
 
@@ -373,9 +486,7 @@ export function ProfessionalsManagerModal({
     const k = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (editingId) {
-        setEditingId(null);
-        setEditName("");
-        setEditSpecialty("");
+        cancelEditRow();
         return;
       }
       onClose();
@@ -394,26 +505,50 @@ export function ProfessionalsManagerModal({
       setNewWhatsappErr(wNorm.error);
       return;
     }
+    if (clinicSabadoOpen && newWorksSaturday && newSaturdayHours.size === 0) {
+      setError("Escolha pelo menos um horário de sábado ou desligue «Atende aos sábados».");
+      return;
+    }
     setNewWhatsappErr(null);
     setBusy("add");
     setError(null);
     const maxSort = rows.reduce((m, r) => Math.max(m, r.sort_order), -1);
-    const { data: inserted, error: insE } = await supabase
+    const sabadoPayload = clinicSabadoOpen
+      ? {
+          works_saturday: newWorksSaturday,
+          sabado_agenda_hours:
+            newWorksSaturday && newSaturdayHours.size > 0
+              ? [...newSaturdayHours].sort((a, b) => a - b)
+              : null,
+        }
+      : {};
+    const baseInsert = {
+      clinic_id: clinicId,
+      name: n,
+      specialty: specialty.trim() || null,
+      whatsapp: wNorm.digits,
+      is_active: true,
+      sort_order: maxSort + 1,
+      panel_color: newColor,
+      avatar_emoji: newEmoji.trim() || null,
+      avatar_path: null,
+      ...sabadoPayload,
+    };
+    const genderVal = newNotifyGender === "" ? null : newNotifyGender;
+    let savedGenderSkipped = false;
+    let { data: inserted, error: insE } = await supabase
       .from("professionals")
-      .insert({
-        clinic_id: clinicId,
-        name: n,
-        specialty: specialty.trim() || null,
-        whatsapp: wNorm.digits,
-        is_active: true,
-        sort_order: maxSort + 1,
-        panel_color: newColor,
-        avatar_emoji: newEmoji.trim() || null,
-        avatar_path: null,
-        ...(clinicSabadoOpen ? { works_saturday: newWorksSaturday } : {}),
-      })
+      .insert({ ...baseInsert, gender: genderVal })
       .select("id")
       .single();
+    if (insE && isMissingGenderColumnError(insE.message)) {
+      savedGenderSkipped = true;
+      ({ data: inserted, error: insE } = await supabase
+        .from("professionals")
+        .insert(baseInsert)
+        .select("id")
+        .single());
+    }
     if (insE || !inserted) {
       setBusy(null);
       setError(insE?.message ?? "Erro ao criar profissional.");
@@ -449,7 +584,11 @@ export function ProfessionalsManagerModal({
     if (uploadErr) {
       setError(`Profissional criado, mas a foto não foi salva: ${uploadErr}`);
     } else {
-      setSaveNotice("Profissional adicionado com sucesso.");
+      setSaveNotice(
+        savedGenderSkipped
+          ? "Profissional adicionado com sucesso. (Tratamento Dr./Dra. só será guardado após criar a coluna gender na tabela professionals — veja migration no repositório.)"
+          : "Profissional adicionado com sucesso.",
+      );
     }
     setName("");
     setSpecialty("");
@@ -458,6 +597,7 @@ export function ProfessionalsManagerModal({
     setNewColor(DEFAULT_PROFESSIONAL_PANEL_COLOR);
     setNewEmoji("");
     setNewWorksSaturday(true);
+    setNewSaturdayHours(new Set());
     setNewPhotoFile(null);
     setNewPhotoPreview((prev) => {
       revokePreview(prev);
@@ -601,8 +741,24 @@ export function ProfessionalsManagerModal({
         setEditAgendaHours(new Set());
       }
       setEditWorksSaturday(normWorksSaturday(r.works_saturday));
+      const wk =
+        r.agenda_hours && r.agenda_hours.length > 0
+          ? new Set(r.agenda_hours)
+          : new Set<number>();
+      const custom = Boolean(r.agenda_hours && r.agenda_hours.length > 0);
+      setEditSaturdayHours(
+        buildDefaultSaturdayHours(
+          clinicSaturdayHours,
+          r.sabado_agenda_hours,
+          custom,
+          wk,
+        ),
+      );
+      setEditNotifyGender(
+        r.gender === "F" || r.gender === "M" ? r.gender : ""
+      );
     },
-    [agendaDayKey]
+    [agendaDayKey, clinicSaturdayHours]
   );
 
   useEffect(() => {
@@ -644,9 +800,21 @@ export function ProfessionalsManagerModal({
     setEditAgendaCustom(false);
     setEditAgendaHours(new Set());
     setEditWorksSaturday(true);
+    setEditSaturdayHours(new Set());
+    setEditProcedureIds(new Set());
+    setEditNotifyGender("");
     setExtraHourYmd("");
     setExtraHourPick(null);
     setExtraHourErr(null);
+  }
+
+  function toggleEditProcedure(procId: string) {
+    setEditProcedureIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(procId)) next.delete(procId);
+      else next.add(procId);
+      return next;
+    });
   }
 
   async function submitExtraHour(r: Row, escopo: "dia_unico" | "recorrente") {
@@ -700,35 +868,109 @@ export function ProfessionalsManagerModal({
       setEditWhatsappErr(wNorm.error);
       return;
     }
+    if (clinicSabadoOpen && editWorksSaturday && editSaturdayHours.size === 0) {
+      setError(
+        "Escolha pelo menos um horário de sábado ou desligue «Atende aos sábados».",
+      );
+      return;
+    }
     setEditWhatsappErr(null);
     setBusy(r.id);
     setError(null);
     const agendaHours = editAgendaCustom && editAgendaHours.size > 0
       ? [...editAgendaHours].sort((a, b) => a - b)
       : null;
+    const satHours =
+      clinicSabadoOpen && editWorksSaturday && editSaturdayHours.size > 0
+        ? [...editSaturdayHours].sort((a, b) => a - b)
+        : null;
 
-    const { error: u } = await supabase
+    const sabadoUpdate = clinicSabadoOpen
+      ? {
+          works_saturday: editWorksSaturday,
+          sabado_agenda_hours: satHours,
+        }
+      : {};
+    const baseUpdate = {
+      name: n,
+      specialty: editSpecialty.trim() || null,
+      whatsapp: wNorm.digits,
+      agenda_hours: agendaHours,
+      ...sabadoUpdate,
+    };
+    const genderVal = editNotifyGender === "" ? null : editNotifyGender;
+    let savedGenderSkipped = false;
+    let { error: u } = await supabase
       .from("professionals")
-      .update({
-        name: n,
-        specialty: editSpecialty.trim() || null,
-        whatsapp: wNorm.digits,
-        agenda_hours: agendaHours,
-        ...(clinicSabadoOpen ? { works_saturday: editWorksSaturday } : {}),
-      })
+      .update({ ...baseUpdate, gender: genderVal })
       .eq("id", r.id)
       .eq("clinic_id", clinicId);
+    if (u && isMissingGenderColumnError(u.message)) {
+      savedGenderSkipped = true;
+      ({ error: u } = await supabase
+        .from("professionals")
+        .update(baseUpdate)
+        .eq("id", r.id)
+        .eq("clinic_id", clinicId));
+    }
     if (u) {
       setBusy(null);
       setError(u.message);
       return;
     }
 
+    let procSyncSkipped = false;
+    const { error: delLinks } = await supabase
+      .from("professional_procedures")
+      .delete()
+      .eq("professional_id", r.id);
+    if (delLinks) {
+      if (isMissingProfessionalProceduresTableError(delLinks.message)) {
+        procSyncSkipped = true;
+      } else {
+        setBusy(null);
+        setError(delLinks.message);
+        return;
+      }
+    }
+    const procIds = [...editProcedureIds];
+    if (!procSyncSkipped && procIds.length > 0) {
+      const { error: insLinks } = await supabase
+        .from("professional_procedures")
+        .insert(
+          procIds.map((clinic_procedure_id) => ({
+            professional_id: r.id,
+            clinic_procedure_id,
+          })),
+        );
+      if (insLinks) {
+        if (isMissingProfessionalProceduresTableError(insLinks.message)) {
+          procSyncSkipped = true;
+        } else {
+          setBusy(null);
+          setError(insLinks.message);
+          return;
+        }
+      }
+    }
+
     setBusy(null);
     cancelEditRow();
     await load();
     onChanged();
-    setSaveNotice("Alterações salvas com sucesso.");
+    setError(null);
+    let saveMsg = "Alterações salvas com sucesso.";
+    if (savedGenderSkipped && procSyncSkipped) {
+      saveMsg +=
+        " Aplique no Supabase as migrations da coluna gender e da tabela professional_procedures para gravar Dr./Dra. e procedimentos por profissional.";
+    } else if (savedGenderSkipped) {
+      saveMsg +=
+        " (Tratamento Dr./Dra. só será guardado após a migration da coluna gender no Supabase.)";
+    } else if (procSyncSkipped) {
+      saveMsg +=
+        " (Procedimentos por profissional só após criar a tabela professional_procedures — migration 20260427100000 no repositório.)";
+    }
+    setSaveNotice(saveMsg);
   }
 
   async function removeRow(r: Row) {
@@ -785,6 +1027,26 @@ export function ProfessionalsManagerModal({
         onChange={(e) => setSpecialty(e.target.value)}
         className="w-full rounded-xl border border-[#d4cfc4] px-3 py-2.5 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
       />
+      <div>
+        <label className="mb-1 block text-xs font-semibold text-[#5c5348]">
+          Tratamento nas mensagens ao profissional
+        </label>
+        <select
+          value={newNotifyGender}
+          onChange={(e) =>
+            setNewNotifyGender(e.target.value as "" | "M" | "F")
+          }
+          disabled={busy === "add"}
+          className="w-full rounded-xl border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2 disabled:opacity-50"
+        >
+          <option value="">Dr. (padrão)</option>
+          <option value="M">Dr. (homem)</option>
+          <option value="F">Dra. (mulher)</option>
+        </select>
+        <p className="mt-1 text-[11px] text-[#8a8278]">
+          Usado em avisos de agendamento, reagendamento e cancelamento (WhatsApp).
+        </p>
+      </div>
       <div>
         <p className="mb-1 text-xs font-semibold text-[#5c5348]">WhatsApp para notificações (opcional)</p>
         <input
@@ -874,22 +1136,80 @@ export function ProfessionalsManagerModal({
         disabled={busy === "add"}
       />
       {clinicSabadoOpen ? (
-        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e6e1d8] bg-[#faf8f4] px-4 py-3">
-          <input
-            type="checkbox"
-            checked={newWorksSaturday}
-            onChange={(e) => setNewWorksSaturday(e.target.checked)}
-            disabled={busy === "add"}
-            className="mt-1 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
-          />
-          <span className="text-sm text-[#2c2825]">
-            <span className="font-medium">Atende aos sábados</span>
-            <span className="mt-1 block text-[11px] text-[#8a8278]">
-              Desligue se este profissional não tiver vagas ao sábado (outros profissionais podem continuar a
-              atender).
+        <div className="space-y-2 rounded-xl border border-[#e6e1d8] bg-[#faf8f4] px-4 py-3">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={newWorksSaturday}
+              onChange={(e) => {
+                const v = e.target.checked;
+                setNewWorksSaturday(v);
+                if (v) {
+                  setNewSaturdayHours((prev) =>
+                    prev.size > 0
+                      ? prev
+                      : buildDefaultSaturdayHours(
+                          clinicSaturdayHours,
+                          null,
+                          false,
+                          new Set(),
+                        ),
+                  );
+                }
+              }}
+              disabled={busy === "add"}
+              className="mt-1 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
+            />
+            <span className="text-sm text-[#2c2825]">
+              <span className="font-medium">Atende aos sábados</span>
+              <span className="mt-1 block text-[11px] text-[#8a8278]">
+                Desligue se este profissional não tiver vagas ao sábado. Se ligar, escolha os blocos abaixo
+                (só os em que a clínica abre ao sábado).
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+          {newWorksSaturday ? (
+            <div className="rounded-lg border border-[#e6e1d8] bg-white px-3 py-2.5">
+              <p className="text-[11px] font-semibold text-[#5c5348]">Horários ao sábado</p>
+              <p className="mt-0.5 text-[10px] text-[#8a8278]">
+                Mantenha pelo menos um bloco selecionado.
+              </p>
+              <div className="mt-2 grid gap-1 [grid-template-columns:repeat(auto-fit,minmax(4.5rem,1fr))]">
+                {(clinicSaturdayHours.length > 0
+                  ? clinicSaturdayHours
+                  : [...FULL_CLINIC_AGENDA_HOURS]
+                ).map((h) => {
+                  const on = newSaturdayHours.has(h);
+                  return (
+                    <button
+                      key={h}
+                      type="button"
+                      disabled={busy === "add"}
+                      onClick={() => {
+                        setNewSaturdayHours((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(h)) {
+                            if (next.size > 1) next.delete(h);
+                          } else {
+                            next.add(h);
+                          }
+                          return next;
+                        });
+                      }}
+                      className={`rounded-lg border py-1.5 text-xs font-semibold tabular-nums transition-colors disabled:opacity-50 ${
+                        on
+                          ? "border-teal-700/70 bg-teal-950/90 text-teal-100"
+                          : "border-dashed border-[#d4cfc4] bg-white text-[#9a9288] line-through"
+                      }`}
+                    >
+                      {formatAgendaHourLabel(h)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+        </div>
       ) : null}
       <button
         type="submit"
@@ -954,6 +1274,24 @@ export function ProfessionalsManagerModal({
                         className="w-full rounded-xl border border-[#d4cfc4] px-3 py-2 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
                       />
                       <div>
+                        <label className="mb-1 block text-[11px] font-semibold text-[#5c5348]">
+                          Tratamento nas mensagens ao profissional
+                        </label>
+                        <select
+                          aria-label="Tratamento Dr. ou Dra."
+                          value={editNotifyGender}
+                          onChange={(e) =>
+                            setEditNotifyGender(e.target.value as "" | "M" | "F")
+                          }
+                          disabled={busy === r.id}
+                          className="w-full rounded-xl border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2 disabled:opacity-50"
+                        >
+                          <option value="">Dr. (padrão)</option>
+                          <option value="M">Dr. (homem)</option>
+                          <option value="F">Dra. (mulher)</option>
+                        </select>
+                      </div>
+                      <div>
                         <p className="text-[11px] font-semibold text-[#5c5348]">WhatsApp para notificações</p>
                         <input
                           aria-label="WhatsApp do profissional"
@@ -987,6 +1325,34 @@ export function ProfessionalsManagerModal({
                           </p>
                         )}
                       </div>
+                      {clinicProcedures.length > 0 ? (
+                        <div className="mt-3 rounded-xl border border-[#e6e1d8] bg-[#faf8f4] p-3">
+                          <p className="text-[11px] font-semibold text-[#5c5348]">
+                            Procedimentos que realiza
+                          </p>
+                          <p className="mt-0.5 text-[10px] text-[#8a8278]">
+                            Serviços do catálogo da clínica. Se nenhum estiver marcado, no
+                            agendamento do painel aparecem todos os procedimentos ativos.
+                          </p>
+                          <div className="mt-2 max-h-40 space-y-1.5 overflow-y-auto pr-1">
+                            {clinicProcedures.map((cp) => (
+                              <label
+                                key={cp.id}
+                                className="flex cursor-pointer items-start gap-2 rounded-lg border border-transparent px-1 py-0.5 hover:border-[#e6e1d8] hover:bg-white/80"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={editProcedureIds.has(cp.id)}
+                                  onChange={() => toggleEditProcedure(cp.id)}
+                                  disabled={busy === r.id}
+                                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
+                                />
+                                <span className="text-xs text-[#2c2825]">{cp.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : (
                     <>
@@ -999,6 +1365,16 @@ export function ProfessionalsManagerModal({
                       ) : null}
                       {clinicSabadoOpen && !normWorksSaturday(r.works_saturday) ? (
                         <p className="mt-0.5 text-[11px] font-medium text-[#8a8278]">Sem atendimento ao sábado</p>
+                      ) : null}
+                      {clinicSabadoOpen && normWorksSaturday(r.works_saturday) ? (
+                        <p className="mt-0.5 text-[11px] text-[#6b635a]">
+                          Sáb:{" "}
+                          {r.sabado_agenda_hours?.length
+                            ? r.sabado_agenda_hours
+                                .map((h) => formatAgendaHourLabel(h))
+                                .join(", ")
+                            : "igual aos dias úteis / clínica"}
+                        </p>
                       ) : null}
                     </>
                   )}
@@ -1122,21 +1498,82 @@ export function ProfessionalsManagerModal({
                           </p>
                         )}
                         {clinicSabadoOpen ? (
-                          <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-[#e6e1d8] bg-white px-3 py-2.5">
-                            <input
-                              type="checkbox"
-                              checked={editWorksSaturday}
-                              onChange={(e) => setEditWorksSaturday(e.target.checked)}
-                              disabled={busy === r.id}
-                              className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
-                            />
-                            <span className="text-sm text-[#2c2825]">
-                              <span className="font-medium">Atende aos sábados</span>
-                              <span className="mt-0.5 block text-[11px] text-[#8a8278]">
-                                Se desligar, o agente e o painel não mostram este profissional ao sábado.
+                          <div className="mt-3 space-y-2 rounded-xl border border-[#e6e1d8] bg-white px-3 py-2.5">
+                            <label className="flex cursor-pointer items-start gap-3">
+                              <input
+                                type="checkbox"
+                                checked={editWorksSaturday}
+                                onChange={(e) => {
+                                  const v = e.target.checked;
+                                  setEditWorksSaturday(v);
+                                  if (v) {
+                                    setEditSaturdayHours((prev) =>
+                                      prev.size > 0
+                                        ? prev
+                                        : buildDefaultSaturdayHours(
+                                            clinicSaturdayHours,
+                                            r.sabado_agenda_hours,
+                                            editAgendaCustom,
+                                            editAgendaHours,
+                                          ),
+                                    );
+                                  }
+                                }}
+                                disabled={busy === r.id}
+                                className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
+                              />
+                              <span className="text-sm text-[#2c2825]">
+                                <span className="font-medium">Atende aos sábados</span>
+                                <span className="mt-0.5 block text-[11px] text-[#8a8278]">
+                                  Se desligar, o agente e o painel não mostram este profissional ao sábado. Se
+                                  ligar, defina os blocos abaixo.
+                                </span>
                               </span>
-                            </span>
-                          </label>
+                            </label>
+                            {editWorksSaturday ? (
+                              <div className="rounded-lg border border-[#e6e1d8] bg-[#faf8f4] px-2.5 py-2">
+                                <p className="text-[11px] font-semibold text-[#5c5348]">
+                                  Horários ao sábado
+                                </p>
+                                <p className="mt-0.5 text-[10px] text-[#8a8278]">
+                                  Só blocos em que a clínica abre ao sábado. Mantenha pelo menos um.
+                                </p>
+                                <div className="mt-2 grid gap-1 [grid-template-columns:repeat(auto-fit,minmax(4.5rem,1fr))]">
+                                  {(clinicSaturdayHours.length > 0
+                                    ? clinicSaturdayHours
+                                    : [...FULL_CLINIC_AGENDA_HOURS]
+                                  ).map((h) => {
+                                    const on = editSaturdayHours.has(h);
+                                    return (
+                                      <button
+                                        key={h}
+                                        type="button"
+                                        disabled={busy === r.id}
+                                        onClick={() => {
+                                          setEditSaturdayHours((prev) => {
+                                            const next = new Set(prev);
+                                            if (next.has(h)) {
+                                              if (next.size > 1) next.delete(h);
+                                            } else {
+                                              next.add(h);
+                                            }
+                                            return next;
+                                          });
+                                        }}
+                                        className={`rounded-lg border py-1.5 text-xs font-semibold tabular-nums transition-colors disabled:opacity-50 ${
+                                          on
+                                            ? "border-teal-700/70 bg-teal-950/90 text-teal-100"
+                                            : "border-dashed border-[#d4cfc4] bg-white text-[#9a9288] line-through"
+                                        }`}
+                                      >
+                                        {formatAgendaHourLabel(h)}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
                         ) : (
                           <p className="mt-3 text-[11px] text-[#8a8278]">
                             A clínica não abre aos sábados — a regra é a mesma para toda a equipa.
@@ -1300,7 +1737,8 @@ export function ProfessionalsManagerModal({
         ) : null}
         {saveNotice ? (
           <p
-            className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900"
+            ref={saveNoticeRef}
+            className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900 shadow-sm"
             role="status"
             aria-live="polite"
           >
@@ -1405,21 +1843,76 @@ export function ProfessionalsManagerModal({
               disabled={busy === "add"}
             />
             {clinicSabadoOpen ? (
-              <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-[#e6e1d8] bg-[#faf8f4] px-3 py-2">
-                <input
-                  type="checkbox"
-                  checked={newWorksSaturday}
-                  onChange={(e) => setNewWorksSaturday(e.target.checked)}
-                  disabled={busy === "add"}
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
-                />
-                <span className="text-xs text-[#2c2825]">
-                  <span className="font-medium">Atende aos sábados</span>
-                  <span className="mt-0.5 block text-[10px] text-[#8a8278]">
-                    Desligue se não houver vagas ao sábado para este profissional.
+              <div className="space-y-2 rounded-lg border border-[#e6e1d8] bg-[#faf8f4] px-3 py-2">
+                <label className="flex cursor-pointer items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={newWorksSaturday}
+                    onChange={(e) => {
+                      const v = e.target.checked;
+                      setNewWorksSaturday(v);
+                      if (v) {
+                        setNewSaturdayHours((prev) =>
+                          prev.size > 0
+                            ? prev
+                            : buildDefaultSaturdayHours(
+                                clinicSaturdayHours,
+                                null,
+                                false,
+                                new Set(),
+                              ),
+                        );
+                      }
+                    }}
+                    disabled={busy === "add"}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
+                  />
+                  <span className="text-xs text-[#2c2825]">
+                    <span className="font-medium">Atende aos sábados</span>
+                    <span className="mt-0.5 block text-[10px] text-[#8a8278]">
+                      Escolha os blocos abaixo (só os permitidos pela clínica ao sábado).
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
+                {newWorksSaturday ? (
+                  <div className="rounded border border-[#e6e1d8] bg-white px-2 py-2">
+                    <p className="text-[10px] font-semibold text-[#5c5348]">Horários ao sábado</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {(clinicSaturdayHours.length > 0
+                        ? clinicSaturdayHours
+                        : [...FULL_CLINIC_AGENDA_HOURS]
+                      ).map((h) => {
+                        const on = newSaturdayHours.has(h);
+                        return (
+                          <button
+                            key={h}
+                            type="button"
+                            disabled={busy === "add"}
+                            onClick={() => {
+                              setNewSaturdayHours((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(h)) {
+                                  if (next.size > 1) next.delete(h);
+                                } else {
+                                  next.add(h);
+                                }
+                                return next;
+                              });
+                            }}
+                            className={`min-w-[3.25rem] rounded border px-1.5 py-1 text-[10px] font-semibold tabular-nums disabled:opacity-50 ${
+                              on
+                                ? "border-teal-700/70 bg-teal-950/90 text-teal-100"
+                                : "border-dashed border-[#d4cfc4] bg-[#faf8f4] text-[#9a9288] line-through"
+                            }`}
+                          >
+                            {formatAgendaHourLabel(h)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
             <button
               type="submit"
@@ -1437,7 +1930,8 @@ export function ProfessionalsManagerModal({
           ) : null}
           {saveNotice ? (
             <p
-              className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900"
+              ref={saveNoticeRef}
+              className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900 shadow-sm"
               role="status"
               aria-live="polite"
             >
@@ -1493,6 +1987,51 @@ export function ProfessionalsManagerModal({
                             onChange={(e) => setEditSpecialty(e.target.value)}
                             className="w-full rounded-lg border border-[#d4cfc4] px-2 py-1.5 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
                           />
+                          <div>
+                            <label className="mb-0.5 block text-[10px] font-semibold text-[#5c5348]">
+                              Tratamento (WhatsApp)
+                            </label>
+                            <select
+                              aria-label="Tratamento Dr. ou Dra."
+                              value={editNotifyGender}
+                              onChange={(e) =>
+                                setEditNotifyGender(e.target.value as "" | "M" | "F")
+                              }
+                              disabled={busy === r.id}
+                              className="w-full rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-2 py-1 text-xs text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2 disabled:opacity-50"
+                            >
+                              <option value="">Dr. (padrão)</option>
+                              <option value="M">Dr. (homem)</option>
+                              <option value="F">Dra. (mulher)</option>
+                            </select>
+                          </div>
+                          {clinicProcedures.length > 0 ? (
+                            <div className="mt-2 rounded-lg border border-[#e6e1d8] bg-[#faf8f4] p-2">
+                              <p className="text-[10px] font-semibold text-[#5c5348]">
+                                Procedimentos
+                              </p>
+                              <p className="mt-0.5 text-[9px] text-[#8a8278]">
+                                Vazio = todos no agendamento. Marque para filtrar.
+                              </p>
+                              <div className="mt-1.5 max-h-32 space-y-1 overflow-y-auto">
+                                {clinicProcedures.map((cp) => (
+                                  <label
+                                    key={cp.id}
+                                    className="flex cursor-pointer items-start gap-1.5"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={editProcedureIds.has(cp.id)}
+                                      onChange={() => toggleEditProcedure(cp.id)}
+                                      disabled={busy === r.id}
+                                      className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-[#d4cfc4]"
+                                    />
+                                    <span className="text-[11px] text-[#2c2825]">{cp.name}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       ) : (
                         <>
@@ -1502,6 +2041,16 @@ export function ProfessionalsManagerModal({
                           ) : null}
                           {clinicSabadoOpen && !normWorksSaturday(r.works_saturday) ? (
                             <p className="mt-0.5 text-[10px] font-medium text-[#8a8278]">Sem sábado</p>
+                          ) : null}
+                          {clinicSabadoOpen && normWorksSaturday(r.works_saturday) ? (
+                            <p className="mt-0.5 text-[10px] text-[#6b635a]">
+                              Sáb:{" "}
+                              {r.sabado_agenda_hours?.length
+                                ? r.sabado_agenda_hours
+                                    .map((h) => formatAgendaHourLabel(h))
+                                    .join(", ")
+                                : "igual dias úteis / clínica"}
+                            </p>
                           ) : null}
                         </>
                       )}
@@ -1554,21 +2103,78 @@ export function ProfessionalsManagerModal({
                             onPick={(v) => void updatePanelColor(r, v)}
                           />
                           {clinicSabadoOpen ? (
-                            <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-lg border border-[#e6e1d8] bg-[#faf8f4] px-2 py-2">
-                              <input
-                                type="checkbox"
-                                checked={editWorksSaturday}
-                                onChange={(e) => setEditWorksSaturday(e.target.checked)}
-                                disabled={busy === r.id}
-                                className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
-                              />
-                              <span className="text-xs text-[#2c2825]">
-                                <span className="font-medium">Atende aos sábados</span>
-                                <span className="mt-0.5 block text-[10px] text-[#8a8278]">
-                                  Desligue para ocultar ao sábado no agente e na agenda.
+                            <div className="mt-2 space-y-2 rounded-lg border border-[#e6e1d8] bg-[#faf8f4] px-2 py-2">
+                              <label className="flex cursor-pointer items-start gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={editWorksSaturday}
+                                  onChange={(e) => {
+                                    const v = e.target.checked;
+                                    setEditWorksSaturday(v);
+                                    if (v) {
+                                      setEditSaturdayHours((prev) =>
+                                        prev.size > 0
+                                          ? prev
+                                          : buildDefaultSaturdayHours(
+                                              clinicSaturdayHours,
+                                              r.sabado_agenda_hours,
+                                              editAgendaCustom,
+                                              editAgendaHours,
+                                            ),
+                                      );
+                                    }
+                                  }}
+                                  disabled={busy === r.id}
+                                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
+                                />
+                                <span className="text-xs text-[#2c2825]">
+                                  <span className="font-medium">Atende aos sábados</span>
+                                  <span className="mt-0.5 block text-[10px] text-[#8a8278]">
+                                    Defina os blocos abaixo.
+                                  </span>
                                 </span>
-                              </span>
-                            </label>
+                              </label>
+                              {editWorksSaturday ? (
+                                <div className="rounded border border-[#e6e1d8] bg-white px-2 py-1.5">
+                                  <p className="text-[10px] font-semibold text-[#5c5348]">
+                                    Horários ao sábado
+                                  </p>
+                                  <div className="mt-1 flex flex-wrap gap-1">
+                                    {(clinicSaturdayHours.length > 0
+                                      ? clinicSaturdayHours
+                                      : [...FULL_CLINIC_AGENDA_HOURS]
+                                    ).map((h) => {
+                                      const on = editSaturdayHours.has(h);
+                                      return (
+                                        <button
+                                          key={h}
+                                          type="button"
+                                          disabled={busy === r.id}
+                                          onClick={() => {
+                                            setEditSaturdayHours((prev) => {
+                                              const next = new Set(prev);
+                                              if (next.has(h)) {
+                                                if (next.size > 1) next.delete(h);
+                                              } else {
+                                                next.add(h);
+                                              }
+                                              return next;
+                                            });
+                                          }}
+                                          className={`min-w-[3.25rem] rounded border px-1.5 py-1 text-[10px] font-semibold tabular-nums disabled:opacity-50 ${
+                                            on
+                                              ? "border-teal-700/70 bg-teal-950/90 text-teal-100"
+                                              : "border-dashed border-[#d4cfc4] bg-[#faf8f4] text-[#9a9288] line-through"
+                                          }`}
+                                        >
+                                          {formatAgendaHourLabel(h)}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
                           ) : null}
                           <div className="mt-2 rounded-lg border border-[#e6e1d8] bg-white p-2">
                             <p className="text-[11px] font-semibold text-[#5c5348]">Horário extra</p>

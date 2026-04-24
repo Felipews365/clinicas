@@ -42,12 +42,19 @@ import { hasFullAccess } from "@/lib/crm-access";
 import { getSupportWhatsAppActivatePlanUrl } from "@/lib/support-whatsapp";
 import { createClient } from "@/lib/supabase/client";
 import { isClinicMembersUnavailableError } from "@/lib/supabase/clinic-members-compat";
+import { withProfessionalsGenderFallback } from "@/lib/supabase-gender-column-fallback";
 import {
   awaitsConfirmation,
   isClinicConfirmed,
   one,
   type AppointmentRow,
 } from "@/types/appointments";
+import {
+  csAgendamentoUuidFromPanelId,
+  fireNotifyProfessionalAfterPanelCancel,
+  fireNotifyProfessionalFromAgendaDiff,
+  painelRpcCancelCsErrorMessage,
+} from "@/lib/painel-notify-professional";
 
 function rowProfessionalId(r: AppointmentRow): string | null {
   const raw = one(r.professionals)?.id;
@@ -255,6 +262,7 @@ export function AgendaPortal() {
       panel_color: string | null;
       cs_profissional_id: string | null;
       is_active: boolean;
+      whatsapp: string | null;
     }[]
   >([]);
   const [viewMode, setViewMode] = useState<"calendar" | "list" | "grid">(
@@ -307,6 +315,9 @@ export function AgendaPortal() {
   );
   const [nowTick, setNowTick] = useState(() => new Date());
   const [rowBusy, setRowBusy] = useState<string | null>(null);
+  /** Abre o modal de confirmação antes de cancelar (substitui `window.confirm`). */
+  const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null);
+  const [removeConfirmAck, setRemoveConfirmAck] = useState(false);
   const [access, setAccess] = useState<AccessState | null>(null);
   const locallyModified = useRef(new Set<string>());
   const prevRowsRef = useRef<AppointmentRow[]>([]);
@@ -450,11 +461,7 @@ export function AgendaPortal() {
     setListLoading(true);
     setListError(null);
 
-    const [
-      { data, error },
-      { data: csRaw, error: csErr },
-      { data: pros },
-    ] = await Promise.all([
+    const apptSelect = (includeGender: boolean) =>
       supabase
         .from("appointments")
         .select(
@@ -467,27 +474,42 @@ export function AgendaPortal() {
         source,
         notes,
         patients ( name, phone ),
-        professionals ( id, name, specialty, panel_color, avatar_path, avatar_emoji )
+        professionals ( id, name, specialty, ${
+          includeGender ? "gender, " : ""
+        }panel_color, avatar_path, avatar_emoji )
       `
         )
         .eq("clinic_id", clinicId)
-        .order("starts_at", { ascending: true }),
-      supabase.rpc("painel_list_cs_agendamentos", { p_clinic_id: clinicId }),
+        .order("starts_at", { ascending: true });
+
+    const prosSelect = (includeGender: boolean) =>
       supabase
         .from("professionals")
-        .select("id, name, panel_color, cs_profissional_id, is_active")
+        .select(
+          includeGender
+            ? "id, name, gender, panel_color, cs_profissional_id, is_active, whatsapp"
+            : "id, name, panel_color, cs_profissional_id, is_active, whatsapp"
+        )
         .eq("clinic_id", clinicId)
         .order("sort_order", { ascending: true })
-        .order("name", { ascending: true }),
-    ]);
+        .order("name", { ascending: true });
+
+    const [{ data, error }, { data: csRaw, error: csErr }, { data: pros }] =
+      await Promise.all([
+        withProfessionalsGenderFallback((g) => apptSelect(g)),
+        supabase.rpc("painel_list_cs_agendamentos", { p_clinic_id: clinicId }),
+        withProfessionalsGenderFallback((g) => prosSelect(g)),
+      ]);
 
     setProfRoster(
       (pros ?? []) as {
         id: string;
         name: string;
+        gender?: string | null;
         panel_color: string | null;
         cs_profissional_id: string | null;
         is_active: boolean;
+        whatsapp: string | null;
       }[]
     );
 
@@ -692,32 +714,42 @@ export function AgendaPortal() {
     [supabase, access, loadAppointments]
   );
 
-  const removeAppointment = useCallback(
+  const executeRemoveAppointment = useCallback(
     async (id: string) => {
       if (!supabase || access?.kind !== "clinic") return;
-      if (
-        !window.confirm(
-          "Deseja realmente excluir / cancelar este agendamento? Esta ação não pode ser desfeita."
-        )
-      )
-        return;
       setRowBusy(id);
       setListError(null);
       let error: { message: string; code?: string } | null = null;
 
       locallyModified.current.add(id);
-      if (id.startsWith("cs:")) {
-        const { error: e } = await supabase.rpc("painel_cancel_cs_agendamento", {
-          p_clinic_id: access.clinicId,
-          p_cs_agendamento_id: id.slice(3),
-        });
-        error = e;
+      const csUuid = csAgendamentoUuidFromPanelId(id);
+      if (csUuid) {
+        const { data: cancelData, error: e } = await supabase.rpc(
+          "painel_cancel_cs_agendamento",
+          {
+            p_clinic_id: access.clinicId,
+            p_cs_agendamento_id: csUuid,
+          }
+        );
+        if (e) {
+          error = e;
+        } else {
+          const rpcErr = painelRpcCancelCsErrorMessage(cancelData);
+          if (rpcErr) {
+            error = { message: rpcErr };
+          } else {
+            fireNotifyProfessionalAfterPanelCancel(access.clinicId, cancelData, id);
+          }
+        }
       } else {
-        const { error: e } = await supabase
+        const { data: upd, error: e } = await supabase
           .from("appointments")
           .update({ status: "cancelled" })
-          .eq("id", id);
-        error = e;
+          .eq("id", id)
+          .select("id")
+          .maybeSingle();
+        if (e) error = e;
+        else if (!upd) error = { message: "Agendamento não encontrado." };
       }
 
       locallyModified.current.delete(id);
@@ -735,6 +767,27 @@ export function AgendaPortal() {
     },
     [supabase, access, loadAppointments]
   );
+
+  const removeConfirmRow = useMemo(
+    () =>
+      removeConfirmId
+        ? rows.find((r) => r.id === removeConfirmId) ?? null
+        : null,
+    [removeConfirmId, rows]
+  );
+
+  useEffect(() => {
+    if (removeConfirmId) setRemoveConfirmAck(false);
+  }, [removeConfirmId]);
+
+  useEffect(() => {
+    if (!removeConfirmId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRemoveConfirmId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [removeConfirmId]);
 
   const selectedDayLabel = useMemo(() => {
     if (!dayKey) return "A carregar…";
@@ -944,6 +997,14 @@ export function AgendaPortal() {
     if (access?.kind !== "clinic") return;
     if (!apptNotifyReadyRef.current) return;
 
+    const clinicId = access.clinicId;
+    const rosterForNotify = profRoster.map((p) => ({
+      id: p.id,
+      name: p.name,
+      cs_profissional_id: p.cs_profissional_id,
+      whatsapp: p.whatsapp,
+    }));
+
     const snap = buildAppointmentSnapshot(rows);
     if (apptNotifSettledLoadsRef.current === 0) {
       apptSnapshotRef.current = snap;
@@ -959,9 +1020,21 @@ export function AgendaPortal() {
       if (!row) continue;
       if (!old) {
         agendaNotif.addNotification(notificationFromRow(row, "agendamento"));
+        fireNotifyProfessionalFromAgendaDiff({
+          clinicId,
+          row,
+          kind: "agendamento",
+          roster: rosterForNotify,
+        });
       } else {
         if (old.status !== "cancelled" && cur.status === "cancelled") {
           agendaNotif.addNotification(notificationFromRow(row, "cancelamento"));
+          fireNotifyProfessionalFromAgendaDiff({
+            clinicId,
+            row,
+            kind: "cancelamento",
+            roster: rosterForNotify,
+          });
         } else if (
           old.starts_at !== cur.starts_at &&
           cur.status !== "cancelled" &&
@@ -972,6 +1045,13 @@ export function AgendaPortal() {
               prevStartsAt: old.starts_at,
             })
           );
+          fireNotifyProfessionalFromAgendaDiff({
+            clinicId,
+            row,
+            kind: "reagendamento",
+            roster: rosterForNotify,
+            prevStartsAt: old.starts_at,
+          });
         }
       }
     }
@@ -980,7 +1060,8 @@ export function AgendaPortal() {
   }, [
     rows,
     listLoading,
-    access?.kind,
+    access,
+    profRoster,
     agendaNotif.hydrated,
     agendaNotif.addNotification,
   ]);
@@ -1408,13 +1489,13 @@ export function AgendaPortal() {
           <button
             type="button"
             onClick={() => setDesktopSidebarOpen(false)}
-            className="absolute top-1/2 left-full z-30 flex h-14 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-r-lg border border-[var(--border)] border-l-0 bg-[var(--sidebar-bg)] text-[var(--text-muted)] shadow-md transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--text)]"
+            className="group absolute top-1/2 left-full z-30 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--sidebar-bg)] text-[var(--text-muted)] shadow-md transition-all duration-200 hover:scale-110 hover:border-[var(--primary)] hover:text-[var(--primary)] hover:shadow-lg"
             title="Recolher menu"
             aria-label="Recolher menu lateral"
             aria-expanded={true}
             aria-controls="painel-sidebar-desktop"
           >
-            <IconChevronLeft className="shrink-0" />
+            <IconChevronLeft className="shrink-0 [&>path]:stroke-[2.5]" />
           </button>
         </div>
       ) : null}
@@ -1424,13 +1505,13 @@ export function AgendaPortal() {
         <button
           type="button"
           onClick={() => setDesktopSidebarOpen(true)}
-          className="absolute top-1/2 left-0 z-30 hidden h-14 w-6 -translate-y-1/2 items-center justify-center rounded-r-lg border border-[var(--border)] border-l-0 bg-[var(--surface)] text-[var(--text-muted)] shadow-md transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--text)] sm:flex"
+          className="absolute top-1/2 left-0 z-30 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] shadow-md transition-all duration-200 hover:scale-110 hover:border-[var(--primary)] hover:text-[var(--primary)] hover:shadow-lg sm:flex"
           title="Abrir menu"
           aria-label="Abrir menu lateral"
           aria-controls="painel-sidebar-desktop"
           aria-expanded={false}
         >
-          <IconChevronRight className="shrink-0" />
+          <IconChevronRight className="shrink-0 [&>path]:stroke-[2.5]" />
         </button>
       ) : null}
       <NotificationToastStack
@@ -1744,7 +1825,7 @@ export function AgendaPortal() {
               profFilteredRows={profFilteredRows}
               rowBusy={rowBusy}
               onConfirmAppointment={(id) => void confirmAppointment(id)}
-              onRemoveAppointment={(id) => void removeAppointment(id)}
+              onRemoveAppointment={(id) => setRemoveConfirmId(id)}
               filterActive={filterActive}
               filterIdle={filterIdle}
               viewToggleActive={viewToggleActive}
@@ -1864,6 +1945,89 @@ export function AgendaPortal() {
           </div>
         ) : null}
         </div>
+
+        {removeConfirmId ? (
+          <div
+            className="fixed inset-0 z-[220] flex items-center justify-center p-4"
+            role="presentation"
+          >
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/55 backdrop-blur-[1px]"
+              aria-label="Fechar"
+              onClick={() => setRemoveConfirmId(null)}
+            />
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="remove-appt-dialog-title"
+              aria-describedby="remove-appt-dialog-desc"
+              className="relative z-10 w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl"
+            >
+              <h2
+                id="remove-appt-dialog-title"
+                className="font-display text-lg font-semibold text-[var(--text)]"
+              >
+                Cancelar agendamento?
+              </h2>
+              <p
+                id="remove-appt-dialog-desc"
+                className="mt-3 text-sm leading-relaxed text-[var(--text-muted)]"
+              >
+                {removeConfirmRow ? (
+                  <>
+                    <span className="font-medium text-[var(--text)]">
+                      {one(removeConfirmRow.patients)?.name?.trim() ||
+                        "Este agendamento"}
+                    </span>
+                    {" — "}
+                  </>
+                ) : null}
+                Deseja realmente excluir ou cancelar este agendamento? Esta ação
+                não pode ser desfeita.
+              </p>
+              <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-3.5 text-sm leading-snug text-[var(--text)]">
+                <input
+                  type="checkbox"
+                  checked={removeConfirmAck}
+                  onChange={(e) => setRemoveConfirmAck(e.target.checked)}
+                  disabled={rowBusy === removeConfirmId}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-[var(--border)] accent-[var(--primary)] disabled:opacity-50"
+                />
+                <span>
+                  Confirmo que quero cancelar este agendamento e sei que não é
+                  possível desfazer.
+                </span>
+              </label>
+              <div className="mt-6 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={rowBusy === removeConfirmId}
+                  onClick={() => setRemoveConfirmId(null)}
+                  className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-sm font-medium text-[var(--text)] transition-colors hover:bg-[var(--surface)] disabled:opacity-50"
+                >
+                  Voltar
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    !removeConfirmAck || rowBusy === removeConfirmId
+                  }
+                  onClick={() => {
+                    const id = removeConfirmId;
+                    setRemoveConfirmId(null);
+                    if (id) void executeRemoveAppointment(id);
+                  }}
+                  className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {rowBusy === removeConfirmId
+                    ? "A cancelar…"
+                    : "Sim, cancelar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </main>
       </div>
 

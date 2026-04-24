@@ -625,7 +625,7 @@
     },
     {
       "parameters": {
-        "content": "### 📅 AGENTE AGENDADOR\n**agente_agendador** (temp **0.1** — precisão transacional)\n\n**Função:** Único agente que cria, edita e cancela consultas.\n\n**Fluxo obrigatório:**\n1. cs_consultar_servicos → lista serviços\n2. cs_consultar_profissionais → lista profissionais\n3. cs_consultar_vagas → verifica disponibilidade (YYYY-MM-DD)\n4. Confirmação explícita do cliente\n5. cs_agendar / cs_reagendar / cs_cancelar\n6. cs_notificar_profissional (se profissional_whatsapp ≠ null)\n\n**Temperatura 0.1** para nunca inventar horários, serviços ou datas.",
+        "content": "### 📅 AGENTE AGENDADOR\n**agente_agendador** (temp **0.1** — precisão transacional)\n\n**Função:** Único agente que cria, edita e cancela consultas.\n\n**Fluxo obrigatório:**\n1. cs_consultar_servicos → lista serviços\n2. cs_consultar_profissionais → lista profissionais\n3. cs_consultar_vagas → disponibilidade (YYYY-MM-DD)\n4. **Perguntar sempre** \"Posso confirmar…?\" (ou equivalente) **antes** de gravar\n5. Só após **sim** do cliente → cs_agendar / cs_reagendar / cs_cancelar\n6. Aviso ao profissional é automático no fluxo (não usar tool manual)\n\n**Temperatura 0.1** para nunca inventar horários, serviços ou datas.",
         "height": 880,
         "width": 1858,
         "color": 6
@@ -772,6 +772,7 @@
         "operation": "get",
         "propertyName": "Mensagem",
         "key": "={{ $('Webhook').first().json.body.data.key.remoteJid }}",
+        "keyType": "list",
         "options": {}
       },
       "type": "n8n-nodes-base.redis",
@@ -793,7 +794,7 @@
       "parameters": {
         "operation": "push",
         "list": "={{ $('Webhook').first().json.body.data.key.remoteJid }}",
-        "messageData": "={{ JSON.stringify($json) }}"
+        "messageData": "={{ JSON.stringify(Object.assign({}, JSON.parse(JSON.stringify($json || {})), { wppKeyId: $('Webhook').first().json.body.data.key.id })) }}"
       },
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
@@ -813,42 +814,10 @@
     },
     {
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "69ae624a-c135-4d58-b36c-94a66271b12d",
-              "leftValue": "={{ $json.Mensagem.length }}",
-              "rightValue": 1,
-              "operator": {
-                "type": "number",
-                "operation": "gt"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        48,
-        -832
-      ],
-      "id": "2e9ce1d4-e890-44b3-8463-69ad3d5015e0",
-      "name": "VerificaSe?MaiorQue1"
-    },
-    {
-      "parameters": {
         "operation": "get",
         "propertyName": "Mensagens",
         "key": "={{ $('Webhook').first().json.body.data.key.remoteJid }}",
+        "keyType": "list",
         "options": {}
       },
       "type": "n8n-nodes-base.redis",
@@ -888,20 +857,11 @@
     },
     {
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "56d366b6-65c5-46aa-9fd8-849c56a25e7a",
-              "name": "Mensagens",
-              "value": "={{ $json.Mensagens.reverse().join('\\n') }}",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
+        "mode": "runOnceForAllItems",
+        "jsCode": "/**\n * Consolida fila Redis (Mensagem ou Mensagens) num único texto para o agente.\n * Dedup: última entrada por wppKeyId (Evolution); JSON idêntico sem id; texto repetido em sequência.\n * Devolve [] se vazio — não avança para ResetaFila.\n */\nconst input = $input.first().json;\nconst raw = input.Mensagens ?? input.Mensagem;\nlet arr = [];\nif (Array.isArray(raw)) {\n  arr = raw;\n} else if (raw != null && raw !== '') {\n  arr = [raw];\n}\nif (arr.length === 0) {\n  return [];\n}\nfunction parseCell(cell) {\n  const s = typeof cell === 'string' ? cell : JSON.stringify(cell);\n  try {\n    const o = JSON.parse(s);\n    const id =\n      o && typeof o === 'object' && o.wppKeyId != null && o.wppKeyId !== ''\n        ? String(o.wppKeyId)\n        : null;\n    const text =\n      o && typeof o === 'object' && o.msg != null ? String(o.msg).trim() : s.trim();\n    return { id, text, raw: s };\n  } catch {\n    return { id: null, text: s.trim(), raw: s };\n  }\n}\nconst parsed = arr.map(parseCell).filter((p) => p.text);\nif (parsed.length === 0) {\n  return [];\n}\nconst lastIdxById = new Map();\nfor (let i = 0; i < parsed.length; i++) {\n  const id = parsed[i].id;\n  if (id) lastIdxById.set(id, i);\n}\nconst byId = parsed.filter((p, i) => !p.id || lastIdxById.get(p.id) === i);\nconst seenRaw = new Set();\nconst uniqueRaw = [];\nfor (const p of byId) {\n  if (seenRaw.has(p.raw)) continue;\n  seenRaw.add(p.raw);\n  uniqueRaw.push(p);\n}\nconst lines = [];\nfor (const p of uniqueRaw) {\n  if (lines.length > 0 && lines[lines.length - 1] === p.text) continue;\n  lines.push(p.text);\n}\nconst Mensagens = lines.join('\\n');\nif (!Mensagens.trim()) {\n  return [];\n}\nreturn [{ json: { ...input, Mensagens } }];"
       },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         656,
         -832
@@ -2616,19 +2576,14 @@
     },
     {
       "parameters": {
-        "toolDescription": "Lista os profissionais ativos da cl?nica com nome e especialidade. Use sempre que o cliente perguntar sobre m?dicos, dentistas, profissionais, especialistas, doutores, quem atende, com quem pode ser atendido, ou quais profissionais a cl?nica tem.",
-        "url": "={{  'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/cs_profissionais?select=id,nome,especialidade&ativo=eq.true&order=nome.asc&clinic_id=eq.' + $('Code merge webhook e resolucao').first().json.clinica_id + '#{chamada}' }}",
+        "toolDescription": "Lista profissionais ativos ligados ao painel (nome, especialidade, id). Mesmos ids que aparecem em cs_consultar_vagas. Use quando o cliente perguntar quem atende.",
+        "method": "POST",
+        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_profissionais_para_agente' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
-        "placeholderDefinitions": {
-          "values": [
-            {
-              "name": "chamada",
-              "description": "OBRIGATÓRIO: passe exatamente o texto 'listar' para buscar todos os profissionais ativos.",
-              "type": "string"
-            }
-          ]
-        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Code merge webhook e resolucao').first().json.clinica_id }) }}",
         "sendHeaders": false
       },
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
@@ -2815,14 +2770,24 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict",
+            "typeValidation": "loose",
             "version": 3
           },
           "conditions": [
             {
               "id": "f59e7243-5b97-4052-87a9-19d85de44f51",
-              "leftValue": "558196454656@s.whatsapp.net",
-              "rightValue": "={{ $json.body.data.key.remoteJid }}",
+              "leftValue": "={{ $json.body.data.key.fromMe }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "b3e8a901-teste-so-numero-prof-558196454656",
+              "leftValue": "={{ String($json.body?.data?.key?.remoteJid || '').replace(/\\D/g, '') }}",
+              "rightValue": "558196454656",
               "operator": {
                 "type": "string",
                 "operation": "equals",
@@ -2832,7 +2797,7 @@
           ],
           "combinator": "and"
         },
-        "looseTypeValidation": "={{ false }}",
+        "looseTypeValidation": "={{ true }}",
         "options": {}
       },
       "type": "n8n-nodes-base.filter",
@@ -2929,7 +2894,7 @@
             },
             {
               "name": "mensagem",
-              "description": "Texto curto para o profissional. Agendamento: \"📅 Novo agendamento: {nome_cliente}, {servico}, {data} às {horario}\". Reagendamento: \"🔄 Reagendamento: {nome_cliente}, {servico}, {nova_data} às {novo_horario}\". Cancelamento: \"❌ Cancelamento: {nome_cliente}, {servico}, {data} às {horario}\"",
+              "description": "Mensagem multilinha para o WhatsApp do profissional. Novo: \"🟢 Novo agendamento\" + linha em branco + \"👤 Cliente: …\" + \"🩺 Serviço: …\" + \"📅 Data: DD/MM/AAAA\" + \"🕘 Hora: HH:mm\". Cancelamento: \"🔴 Cancelamento de agendamento\" + mesmo bloco (data/hora canceladas). Reagendamento: \"🟡 Reagendamento de agendamento\" + cliente + serviço + \"📅 Nova data:\" + \"🕙 Novo horário:\"",
               "type": "string"
             }
           ]
@@ -3214,7 +3179,7 @@
         "promptType": "define",
         "text": "={{ $json.mensagem }}",
         "options": {
-          "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, responsável por agendamentos da {{ $json.clinic_name || 'clínica' }}.\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nTelefone (p_telefone): {{ $json.remoteJid }}\nData/hora atual: {{ $now.format('dd/MM/yyyy HH:mm') }} — Hoje é {{ ['','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado','domingo'][$now.weekday] }} — YYYY-MM-DD: {{ $now.format('yyyy-MM-dd') }}\n\n{{ $json.agent_instructions }}\n\n## REGRA FUNDAMENTAL - EXECUÇÃO DE TOOLS\nVOCÊ É UM AGENTE QUE EXECUTA AÇÕES, NÃO DESCREVE O QUE VAI FAZER.\n\n❌ PROIBIDO: \"Vou consultar os horários\", \"Um momento por favor\", \"Deixa eu verificar\", \"Aguarde enquanto busco\"\n✓ CORRETO: Chamar a tool IMEDIATAMENTE e só responder ao cliente DEPOIS que ela retornar, já com o resultado.\n\nSe você tem todos os dados para chamar uma tool (data + profissional_id), CHAME A TOOL AGORA. Nunca anuncie que vai fazer — faça.\n\n## FORMATAÇÃO\nNUNCA escreva listas em linha corrida. SEMPRE use quebra de linha para cada item.\n\n## FLUXO NOVO AGENDAMENTO\nOs profissionais e serviços JÁ ESTÃO listados acima em ## PROFISSIONAIS DISPONÍVEIS e ## SERVIÇOS DISPONÍVEIS.\nNÃO chame cs_consultar_profissionais nem cs_consultar_servicos — use os IDs exatos listados acima.\n\n1. Apresente serviços (nome/descrição, NUNCA preço) e pergunte qual o cliente deseja → guarde servico_id\n2. Apresente profissionais e pergunte preferência → guarde profissional_id (UUID exato da lista acima)\n3. Se nome_cliente estiver vazio → pergunte nome completo (NUNCA use nome do WhatsApp)\n4. Pergunte a data desejada\n5. ASSIM QUE TIVER profissional_id + data convertida para YYYY-MM-DD → CHAME cs_consultar_vagas IMEDIATAMENTE (sem \"vou consultar\")\n6. Verifique o horário pedido no array retornado (HH:MM exato):\n   - Match → confirme direto\n   - Sem match → liste alternativas do mesmo dia\n7. Confirme com o cliente: nome, serviço, profissional, data, horário\n8. CHAME **cs_reagendar** (se já havia agendamento ativo listado em cs_buscar_agendamentos) OU **cs_agendar** (se é primeiro agendamento) com todos os dados corretos\n9. Confirme com resumo final\n\n## FLUXO CANCELAR / REAGENDAR\n1. CHAME cs_buscar_agendamentos e guarde de cada item: id (agendamento_id), profissional_id, data_iso, horario, nome_procedimento.\n2. Se o cliente quer mudar data e/ou horário e já existe agendamento ativo na lista → use SEMPRE **cs_reagendar** com agendamento_id + profissional_antigo_id + data_antiga + horario_antigo + novo_profissional_id (muito frequentemente o mesmo UUID) + nova_data + novo_horario. **NUNCA use cs_agendar** nesse caso — cs_agendar cria um SEGUNDO agendamento (duplicado).\n3. Use **cs_agendar** apenas quando o cliente **não** tem consulta ativa para aquele atendimento (primeiro agendamento ou já cancelou todos).\n4. Confirme explicitamente ANTES de CHAMAR cs_cancelar ou cs_reagendar.\n\n## cs_consultar_vagas — SOMENTE O JSON RETORNADO\nApós cs_consultar_vagas, os únicos horários válidos são os valores \"horario\" (HH:MM) dos objetos do array retornado.\n- Liste **todos** os horários retornados, sem pular nenhum. Se o JSON contém \"10:00\", você **deve** incluir 10:00 na lista ao cliente.\n- **Proibido** inventar horário que não apareça no JSON.\n- Antes de dizer que não há vaga às HH:MM, procure no array um item com horario **exatamente** igual a HH:MM. Se existir → o horário está disponível; confirme com o cliente.\n\n## NOTIFICAÇÃO AO PROFISSIONAL\n**Não chame cs_notificar_profissional.** Depois de cs_agendar, cs_reagendar ou cs_cancelar com sucesso, responda ao cliente normalmente — o fluxo envia WhatsApp ao profissional automaticamente quando houver profissional_whatsapp na resposta da RPC.\n\n## PREÇOS\nNUNCA mencione preço/valor/desconto espontaneamente. Informe SOMENTE se o cliente perguntar. Se null: \"valor não informado pela clínica\"\n\n## DATAS\nCONVERTA relativas para YYYY-MM-DD ANTES de chamar tools:\n- \"hoje\" → data atual acima\n- \"amanhã\" → data acima + 1 dia\n- \"depois de amanhã\" → +2 dias\n- \"quarta-feira\" → próxima quarta usando o dia da semana informado acima\n- Dias da semana → calcule o próximo dia correspondente a partir de hoje\n\n## MÚLTIPLOS PROFISSIONAIS\n1. Use os IDs da lista ## PROFISSIONAIS DISPONÍVEIS (não chame cs_consultar_profissionais)\n2. Pergunte a data apenas uma vez\n3. Chame cs_consultar_vagas UMA VEZ por profissional — NUNCA dois IDs ao mesmo tempo\n4. Apresente horários separados por profissional\n\nREGRA DATAS: Quando o cliente mencionar datas relativas (\"quarta-feira\", \"amanhã\", etc.), converta SEMPRE para YYYY-MM-DD ANTES de chamar qualquer tool. Use o dia da semana atual acima para calcular. NUNCA confirme uma data sem checar que o dia da semana bate."
+          "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, responsável por agendamentos da {{ $json.clinic_name || 'clínica' }}.\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nTelefone (p_telefone): {{ $json.remoteJid }}\nData/hora atual: {{ $now.format('dd/MM/yyyy HH:mm') }} — Hoje é {{ ['','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado','domingo'][$now.weekday] }} — YYYY-MM-DD: {{ $now.format('yyyy-MM-dd') }}\n\n{{ $json.agent_instructions }}\n\n## REGRA FUNDAMENTAL - EXECUÇÃO DE TOOLS\nVOCÊ É UM AGENTE QUE EXECUTA AÇÕES, NÃO DESCREVE O QUE VAI FAZER.\n\n❌ PROIBIDO: \"Vou consultar os horários\", \"Um momento por favor\", \"Deixa eu verificar\", \"Aguarde enquanto busco\"\n✓ CORRETO: Chamar a tool IMEDIATAMENTE e só responder ao cliente DEPOIS que ela retornar, já com o resultado.\n\nSe você tem a data em YYYY-MM-DD, CHAME cs_consultar_vagas AGORA (um parâmetro só; lista todos os profissionais). Nunca anuncie que vai fazer — faça.\n\n## FORMATAÇÃO\nNUNCA escreva listas em linha corrida. SEMPRE use quebra de linha para cada item.\n\n## FLUXO NOVO AGENDAMENTO\nOs profissionais e serviços JÁ ESTÃO listados acima em ## PROFISSIONAIS DISPONÍVEIS e ## SERVIÇOS DISPONÍVEIS.\nNÃO chame cs_consultar_profissionais nem cs_consultar_servicos — use os IDs exatos listados acima.\n\n1. Apresente serviços (nome/descrição, NUNCA preço) e pergunte qual o cliente deseja → guarde servico_id\n2. Apresente profissionais; se o cliente já disse serviço e dia (ex.: clareamento hoje), pode chamar vagas antes de fixar profissional.\n3. Se nome_cliente estiver vazio → pergunte nome completo (NUNCA use nome do WhatsApp)\n4. Obtenha a data (explícita ou \"hoje\"/\"amanhã\" já convertidos no bloco DATAS)\n5. ASSIM QUE TIVER data em YYYY-MM-DD → CHAME cs_consultar_vagas IMEDIATAMENTE (sem \"vou consultar\")\n6. Verifique o horário pedido no array retornado (HH:MM exato):\n   - Match → resuma em uma mensagem: nome, serviço, profissional, data e horário (ainda **não** chame cs_agendar)\n   - Sem match → liste alternativas do mesmo dia\n7. **PERGUNTA OBRIGATÓRIA ANTES DE GRAVAR:** Pergunte explicitamente se pode confirmar o agendamento, por exemplo: *\"Posso confirmar [serviço] com [profissional] em [data] às [horário]?\"* ou *\"Confirma esse horário para eu registrar?\"* **É PROIBIDO** chamar **cs_agendar** (ou cs_reagendar/cs_cancelar) na mesma resposta em que essa pergunta ainda não foi feita **e** respondida com **sim** pelo cliente (sim, pode, confirmo, isso, fechamos, pode ser, ok, etc.). Se o cliente só escolheu horário mas não respondeu à pergunta de confirmação → pare e espere.\n8. Somente **após** a confirmação explícita do cliente → CHAME **cs_reagendar** (se já havia agendamento ativo listado em cs_buscar_agendamentos) OU **cs_agendar** (primeiro agendamento) com todos os dados corretos.\n9. Leia o JSON retornado pela tool: somente se o campo `ok` for **true**, envie ao cliente o resumo final; se `ok` for **false**, NÃO confirme — siga a seção abaixo.\n\n## FLUXO CANCELAR / REAGENDAR\n1. CHAME cs_buscar_agendamentos e guarde de cada item: id (agendamento_id), profissional_id, data_iso, horario, nome_procedimento.\n2. Se o cliente quer mudar data e/ou horário e já existe agendamento ativo na lista → use SEMPRE **cs_reagendar** com agendamento_id + profissional_antigo_id + data_antiga + horario_antigo + novo_profissional_id (muito frequentemente o mesmo UUID) + nova_data + novo_horario. **NUNCA use cs_agendar** nesse caso — cs_agendar cria um SEGUNDO agendamento (duplicado).\n3. Use **cs_agendar** apenas quando o cliente **não** tem consulta ativa para aquele atendimento (primeiro agendamento ou já cancelou todos).\n4. **Sempre** pergunte se o cliente confirma cancelamento ou reagendamento (dados claros) e **só depois** do sim chame cs_cancelar ou cs_reagendar — mesma regra do passo 7 do fluxo novo.\n\n## cs_consultar_vagas — SOMENTE O JSON RETORNADO\nApós cs_consultar_vagas, os únicos horários válidos são os valores \"horario\" (HH:MM) dos objetos do array retornado.\n- Cada objeto é de UM profissional (`profissional` + `profissional_id`). O mesmo HH:MM pode aparecer para dentistas diferentes — agendas independentes. Quando o cliente já escolheu o profissional, considera **só** os objetos daquele nome (ou UUID da lista PROFISSIONAIS). **É proibido** dizer que um horário está indisponível para esse profissional se existir no JSON um item com esse `horario` e esse `profissional`.\n- Liste **todos** os horários retornados, sem pular nenhum. Se o JSON contém \"10:00\", você **deve** incluir 10:00 na lista ao cliente.\n- **Proibido** inventar horário que não apareça no JSON.\n- Antes de dizer que não há vaga às HH:MM, procure no array um item com horario **exatamente** igual a HH:MM. Se existir → o horário está disponível; confirme com o cliente.\n\n## NOTIFICAÇÃO AO PROFISSIONAL\n**Não chame cs_notificar_profissional.** Depois de cs_agendar, cs_reagendar ou cs_cancelar com **ok: true**, responda ao cliente normalmente — o fluxo envia WhatsApp ao profissional automaticamente quando houver profissional_whatsapp na resposta da RPC.\n\n## RESPOSTA JSON DAS TOOLS DE ESCRITA (OBRIGATÓRIO)\ncs_agendar, cs_reagendar e cs_cancelar devolvem JSON com campo `ok` (boolean).\n- **É PROIBIDO** dizer que agendou, reagendou, cancelou ou \"confirmado com sucesso\" se `ok` não for exatamente true.\n- Se `ok` for false: leia `message` ou `error`; explique ao cliente com honestidade; ofereça chamar cs_consultar_vagas de novo ou ajustar horário/profissional; **nunca** simule sucesso.\n- Só após `ok: true` envie o resumo final amigável ao cliente.\n\n## PREÇOS\nNUNCA mencione preço/valor/desconto espontaneamente. Informe SOMENTE se o cliente perguntar. Se null: \"valor não informado pela clínica\"\n\n## DATAS\nCONVERTA relativas para YYYY-MM-DD ANTES de chamar tools:\n- \"hoje\" → data atual acima\n- \"amanhã\" → data acima + 1 dia\n- \"depois de amanhã\" → +2 dias\n- \"quarta-feira\" → próxima quarta usando o dia da semana informado acima\n- Dias da semana → calcule o próximo dia correspondente a partir de hoje\n\n## MÚLTIPLOS PROFISSIONAIS\n1. Use os IDs da lista ## PROFISSIONAIS DISPONÍVEIS (não chame cs_consultar_profissionais)\n2. Uma chamada cs_consultar_vagas por data retorna todos os profissionais — agrupe horários por nome na resposta\n3. Em cs_agendar use o profissional_id do item (slot) escolhido pelo cliente\n\nREGRA DATAS: Quando o cliente mencionar datas relativas (\"quarta-feira\", \"amanhã\", etc.), converta SEMPRE para YYYY-MM-DD ANTES de chamar qualquer tool. Use o dia da semana atual acima para calcular. NUNCA confirme uma data sem checar que o dia da semana bate."
         }
       },
       "id": "ma-agent-agendador",
@@ -3306,24 +3271,19 @@
     },
     {
       "parameters": {
-        "toolDescription": "Lista horários disponíveis de um profissional em um dia específico.\nFluxo obrigatório ANTES de chamar:\n1. cs_consultar_profissionais → obtenha a lista de profissionais\n2. Cliente escolhe o profissional → guarde o UUID (profissional_id)\n3. Pergunte ao cliente a data desejada\n4. Chame esta tool com profissional_id e data_solicitada\nParâmetros:\n- data_solicitada: data no formato YYYY-MM-DD (obrigatório)\n- profissional_id: UUID do profissional escolhido (obrigatório — nunca use null)\nRetorna array com horários livres. Mostre apenas os horários — NUNCA mencione preços.",
+        "toolDescription": "Lista horários livres na data para TODOS os profissionais da clínica (a RPC aceita p_profissional_id null).\nUse após o cliente indicar o dia ou \"hoje\"/\"amanhã\" — converta sempre para YYYY-MM-DD antes de chamar.\nParâmetro:\n- data_solicitada: YYYY-MM-DD (obrigatório)\nCada item do array retornado traz profissional_id, profissional, horario — agrupe por profissional na resposta. Para cs_agendar use o profissional_id do item escolhido. NUNCA mencione preços.",
         "method": "POST",
         "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_consultar_vagas' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Code merge webhook e resolucao').first().json.clinica_id, p_data: '{data_solicitada}', p_profissional_id: '{profissional_id}' }) }}",
+        "jsonBody": "={{ '{\"p_clinic_id\":\"' + $('Code merge webhook e resolucao').first().json.clinica_id + '\",\"p_data\":\"{data_solicitada}\",\"p_profissional_id\":null}' }}",
         "placeholderDefinitions": {
           "values": [
             {
               "name": "data_solicitada",
-              "description": "Data desejada OBRIGATORIAMENTE no formato YYYY-MM-DD (ex: 2026-04-22). NUNCA passe strings relativas como 'amanhã', 'hoje' ou 'segunda'. Converta ANTES de chamar esta tool.",
-              "type": "string"
-            },
-            {
-              "name": "profissional_id",
-              "description": "UUID exato do profissional retornado por cs_consultar_profissionais. OBRIGATÓRIO — nunca passe null, vazio ou múltiplos IDs. Chame esta tool UMA VEZ por profissional.",
+              "description": "Data em YYYY-MM-DD. Converter hoje/amanhã/dia da semana antes de chamar. Um único parâmetro — a tool devolve vagas de todos os profissionais.",
               "type": "string"
             }
           ]
@@ -3382,20 +3342,14 @@
     },
     {
       "parameters": {
-        "toolDescription": "Lista os profissionais ativos da clínica com nome e especialidade.",
-        "url": "={{  'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/cs_profissionais?select=id,nome,especialidade&ativo=eq.true&order=nome.asc&clinic_id=eq.' + $('Code merge webhook e resolucao').first().json.clinica_id + '#{chamada}' }}",
+        "toolDescription": "Lista profissionais ativos ligados ao painel (nome, especialidade, id). Mesmos ids que cs_consultar_vagas.",
+        "method": "POST",
+        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_profissionais_para_agente' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
-        "method": "GET",
-        "placeholderDefinitions": {
-          "values": [
-            {
-              "name": "chamada",
-              "description": "OBRIGATÓRIO: passe exatamente o texto 'listar' para buscar todos os profissionais ativos.",
-              "type": "string"
-            }
-          ]
-        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Code merge webhook e resolucao').first().json.clinica_id }) }}",
         "sendHeaders": false
       },
       "id": "ma-tool-profissionais-agd",
@@ -3415,14 +3369,14 @@
     },
     {
       "parameters": {
-        "toolDescription": "Cria agendamento após confirmação explícita do cliente. Obrigatório: servico_id de cs_consultar_servicos, profissional_id de cs_consultar_vagas, data em YYYY-MM-DD, horario em HH:MM.",
+        "toolDescription": "Cria agendamento após confirmação explícita do cliente. Retorna JSON com `ok` (boolean) e `message`. Só diga ao cliente que agendou se ok===true; se ok===false, use message/error e não confirme. Obrigatório: servico_id, profissional_id do slot em cs_consultar_vagas, data YYYY-MM-DD, horario HH:MM.",
         "method": "POST",
         "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_agendar' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\n  \"p_nome_cliente\": \"{nome_cliente}\",\n  \"p_telefone\": \"{telefone_cliente}\",\n  \"p_profissional_id\": \"{profissional_id}\",\n  \"p_servico_id\": \"{servico_id}\",\n  \"p_data\": \"{data}\",\n  \"p_horario\": \"{horario}\",\n  \"p_observacoes\": \"{observacoes}\"\n}",
+        "jsonBody": "={{ '{\"p_nome_cliente\":\"{nome_cliente}\",\"p_telefone\":\"{telefone_cliente}\",\"p_profissional_id\":\"{profissional_id}\",\"p_servico_id\":\"{servico_id}\",\"p_data\":\"{data}\",\"p_horario\":\"{horario}\",\"p_observacoes\":\"{observacoes}\"}' }}",
         "placeholderDefinitions": {
           "values": [
             {
@@ -3629,7 +3583,7 @@
             },
             {
               "name": "mensagem",
-              "description": "Agendamento: \"📅 Novo agendamento: {nome}, {serviço}, {data} às {horário}\". Reagendamento: \"🔄 Reagendamento: ...\". Cancelamento: \"❌ Cancelamento: ...\"",
+              "description": "Igual ao outro tool de notificar: bloco \"🟢 Novo agendamento\" / \"🔴 Cancelamento de agendamento\" / \"🟡 Reagendamento de agendamento\" com linhas 👤 🩺 📅 🕘 ou Nova data / Novo horário.",
               "type": "string"
             }
           ]
@@ -4006,7 +3960,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Formata profissionais e serviços pré-buscados pelos HTTP nodes anteriores.\n// Resposta em texto (responseFormat: \"text\") → $json.data contém JSON string.\n\nconst ctx = $('IF mensagem válida').first().json;\n\nlet profBlock = '';\nlet servicosBlock = '';\n\n// Profissionais\ntry {\n  const rawProf = $('HTTP Fetch Profissionais').first().json;\n  // responseFormat text → rawProf.data = \"[{...}]\" string\n  const profData = typeof rawProf.data === 'string' ? rawProf.data : JSON.stringify(rawProf);\n  const profs = JSON.parse(profData);\n  if (Array.isArray(profs) && profs.length > 0) {\n    const linhas = profs.map(p =>\n      '  - ' + (p.nome || '?') +\n      (p.especialidade ? ' (' + p.especialidade + ')' : '') +\n      ' | profissional_id: ' + p.id\n    ).join('\\n');\n    profBlock = '\\n\\n## PROFISSIONAIS DISPONÍVEIS (use estes profissional_id ao chamar cs_consultar_vagas — NÃO chame cs_consultar_profissionais):\\n' + linhas;\n  }\n} catch(e) { /* sem profissionais: agent usa tool normalmente */ }\n\n// Serviços\ntry {\n  const rawSvc = $('HTTP Fetch Servicos').first().json;\n  const svcData = typeof rawSvc.data === 'string' ? rawSvc.data : JSON.stringify(rawSvc);\n  const svcs = JSON.parse(svcData);\n  if (Array.isArray(svcs) && svcs.length > 0) {\n    const linhas = svcs.slice(0, 20).map(s =>\n      '  - ' + (s.nome || '?') +\n      (s.preco_a_vista_brl ? ' | R$' + s.preco_a_vista_brl : '') +\n      (s.duracao_minutos ? ' | ' + s.duracao_minutos + 'min' : '') +\n      ' | servico_id: ' + s.id\n    ).join('\\n');\n    servicosBlock = '\\n\\n## SERVIÇOS DISPONÍVEIS (use estes servico_id ao chamar cs_agendar — NÃO chame cs_consultar_servicos):\\n' + linhas;\n  }\n} catch(e) { /* sem serviços */ }\n\nreturn [{\n  json: {\n    ...ctx,\n    agent_instructions: (ctx.agent_instructions || '') + profBlock + servicosBlock,\n    _profissionais_pre_carregados: profBlock !== '',\n    _servicos_pre_carregados: servicosBlock !== ''\n  }\n}];"
+        "jsCode": "// Formata profissionais e serviços pré-buscados pelos HTTP nodes anteriores.\n// HTTP Fetch Profissionais → POST rpc/n8n_cs_profissionais_para_agente (jsonb array) ou texto.\n\nconst ctx = $('IF mensagem válida').first().json;\n\nlet profBlock = '';\nlet servicosBlock = '';\n\nfunction parseProfissionaisRpc(rawProf, allItems) {\n  let profs = [];\n  if (typeof rawProf === 'string') {\n    try { profs = JSON.parse(rawProf); } catch (_) { profs = []; }\n  } else if (Array.isArray(rawProf)) profs = rawProf;\n  else if (rawProf && typeof rawProf === 'object') {\n    if (Array.isArray(rawProf.data)) profs = rawProf.data;\n    else if (typeof rawProf.data === 'string') {\n      try { profs = JSON.parse(rawProf.data); } catch (_) {}\n    }\n  }\n  if (!profs.length && allItems && allItems.length > 0) {\n    const rows = allItems.map((i) => i.json).filter((r) => r && r.id && r.nome);\n    if (rows.length === allItems.length) profs = rows;\n  }\n  return Array.isArray(profs) ? profs : [];\n}\n\n// Profissionais\ntry {\n  const allP = $('HTTP Fetch Profissionais').all();\n  const rawProf = allP[0] ? allP[0].json : {};\n  const profs = parseProfissionaisRpc(rawProf, allP);\n  if (Array.isArray(profs) && profs.length > 0) {\n    const linhas = profs.map(p =>\n      '  - ' + (p.nome || '?') +\n      (p.especialidade ? ' (' + p.especialidade + ')' : '') +\n      ' | profissional_id: ' + p.id\n    ).join('\\n');\n    profBlock = '\\n\\n## PROFISSIONAIS DISPONÍVEIS (use estes profissional_id ao chamar cs_consultar_vagas — NÃO chame cs_consultar_profissionais):\\n' + linhas;\n  }\n} catch(e) { /* sem profissionais: agent usa tool normalmente */ }\n\n// Serviços\ntry {\n  const rawSvc = $('HTTP Fetch Servicos').first().json;\n  const svcData = typeof rawSvc.data === 'string' ? rawSvc.data : JSON.stringify(rawSvc);\n  const svcs = JSON.parse(svcData);\n  if (Array.isArray(svcs) && svcs.length > 0) {\n    const linhas = svcs.slice(0, 20).map(s =>\n      '  - ' + (s.nome || '?') +\n      (s.preco_a_vista_brl ? ' | R$' + s.preco_a_vista_brl : '') +\n      (s.duracao_minutos ? ' | ' + s.duracao_minutos + 'min' : '') +\n      ' | servico_id: ' + s.id\n    ).join('\\n');\n    servicosBlock = '\\n\\n## SERVIÇOS DISPONÍVEIS (use estes servico_id ao chamar cs_agendar — NÃO chame cs_consultar_servicos):\\n' + linhas;\n  }\n} catch(e) { /* sem serviços */ }\n\nreturn [{\n  json: {\n    ...ctx,\n    agent_instructions: (ctx.agent_instructions || '') + profBlock + servicosBlock,\n    _profissionais_pre_carregados: profBlock !== '',\n    _servicos_pre_carregados: servicosBlock !== ''\n  }\n}];"
       }
     },
     {
@@ -4019,9 +3973,12 @@
         -128
       ],
       "parameters": {
-        "method": "GET",
-        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/cs_profissionais?select=id,nome,especialidade&ativo=eq.true&order=nome.asc&clinic_id=eq.' + $('IF mensagem válida').first().json.clinic_id }}",
+        "method": "POST",
+        "url": "=https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/rpc/n8n_cs_profissionais_para_agente",
         "sendHeaders": true,
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('IF mensagem válida').first().json.clinic_id }) }}",
         "headerParameters": {
           "parameters": [
             {
@@ -4041,13 +3998,6 @@
               "value": "application/json"
             }
           ]
-        },
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "text"
-            }
-          }
         }
       }
     },
@@ -4107,7 +4057,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const item = { ...$input.first().json };\n\nfunction parseLast(nodeName) {\n  try {\n    const rows = $(nodeName).all();\n    if (!rows?.length) return null;\n    const raw = rows[rows.length - 1].json?.response;\n    if (raw == null) return null;\n    return typeof raw === 'string' ? JSON.parse(raw) : raw;\n  } catch (e) {\n    return null;\n  }\n}\n\nconst ctx = $('Monta Contexto').first().json;\nconst inst = String($('Edit Fields1').first().json.instanceName || '').trim();\nconst nome = String(ctx.nome_cliente || 'Cliente').trim();\nlet notify = null;\n\nconst ag = parseLast('agd_cs_agendar');\nconst re = parseLast('agd_cs_reagendar');\nconst ca = parseLast('agd_cs_cancelar');\nconst tail = String(item.output || '').trim().slice(-400);\n\nif (ag?.ok && ag.profissional_whatsapp) {\n  const num = String(ag.profissional_whatsapp).replace(/\\D/g, '');\n  if (num.length >= 10) {\n    notify = { number: num, instanceName: inst, text: '📅 Novo agendamento (IA): ' + nome + (tail ? ('\\n' + tail) : '\\nVerifique o painel da clínica.') };\n  }\n} else if (re?.ok && re.profissional_whatsapp) {\n  const num = String(re.profissional_whatsapp).replace(/\\D/g, '');\n  if (num.length >= 10) {\n    notify = { number: num, instanceName: inst, text: '🔄 Reagendamento (IA): ' + nome + (tail ? ('\\n' + tail) : '\\nVerifique o painel da clínica.') };\n  }\n} else if (ca?.ok && ca.profissional_whatsapp) {\n  const num = String(ca.profissional_whatsapp).replace(/\\D/g, '');\n  if (num.length >= 10) {\n    notify = { number: num, instanceName: inst, text: '❌ Cancelamento (IA): ' + nome + (tail ? ('\\n' + tail) : '\\nVerifique o painel da clínica.') };\n  }\n}\n\nreturn [{ json: { ...item, _evolution_notify: notify } }];"
+        "jsCode": "const rawIn = $input.first().json;\nconst item = { ...rawIn };\nconst ctx = $('Monta Contexto').first().json;\nconst inst = String($('Edit Fields1').first().json.instanceName || '').trim();\nconst nome = String(ctx.nome_cliente || 'Cliente').trim();\nconst out = String(rawIn.output ?? rawIn.text ?? rawIn.response ?? '').trim();\nconst tail = out.slice(-400);\n\nconst looksLikeMutation =\n  /(reagendad|reagendamento|remarca(d|da|do)?|hor[aá]rio\\s+(alter|mud)|marcamos\\s+para|nova\\s+data|novo\\s+hor[aá]rio|agendad\\w*\\s+com\\s+sucesso|agendamento[^\\n]{0,120}sucesso|foi\\s+confirmad[oa]|confirmad[oa][\\s\\S]{0,200}(consulta|sucesso)|confirmad[oa]\\s+com\\s+sucesso|ficou\\s+agendad|est[áa]\\s+agendad|reservamos|cancelad|cancelamento)/i.test(\n    out,\n  );\n\nlet notify = null;\n\nif (looksLikeMutation && ctx.clinic_id) {\n  const remoteJid = String(ctx.remoteJid || '');\n  const phoneForRpc = remoteJid.replace(/\\D/g, '') || remoteJid;\n  const SUPABASE_URL = 'https://xkwdwioawosthwjqijfb.supabase.co';\n  const SUPABASE_KEY =\n    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDUyNzUzMywiZXhwIjoyMDkwMTAzNTMzfQ._CoWPqn1bDqNRJ-g6EzGnqE86YI_LW5T_N6At3CPal4';\n\n  let rpcRaw = null;\n  try {\n    rpcRaw = await $helpers.httpRequest({\n      method: 'POST',\n      url: SUPABASE_URL + '/rest/v1/rpc/n8n_cs_profissional_whatsapp_mudanca_recente',\n      headers: {\n        apikey: SUPABASE_KEY,\n        Authorization: 'Bearer ' + SUPABASE_KEY,\n        'Content-Type': 'application/json',\n        'Accept': 'application/json',\n      },\n      body: JSON.stringify({ p_clinic_id: ctx.clinic_id, p_telefone: phoneForRpc }),\n    });\n  } catch {\n    rpcRaw = null;\n  }\n\n  // $helpers.httpRequest pode devolver string, array ou objeto\n  let rpc = rpcRaw;\n  if (typeof rpcRaw === 'string') {\n    try { rpc = JSON.parse(rpcRaw); } catch { rpc = null; }\n  }\n  if (Array.isArray(rpc)) {\n    rpc = rpc[0] ?? null;\n  }\n\n  if (rpc && rpc.ok === true && rpc.profissional_whatsapp) {\n    const num = String(rpc.profissional_whatsapp).replace(/\\D/g, '');\n    if (num.length >= 10) {\n      function fmtData(s) {\n        if (!s) return '—';\n        const str = String(s).trim().slice(0, 10);\n        const m = /^(\\d{4})-(\\d{2})-(\\d{2})/.exec(str);\n        return m ? m[3] + '/' + m[2] + '/' + m[1] : str || '—';\n      }\n      function fmtHora(h) {\n        if (h == null || h === '') return '—';\n        const m = String(h).match(/^(\\d{1,2}):(\\d{2})/);\n        return m ? m[1].padStart(2, '0') + ':' + m[2] : String(h);\n      }\n      function comDr(n, genero) {\n        const s = String(n || '').trim();\n        if (!s) return '';\n        if (/^dra\\.?\\s/i.test(s)) return s;\n        if (/^dr\\.?\\s/i.test(s)) return s;\n        const g = String(genero || '').trim().toUpperCase();\n        const pref = g === 'F' ? 'Dra.' : 'Dr.';\n        return pref + ' ' + s;\n      }\n      function aberturaNova(np, gen) {\n        const s = String(np || '').trim();\n        if (!s) return 'Você tem um novo agendamento:';\n        return comDr(s, gen) + ', você tem um novo agendamento:';\n      }\n      function aberturaCancel(np, gen) {\n        const s = String(np || '').trim();\n        if (!s) return 'Você tem um cancelamento:';\n        return comDr(s, gen) + ', você tem um cancelamento:';\n      }\n      function aberturaResched(np, gen) {\n        const s = String(np || '').trim();\n        if (!s) return 'Você tem um reagendamento:';\n        return comDr(s, gen) + ', você tem um reagendamento:';\n      }\n      function formatTelBr(raw) {\n        const s = String(raw || '').trim();\n        if (!s) return '';\n        const d = s.replace(/\\D/g, '');\n        if (d.length < 10) return '';\n        let x = d;\n        if (x.startsWith('55') && x.length >= 12) x = x.slice(2);\n        if (x.length === 11) return '(' + x.slice(0, 2) + ') ' + x.slice(2, 7) + '-' + x.slice(7);\n        if (x.length === 10) return '(' + x.slice(0, 2) + ') ' + x.slice(2, 6) + '-' + x.slice(6);\n        if (s.startsWith('+')) return s;\n        return '+' + d;\n      }\n      function linhasCliente(c, telFmt) {\n        const lines = ['👤 Cliente: ' + c];\n        if (telFmt) lines.push('📱 Telefone: ' + telFmt);\n        return lines;\n      }\n      function msgNovo(np, gen, c, sv, d, hr, telFmt) {\n        return [aberturaNova(np, gen), '', '🟢 Novo agendamento', '', ...linhasCliente(c, telFmt), '🩺 Serviço: ' + sv, '📅 Data: ' + d, '🕘 Horário: ' + hr].join(\"\\n\");\n      }\n      function msgCancel(np, gen, c, sv, d, hr, telFmt) {\n        return [aberturaCancel(np, gen), '', '🔴 Cancelamento de agendamento', '', ...linhasCliente(c, telFmt), '🩺 Serviço: ' + sv, '📅 Data: ' + d, '🕘 Horário: ' + hr].join(\"\\n\");\n      }\n      function msgResched(np, gen, c, sv, d, hr, telFmt) {\n        return [aberturaResched(np, gen), '', '🟡 Reagendamento de agendamento', '', ...linhasCliente(c, telFmt), '🩺 Serviço: ' + sv, '📅 Nova data: ' + d, '🕙 Novo horário: ' + hr].join(\"\\n\");\n      }\n\n      let row = null;\n      try {\n        const agId = rpc.agendamento_id;\n        if (agId) {\n          const rowRaw = await $helpers.httpRequest({\n            method: 'GET',\n            url: SUPABASE_URL + '/rest/v1/cs_agendamentos?id=eq.' + agId + '&select=nome_cliente,nome_procedimento,data_agendamento,horario,status,profissional_id,cliente_id',\n            headers: {\n              apikey: SUPABASE_KEY,\n              Authorization: 'Bearer ' + SUPABASE_KEY,\n              Accept: 'application/json',\n            },\n          });\n          let rows = rowRaw;\n          if (typeof rowRaw === 'string') {\n            try { rows = JSON.parse(rowRaw); } catch (e) { rows = []; }\n          }\n          if (Array.isArray(rows) && rows[0]) row = rows[0];\n        }\n      } catch (e) {\n        row = null;\n      }\n\n      let clienteTelFmt = '';\n      if (row && row.cliente_id && ctx.clinic_id) {\n        try {\n          const cid = String(row.cliente_id).trim();\n          const cRaw = await $helpers.httpRequest({\n            method: 'GET',\n            url: SUPABASE_URL + '/rest/v1/cs_clientes?id=eq.' + cid + '&clinic_id=eq.' + ctx.clinic_id + '&select=telefone',\n            headers: {\n              apikey: SUPABASE_KEY,\n              Authorization: 'Bearer ' + SUPABASE_KEY,\n              Accept: 'application/json',\n            },\n          });\n          let crows = cRaw;\n          if (typeof cRaw === 'string') {\n            try { crows = JSON.parse(cRaw); } catch (e2) { crows = []; }\n          }\n          const tel0 = Array.isArray(crows) && crows[0] && crows[0].telefone != null\n            ? String(crows[0].telefone).trim()\n            : '';\n          clienteTelFmt = formatTelBr(tel0);\n        } catch (e3) {\n          clienteTelFmt = '';\n        }\n      }\n\n      let profNome = '';\n      let profGenero = '';\n      if (row && row.profissional_id) {\n        try {\n          const prRaw = await $helpers.httpRequest({\n            method: 'GET',\n            url: SUPABASE_URL + '/rest/v1/cs_profissionais?id=eq.' + row.profissional_id + '&select=nome,gender',\n            headers: {\n              apikey: SUPABASE_KEY,\n              Authorization: 'Bearer ' + SUPABASE_KEY,\n              Accept: 'application/json',\n            },\n          });\n          let prs = prRaw;\n          if (typeof prRaw === 'string') {\n            try { prs = JSON.parse(prRaw); } catch (e) { prs = []; }\n          }\n          if (Array.isArray(prs) && prs[0] && prs[0].nome) {\n            profNome = String(prs[0].nome).trim();\n            profGenero = prs[0].gender != null ? String(prs[0].gender).trim() : '';\n          }\n        } catch (e) {\n          profNome = '';\n          profGenero = '';\n        }\n      }\n\n      const cliente = String((row && row.nome_cliente) || nome).trim() || 'Cliente';\n      const serv = String((row && row.nome_procedimento) || 'Consulta').trim() || 'Consulta';\n      const d = fmtData(row && row.data_agendamento);\n      const h = fmtHora(row && row.horario);\n      const stRow = String((row && row.status) || rpc.status_agendamento || '');\n\n      const isCancel = stRow === 'cancelado' || /cancelad|cancelamento/i.test(out);\n      const isResched =\n        !isCancel &&\n        /reagend|reagendamento|remarca|hor[aá]rio\\s+(alter|mud)|nova\\s+data|novo\\s+hor/i.test(out);\n\n      let textBody;\n      if (isCancel) textBody = msgCancel(profNome, profGenero, cliente, serv, d, h, clienteTelFmt);\n      else if (isResched) textBody = msgResched(profNome, profGenero, cliente, serv, d, h, clienteTelFmt);\n      else textBody = msgNovo(profNome, profGenero, cliente, serv, d, h, clienteTelFmt);\n\n      notify = {\n        number: num,\n        instanceName: inst,\n        text: textBody,\n      };\n    }\n  }\n}\n\nreturn [{ json: { ...item, _evolution_notify: notify } }];\n"
       }
     },
     {
@@ -4351,7 +4301,7 @@
       "main": [
         [
           {
-            "node": "VerificaSe?MaiorQue1",
+            "node": "Aguarda 13 segundos",
             "type": "main",
             "index": 0
           }
@@ -4363,24 +4313,6 @@
         [
           {
             "node": "BuscaMensagens",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "VerificaSe?MaiorQue1": {
-      "main": [
-        [
-          {
-            "node": "N?o faz nada, j? tem mensagem processando",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Aguarda 13 segundos",
             "type": "main",
             "index": 0
           }
@@ -6313,7 +6245,7 @@
       },
       {
         "parameters": {
-          "content": "### 📅 AGENTE AGENDADOR\n**agente_agendador** (temp **0.1** — precisão transacional)\n\n**Função:** Único agente que cria, edita e cancela consultas.\n\n**Fluxo obrigatório:**\n1. cs_consultar_servicos → lista serviços\n2. cs_consultar_profissionais → lista profissionais\n3. cs_consultar_vagas → verifica disponibilidade (YYYY-MM-DD)\n4. Confirmação explícita do cliente\n5. cs_agendar / cs_reagendar / cs_cancelar\n6. cs_notificar_profissional (se profissional_whatsapp ≠ null)\n\n**Temperatura 0.1** para nunca inventar horários, serviços ou datas.",
+          "content": "### 📅 AGENTE AGENDADOR\n**agente_agendador** (temp **0.1** — precisão transacional)\n\n**Função:** Único agente que cria, edita e cancela consultas.\n\n**Fluxo obrigatório:**\n1. cs_consultar_servicos → lista serviços\n2. cs_consultar_profissionais → lista profissionais\n3. cs_consultar_vagas → disponibilidade (YYYY-MM-DD)\n4. **Perguntar sempre** \"Posso confirmar…?\" (ou equivalente) **antes** de gravar\n5. Só após **sim** do cliente → cs_agendar / cs_reagendar / cs_cancelar\n6. Aviso ao profissional é automático no fluxo (não usar tool manual)\n\n**Temperatura 0.1** para nunca inventar horários, serviços ou datas.",
           "height": 880,
           "width": 1858,
           "color": 6
@@ -6460,6 +6392,7 @@
           "operation": "get",
           "propertyName": "Mensagem",
           "key": "={{ $('Webhook').first().json.body.data.key.remoteJid }}",
+          "keyType": "list",
           "options": {}
         },
         "type": "n8n-nodes-base.redis",
@@ -6481,7 +6414,7 @@
         "parameters": {
           "operation": "push",
           "list": "={{ $('Webhook').first().json.body.data.key.remoteJid }}",
-          "messageData": "={{ JSON.stringify($json) }}"
+          "messageData": "={{ JSON.stringify(Object.assign({}, JSON.parse(JSON.stringify($json || {})), { wppKeyId: $('Webhook').first().json.body.data.key.id })) }}"
         },
         "type": "n8n-nodes-base.redis",
         "typeVersion": 1,
@@ -6501,42 +6434,10 @@
       },
       {
         "parameters": {
-          "conditions": {
-            "options": {
-              "caseSensitive": true,
-              "leftValue": "",
-              "typeValidation": "strict",
-              "version": 2
-            },
-            "conditions": [
-              {
-                "id": "69ae624a-c135-4d58-b36c-94a66271b12d",
-                "leftValue": "={{ $json.Mensagem.length }}",
-                "rightValue": 1,
-                "operator": {
-                  "type": "number",
-                  "operation": "gt"
-                }
-              }
-            ],
-            "combinator": "and"
-          },
-          "options": {}
-        },
-        "type": "n8n-nodes-base.if",
-        "typeVersion": 2.2,
-        "position": [
-          48,
-          -832
-        ],
-        "id": "2e9ce1d4-e890-44b3-8463-69ad3d5015e0",
-        "name": "VerificaSe?MaiorQue1"
-      },
-      {
-        "parameters": {
           "operation": "get",
           "propertyName": "Mensagens",
           "key": "={{ $('Webhook').first().json.body.data.key.remoteJid }}",
+          "keyType": "list",
           "options": {}
         },
         "type": "n8n-nodes-base.redis",
@@ -6576,20 +6477,11 @@
       },
       {
         "parameters": {
-          "assignments": {
-            "assignments": [
-              {
-                "id": "56d366b6-65c5-46aa-9fd8-849c56a25e7a",
-                "name": "Mensagens",
-                "value": "={{ $json.Mensagens.reverse().join('\\n') }}",
-                "type": "string"
-              }
-            ]
-          },
-          "options": {}
+          "mode": "runOnceForAllItems",
+          "jsCode": "/**\n * Consolida fila Redis (Mensagem ou Mensagens) num único texto para o agente.\n * Dedup: última entrada por wppKeyId (Evolution); JSON idêntico sem id; texto repetido em sequência.\n * Devolve [] se vazio — não avança para ResetaFila.\n */\nconst input = $input.first().json;\nconst raw = input.Mensagens ?? input.Mensagem;\nlet arr = [];\nif (Array.isArray(raw)) {\n  arr = raw;\n} else if (raw != null && raw !== '') {\n  arr = [raw];\n}\nif (arr.length === 0) {\n  return [];\n}\nfunction parseCell(cell) {\n  const s = typeof cell === 'string' ? cell : JSON.stringify(cell);\n  try {\n    const o = JSON.parse(s);\n    const id =\n      o && typeof o === 'object' && o.wppKeyId != null && o.wppKeyId !== ''\n        ? String(o.wppKeyId)\n        : null;\n    const text =\n      o && typeof o === 'object' && o.msg != null ? String(o.msg).trim() : s.trim();\n    return { id, text, raw: s };\n  } catch {\n    return { id: null, text: s.trim(), raw: s };\n  }\n}\nconst parsed = arr.map(parseCell).filter((p) => p.text);\nif (parsed.length === 0) {\n  return [];\n}\nconst lastIdxById = new Map();\nfor (let i = 0; i < parsed.length; i++) {\n  const id = parsed[i].id;\n  if (id) lastIdxById.set(id, i);\n}\nconst byId = parsed.filter((p, i) => !p.id || lastIdxById.get(p.id) === i);\nconst seenRaw = new Set();\nconst uniqueRaw = [];\nfor (const p of byId) {\n  if (seenRaw.has(p.raw)) continue;\n  seenRaw.add(p.raw);\n  uniqueRaw.push(p);\n}\nconst lines = [];\nfor (const p of uniqueRaw) {\n  if (lines.length > 0 && lines[lines.length - 1] === p.text) continue;\n  lines.push(p.text);\n}\nconst Mensagens = lines.join('\\n');\nif (!Mensagens.trim()) {\n  return [];\n}\nreturn [{ json: { ...input, Mensagens } }];"
         },
-        "type": "n8n-nodes-base.set",
-        "typeVersion": 3.4,
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
         "position": [
           656,
           -832
@@ -8284,10 +8176,15 @@
       },
       {
         "parameters": {
-          "toolDescription": "Lista os profissionais ativos da cl?nica com nome e especialidade. Use sempre que o cliente perguntar sobre m?dicos, dentistas, profissionais, especialistas, doutores, quem atende, com quem pode ser atendido, ou quais profissionais a cl?nica tem.",
-          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/cs_profissionais?select=id,nome,especialidade&ativo=eq.true&order=nome.asc&clinic_id=eq.' + $('Code merge webhook e resolucao').first().json.clinica_id }}",
+          "toolDescription": "Lista profissionais ativos ligados ao painel (nome, especialidade, id). Mesmos ids que aparecem em cs_consultar_vagas.",
+          "method": "POST",
+          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_profissionais_para_agente' }}",
           "authentication": "predefinedCredentialType",
-          "nodeCredentialType": "supabaseApi"
+          "nodeCredentialType": "supabaseApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Code merge webhook e resolucao').first().json.clinica_id }) }}",
+          "sendHeaders": false
         },
         "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
         "typeVersion": 1.1,
@@ -8473,14 +8370,24 @@
             "options": {
               "caseSensitive": true,
               "leftValue": "",
-              "typeValidation": "strict",
+              "typeValidation": "loose",
               "version": 3
             },
             "conditions": [
               {
                 "id": "f59e7243-5b97-4052-87a9-19d85de44f51",
-                "leftValue": "558196454656@s.whatsapp.net",
-                "rightValue": "={{ $json.body.data.key.remoteJid }}",
+                "leftValue": "={{ $json.body.data.key.fromMe }}",
+                "rightValue": false,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals",
+                  "name": "filter.operator.equals"
+                }
+              },
+              {
+                "id": "b3e8a901-teste-so-numero-prof-558196454656",
+                "leftValue": "={{ String($json.body?.data?.key?.remoteJid || '').replace(/\\D/g, '') }}",
+                "rightValue": "558196454656",
                 "operator": {
                   "type": "string",
                   "operation": "equals",
@@ -8490,7 +8397,7 @@
             ],
             "combinator": "and"
           },
-          "looseTypeValidation": "={{ false }}",
+          "looseTypeValidation": "={{ true }}",
           "options": {}
         },
         "type": "n8n-nodes-base.filter",
@@ -8587,7 +8494,7 @@
               },
               {
                 "name": "mensagem",
-                "description": "Texto curto para o profissional. Agendamento: \"📅 Novo agendamento: {nome_cliente}, {servico}, {data} às {horario}\". Reagendamento: \"🔄 Reagendamento: {nome_cliente}, {servico}, {nova_data} às {novo_horario}\". Cancelamento: \"❌ Cancelamento: {nome_cliente}, {servico}, {data} às {horario}\"",
+                "description": "Mensagem multilinha para o WhatsApp do profissional. Novo: \"🟢 Novo agendamento\" + linha em branco + \"👤 Cliente: …\" + \"🩺 Serviço: …\" + \"📅 Data: DD/MM/AAAA\" + \"🕘 Hora: HH:mm\". Cancelamento: \"🔴 Cancelamento de agendamento\" + mesmo bloco (data/hora canceladas). Reagendamento: \"🟡 Reagendamento de agendamento\" + cliente + serviço + \"📅 Nova data:\" + \"🕙 Novo horário:\"",
                 "type": "string"
               }
             ]
@@ -8872,7 +8779,7 @@
           "promptType": "define",
           "text": "={{ $json.mensagem }}",
           "options": {
-            "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, responsável por agendamentos da {{ $json.clinic_name || 'clínica' }}.\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nTelefone (p_telefone): {{ $json.remoteJid }}\nData/hora atual (apenas referência interna): {{ $now.format('dd/MM/yyyy HH:mm') }}\n\n## FORMATAÇÃO\nNUNCA escreva listas em linha corrida. SEMPRE use quebra de linha para cada item.\n\n## FLUXO NOVO AGENDAMENTO\n1. cs_consultar_servicos → mostre nome e descrição APENAS (NUNCA inclua preço, valor ou desconto) → guarde servico_id\n2. cs_consultar_profissionais → mostre lista → pergunte preferência → guarde profissional_id\n3. Se nome_cliente estiver vazio → pergunte nome completo (NUNCA use nome do WhatsApp)\n4. Pergunte EXPLICITAMENTE ao cliente qual data deseja → SOMENTE ENTÃO chame cs_consultar_vagas\n   - NUNCA use a data atual automaticamente\n   - NUNCA chame cs_consultar_vagas sem ter recebido a data do cliente nesta conversa\n   - Passe SEMPRE o profissional_id do profissional escolhido no parâmetro correspondente\n5. Verifique o horário pedido no array retornado (HH:MM exato)\n   - Se encontrar match → confirme direto, NÃO liste alternativas\n   - Se não encontrar → diga que não está disponível e liste alternativas do mesmo dia\n6. Confirme: nome, serviço, profissional, data, horário\n7. cs_agendar com: nome_cliente, telefone_cliente, servico_id, profissional_id, data (YYYY-MM-DD), horario (HH:MM)\n8. Confirme com resumo\n\n## FLUXO CANCELAR / REAGENDAR\n1. cs_buscar_agendamentos → mostre lista\n2. Confirme explicitamente ANTES de chamar cs_cancelar ou cs_reagendar\n\n## PÓS AGENDAMENTO/CANCELAMENTO/REAGENDAMENTO\nSe profissional_whatsapp ≠ null → chame cs_notificar_profissional ANTES de responder ao cliente\n- Agendamento: \"📅 Novo agendamento: {nome}, {serviço}, {data} às {horário}\"\n- Reagendamento: \"🔄 Reagendamento: {nome}, {serviço}, {nova_data} às {novo_horário}\"\n- Cancelamento: \"❌ Cancelamento: {nome}, {serviço}, {data} às {horário}\"\n\n## PREÇOS\nNUNCA mencione preço, valor, custo ou desconto ao apresentar serviços ou em qualquer momento espontâneo.\nInforme SOMENTE se o cliente perguntar diretamente. Se null: \"valor não informado pela clínica\"\n\n## REGRAS\n- NUNCA invente horários, serviços ou profissionais não retornados pelas tools\n- NUNCA agende ou cancele sem confirmação explícita do cliente\n- NUNCA repita horários da memória do chat — SEMPRE chame cs_consultar_vagas para obter dados atualizados\n- Se o cliente pedir para repetir ou confirmar horários disponíveis → chame cs_consultar_vagas novamente\n- Máximo 3-5 linhas por mensagem\n\n{{ $json.agent_instructions ? '## INSTRUÇÕES DA CLÍNICA\\n' + $json.agent_instructions : '' }}"
+            "systemMessage": "=Você é {{ $json.nome_agente || 'Assistente' }}, responsável por agendamentos da {{ $json.clinic_name || 'clínica' }}.\nNome do cliente: {{ $json.nome_cliente || '(não informado)' }}\nTelefone (p_telefone): {{ $json.remoteJid }}\nData/hora atual: {{ $now.format('dd/MM/yyyy HH:mm') }} — Hoje é {{ ['','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado','domingo'][$now.weekday] }} — YYYY-MM-DD: {{ $now.format('yyyy-MM-dd') }}\n\n{{ $json.agent_instructions }}\n\n## REGRA FUNDAMENTAL - EXECUÇÃO DE TOOLS\nVOCÊ É UM AGENTE QUE EXECUTA AÇÕES, NÃO DESCREVE O QUE VAI FAZER.\n\n❌ PROIBIDO: \"Vou consultar os horários\", \"Um momento por favor\", \"Deixa eu verificar\", \"Aguarde enquanto busco\"\n✓ CORRETO: Chamar a tool IMEDIATAMENTE e só responder ao cliente DEPOIS que ela retornar, já com o resultado.\n\nSe você tem a data em YYYY-MM-DD, CHAME cs_consultar_vagas AGORA (um parâmetro só; lista todos os profissionais). Nunca anuncie que vai fazer — faça.\n\n## FORMATAÇÃO\nNUNCA escreva listas em linha corrida. SEMPRE use quebra de linha para cada item.\n\n## FLUXO NOVO AGENDAMENTO\nOs profissionais e serviços JÁ ESTÃO listados acima em ## PROFISSIONAIS DISPONÍVEIS e ## SERVIÇOS DISPONÍVEIS.\nNÃO chame cs_consultar_profissionais nem cs_consultar_servicos — use os IDs exatos listados acima.\n\n1. Apresente serviços (nome/descrição, NUNCA preço) e pergunte qual o cliente deseja → guarde servico_id\n2. Apresente profissionais; se o cliente já disse serviço e dia (ex.: clareamento hoje), pode chamar vagas antes de fixar profissional.\n3. Se nome_cliente estiver vazio → pergunte nome completo (NUNCA use nome do WhatsApp)\n4. Obtenha a data (explícita ou \"hoje\"/\"amanhã\" já convertidos no bloco DATAS)\n5. ASSIM QUE TIVER data em YYYY-MM-DD → CHAME cs_consultar_vagas IMEDIATAMENTE (sem \"vou consultar\")\n6. Verifique o horário pedido no array retornado (HH:MM exato):\n   - Match → resuma em uma mensagem: nome, serviço, profissional, data e horário (ainda **não** chame cs_agendar)\n   - Sem match → liste alternativas do mesmo dia\n7. **PERGUNTA OBRIGATÓRIA ANTES DE GRAVAR:** Pergunte explicitamente se pode confirmar o agendamento, por exemplo: *\"Posso confirmar [serviço] com [profissional] em [data] às [horário]?\"* ou *\"Confirma esse horário para eu registrar?\"* **É PROIBIDO** chamar **cs_agendar** (ou cs_reagendar/cs_cancelar) na mesma resposta em que essa pergunta ainda não foi feita **e** respondida com **sim** pelo cliente (sim, pode, confirmo, isso, fechamos, pode ser, ok, etc.). Se o cliente só escolheu horário mas não respondeu à pergunta de confirmação → pare e espere.\n8. Somente **após** a confirmação explícita do cliente → CHAME **cs_reagendar** (se já havia agendamento ativo listado em cs_buscar_agendamentos) OU **cs_agendar** (primeiro agendamento) com todos os dados corretos.\n9. Leia o JSON retornado pela tool: somente se o campo `ok` for **true**, envie ao cliente o resumo final; se `ok` for **false**, NÃO confirme — siga a seção abaixo.\n\n## FLUXO CANCELAR / REAGENDAR\n1. CHAME cs_buscar_agendamentos e guarde de cada item: id (agendamento_id), profissional_id, data_iso, horario, nome_procedimento.\n2. Se o cliente quer mudar data e/ou horário e já existe agendamento ativo na lista → use SEMPRE **cs_reagendar** com agendamento_id + profissional_antigo_id + data_antiga + horario_antigo + novo_profissional_id (muito frequentemente o mesmo UUID) + nova_data + novo_horario. **NUNCA use cs_agendar** nesse caso — cs_agendar cria um SEGUNDO agendamento (duplicado).\n3. Use **cs_agendar** apenas quando o cliente **não** tem consulta ativa para aquele atendimento (primeiro agendamento ou já cancelou todos).\n4. **Sempre** pergunte se o cliente confirma cancelamento ou reagendamento (dados claros) e **só depois** do sim chame cs_cancelar ou cs_reagendar — mesma regra do passo 7 do fluxo novo.\n\n## cs_consultar_vagas — SOMENTE O JSON RETORNADO\nApós cs_consultar_vagas, os únicos horários válidos são os valores \"horario\" (HH:MM) dos objetos do array retornado.\n- Cada objeto é de UM profissional (`profissional` + `profissional_id`). O mesmo HH:MM pode aparecer para dentistas diferentes — agendas independentes. Quando o cliente já escolheu o profissional, considera **só** os objetos daquele nome (ou UUID da lista PROFISSIONAIS). **É proibido** dizer que um horário está indisponível para esse profissional se existir no JSON um item com esse `horario` e esse `profissional`.\n- Liste **todos** os horários retornados, sem pular nenhum. Se o JSON contém \"10:00\", você **deve** incluir 10:00 na lista ao cliente.\n- **Proibido** inventar horário que não apareça no JSON.\n- Antes de dizer que não há vaga às HH:MM, procure no array um item com horario **exatamente** igual a HH:MM. Se existir → o horário está disponível; confirme com o cliente.\n\n## NOTIFICAÇÃO AO PROFISSIONAL\n**Não chame cs_notificar_profissional.** Depois de cs_agendar, cs_reagendar ou cs_cancelar com **ok: true**, responda ao cliente normalmente — o fluxo envia WhatsApp ao profissional automaticamente quando houver profissional_whatsapp na resposta da RPC.\n\n## RESPOSTA JSON DAS TOOLS DE ESCRITA (OBRIGATÓRIO)\ncs_agendar, cs_reagendar e cs_cancelar devolvem JSON com campo `ok` (boolean).\n- **É PROIBIDO** dizer que agendou, reagendou, cancelou ou \"confirmado com sucesso\" se `ok` não for exatamente true.\n- Se `ok` for false: leia `message` ou `error`; explique ao cliente com honestidade; ofereça chamar cs_consultar_vagas de novo ou ajustar horário/profissional; **nunca** simule sucesso.\n- Só após `ok: true` envie o resumo final amigável ao cliente.\n\n## PREÇOS\nNUNCA mencione preço/valor/desconto espontaneamente. Informe SOMENTE se o cliente perguntar. Se null: \"valor não informado pela clínica\"\n\n## DATAS\nCONVERTA relativas para YYYY-MM-DD ANTES de chamar tools:\n- \"hoje\" → data atual acima\n- \"amanhã\" → data acima + 1 dia\n- \"depois de amanhã\" → +2 dias\n- \"quarta-feira\" → próxima quarta usando o dia da semana informado acima\n- Dias da semana → calcule o próximo dia correspondente a partir de hoje\n\n## MÚLTIPLOS PROFISSIONAIS\n1. Use os IDs da lista ## PROFISSIONAIS DISPONÍVEIS (não chame cs_consultar_profissionais)\n2. Uma chamada cs_consultar_vagas por data retorna todos os profissionais — agrupe horários por nome na resposta\n3. Em cs_agendar use o profissional_id do item (slot) escolhido pelo cliente\n\nREGRA DATAS: Quando o cliente mencionar datas relativas (\"quarta-feira\", \"amanhã\", etc.), converta SEMPRE para YYYY-MM-DD ANTES de chamar qualquer tool. Use o dia da semana atual acima para calcular. NUNCA confirme uma data sem checar que o dia da semana bate."
           }
         },
         "id": "ma-agent-agendador",
@@ -8964,24 +8871,19 @@
       },
       {
         "parameters": {
-          "toolDescription": "Lista horários disponíveis de um profissional em um dia específico.\nFluxo obrigatório ANTES de chamar:\n1. cs_consultar_profissionais → obtenha a lista de profissionais\n2. Cliente escolhe o profissional → guarde o UUID (profissional_id)\n3. Pergunte ao cliente a data desejada\n4. Chame esta tool com profissional_id e data_solicitada\nParâmetros:\n- data_solicitada: data no formato YYYY-MM-DD (obrigatório)\n- profissional_id: UUID do profissional escolhido (obrigatório — nunca use null)\nRetorna array com horários livres. Mostre apenas os horários — NUNCA mencione preços.",
+          "toolDescription": "Lista horários livres na data para TODOS os profissionais da clínica (a RPC aceita p_profissional_id null).\nUse após o cliente indicar o dia ou \"hoje\"/\"amanhã\" — converta sempre para YYYY-MM-DD antes de chamar.\nParâmetro:\n- data_solicitada: YYYY-MM-DD (obrigatório)\nCada item do array retornado traz profissional_id, profissional, horario — agrupe por profissional na resposta. Para cs_agendar use o profissional_id do item escolhido. NUNCA mencione preços.",
           "method": "POST",
           "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_consultar_vagas' }}",
           "authentication": "predefinedCredentialType",
           "nodeCredentialType": "supabaseApi",
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Code merge webhook e resolucao').first().json.clinica_id, p_data: '{data_solicitada}', p_profissional_id: '{profissional_id}' }) }}",
+          "jsonBody": "={{ '{\"p_clinic_id\":\"' + $('Code merge webhook e resolucao').first().json.clinica_id + '\",\"p_data\":\"{data_solicitada}\",\"p_profissional_id\":null}' }}",
           "placeholderDefinitions": {
             "values": [
               {
                 "name": "data_solicitada",
-                "description": "Data desejada em formato YYYY-MM-DD.",
-                "type": "string"
-              },
-              {
-                "name": "profissional_id",
-                "description": "UUID do profissional escolhido pelo cliente (de cs_consultar_profissionais). Obrigatório.",
+                "description": "Data em YYYY-MM-DD. Converter hoje/amanhã/dia da semana antes de chamar. Um único parâmetro — a tool devolve vagas de todos os profissionais.",
                 "type": "string"
               }
             ]
@@ -9030,10 +8932,15 @@
       },
       {
         "parameters": {
-          "toolDescription": "Lista os profissionais ativos da clínica com nome e especialidade.",
-          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/cs_profissionais?select=id,nome,especialidade&ativo=eq.true&order=nome.asc&clinic_id=eq.' + $('Code merge webhook e resolucao').first().json.clinica_id }}",
+          "toolDescription": "Lista profissionais ativos ligados ao painel (nome, especialidade, id). Mesmos ids que cs_consultar_vagas.",
+          "method": "POST",
+          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_profissionais_para_agente' }}",
           "authentication": "predefinedCredentialType",
-          "nodeCredentialType": "supabaseApi"
+          "nodeCredentialType": "supabaseApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Code merge webhook e resolucao').first().json.clinica_id }) }}",
+          "sendHeaders": false
         },
         "id": "ma-tool-profissionais-agd",
         "name": "agd_cs_consultar_profissionais",
@@ -9052,14 +8959,14 @@
       },
       {
         "parameters": {
-          "toolDescription": "Cria agendamento após confirmação explícita do cliente. Obrigatório: servico_id de cs_consultar_servicos, profissional_id de cs_consultar_vagas, data em YYYY-MM-DD, horario em HH:MM.",
+          "toolDescription": "Cria agendamento após confirmação explícita do cliente. Retorna JSON com `ok` (boolean) e `message`. Só diga ao cliente que agendou se ok===true; se ok===false, use message/error e não confirme. Obrigatório: servico_id, profissional_id do slot em cs_consultar_vagas, data YYYY-MM-DD, horario HH:MM.",
           "method": "POST",
           "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_cs_agendar' }}",
           "authentication": "predefinedCredentialType",
           "nodeCredentialType": "supabaseApi",
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "{\n  \"p_nome_cliente\": \"{nome_cliente}\",\n  \"p_telefone\": \"{telefone_cliente}\",\n  \"p_profissional_id\": \"{profissional_id}\",\n  \"p_servico_id\": \"{servico_id}\",\n  \"p_data\": \"{data}\",\n  \"p_horario\": \"{horario}\",\n  \"p_observacoes\": \"{observacoes}\"\n}",
+          "jsonBody": "={{ '{\"p_nome_cliente\":\"{nome_cliente}\",\"p_telefone\":\"{telefone_cliente}\",\"p_profissional_id\":\"{profissional_id}\",\"p_servico_id\":\"{servico_id}\",\"p_data\":\"{data}\",\"p_horario\":\"{horario}\",\"p_observacoes\":\"{observacoes}\"}' }}",
           "placeholderDefinitions": {
             "values": [
               {
@@ -9266,7 +9173,7 @@
               },
               {
                 "name": "mensagem",
-                "description": "Agendamento: \"📅 Novo agendamento: {nome}, {serviço}, {data} às {horário}\". Reagendamento: \"🔄 Reagendamento: ...\". Cancelamento: \"❌ Cancelamento: ...\"",
+                "description": "Igual ao outro tool de notificar: bloco \"🟢 Novo agendamento\" / \"🔴 Cancelamento de agendamento\" / \"🟡 Reagendamento de agendamento\" com linhas 👤 🩺 📅 🕘 ou Nova data / Novo horário.",
                 "type": "string"
               }
             ]
@@ -9756,7 +9663,7 @@
         "main": [
           [
             {
-              "node": "VerificaSe?MaiorQue1",
+              "node": "Aguarda 13 segundos",
               "type": "main",
               "index": 0
             }
@@ -9768,24 +9675,6 @@
           [
             {
               "node": "BuscaMensagens",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "VerificaSe?MaiorQue1": {
-        "main": [
-          [
-            {
-              "node": "N?o faz nada, j? tem mensagem processando",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Aguarda 13 segundos",
               "type": "main",
               "index": 0
             }
