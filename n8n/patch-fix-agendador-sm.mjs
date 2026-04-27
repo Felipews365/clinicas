@@ -4,6 +4,10 @@
  * Corrige o systemMessage do agente_agendador:
  *   1. Proíbe explicitamente mencionar preço ao listar serviços
  *   2. Exige que a data seja pedida ao cliente ANTES de chamar cs_consultar_vagas
+ *
+ * Nota: o agente no workflow usa tools **agd_cs_*** no n8n. Para alinhar nomes + regra
+ * de ok:true, use antes/atualize com **patch-agendador-sm-tools-ok.mjs** (e
+ * workflow-kCX2-live.json como fonte).
  */
 import { readFileSync } from 'fs';
 

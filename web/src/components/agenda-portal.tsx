@@ -116,6 +116,20 @@ function buildAppointmentSnapshot(rows: AppointmentRow[]): AppointmentSnapshot {
   return m;
 }
 
+/** Instant no tempo para comparar inícios (mesmo horário em ISO diferentes → sem falso reagendamento). */
+function apptStartsAtInstantMs(iso: string | null | undefined): number | null {
+  if (iso == null || iso === "") return null;
+  const t = new Date(iso).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+function apptStartsAtChanged(prevIso: string, nextIso: string): boolean {
+  const a = apptStartsAtInstantMs(prevIso);
+  const b = apptStartsAtInstantMs(nextIso);
+  if (a != null && b != null) return a !== b;
+  return prevIso !== nextIso;
+}
+
 function formatNotifClock(iso: string) {
   return new Intl.DateTimeFormat("pt-BR", {
     hour: "2-digit",
@@ -1036,7 +1050,7 @@ export function AgendaPortal() {
             roster: rosterForNotify,
           });
         } else if (
-          old.starts_at !== cur.starts_at &&
+          apptStartsAtChanged(old.starts_at, cur.starts_at) &&
           cur.status !== "cancelled" &&
           old.status !== "cancelled"
         ) {
@@ -1151,6 +1165,26 @@ export function AgendaPortal() {
     }, 25000);
     return () => clearInterval(tick);
   }, [supabase, access?.kind, access?.kind === "clinic" ? access.clinicId : null, loadAppointments]);
+
+  /** Volta ao separador / foco: sincroniza logo (Realtime pode falhar se `cs_agendamentos` não estiver na publicação). */
+  useEffect(() => {
+    if (!supabase || access?.kind !== "clinic") return;
+    let debounce: number | undefined;
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        void loadAppointments();
+      }, 600);
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearTimeout(debounce);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [supabase, access, loadAppointments]);
 
   useEffect(() => {
     if (!session) {

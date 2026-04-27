@@ -9,7 +9,7 @@ Criar, manter e evoluir workflows n8n + banco de dados Supabase para o sistema d
 
 | Serviço | URL |
 |---|---|
-| n8n Editor (UI) | https://editor.docker-script7.com.br |
+| n8n Editor (UI) | https://n8n.vps7846.panel.icontainer.cloud |
 | n8n API | https://n8n.vps7846.panel.icontainer.cloud/api/v1 |
 | Supabase | Usar MCP `mcp__supabase__*` (projeto já configurado) |
 
@@ -36,8 +36,9 @@ web/
 
 ### Workflow n8n
 - O arquivo `workflow-kCX2-live.json` tem **dois blocos** de nodes: `nodes[]` (top-level) e `activeVersion.nodes[]` — ambos devem ser atualizados juntos
-- Após editar o JSON local, sempre subir via API (não copiar/colar na UI)
+- Após editar o JSON local, sempre subir via API (não copiar/colar na UI) — ex.: `node n8n/push-workflow-api.mjs kCX2LfxJrdYWB0vk n8n/workflow-kCX2-live.json --activate`
 - Para sincronizar local ← n8n (após editar na UI): `GET /api/v1/workflows/kCX2LfxJrdYWB0vk` e salvar em `workflow-kCX2-live.json`
+- Verificar o que está no ar: `node n8n/_verify-live-workflow.mjs` (confere `Monta Contexto` + `agente_agendador` na API)
 - O node `AI Agent` (monolítico antigo) está **desconectado** no workflow — mantido apenas como rollback. Não editar nem reconectar sem intenção explícita
 
 ### Supabase / Banco
@@ -58,7 +59,7 @@ web/
 - Ao reportar problemas de profissional não aparecer na agenda, verificar se `cs_profissional_id` está preenchido na tabela `professionals`
 - **Órfãos em `cs_profissionais`:** apagar um profissional no painel não remove a linha em `cs_profissionais`; duplicados ou renames antigos podem deixar vários `cs_profissionais.ativo = true` para a mesma clínica. A RPC continua a devolver todos; o contador «Profissionais activos» usa só `professionals` activos.
 - **Painel web — `web/src/components/slots-manager-modal.tsx`:** depois de `painel_cs_slots_dia`, o UI filtra os slots para `profissional_id` ∈ `cs_profissional_id` de linhas **activas** em `professionals` (fallback por nome normalizado só se `cs_profissional_id` for null no painel). Em seguida **merge** de linhas `appointments` (`status = scheduled`, mesmo dia): a RPC só reflecte `cs_*`; marcações feitas só no painel apareciam só no dashboard — o merge marca a célula como ocupada («Agend.») com o procedimento. Limpeza definitiva de órfãos ainda pode ser feita na BD (`cs_profissionais` / horários ligados). Células **hora + «—»** (fora da grade da clínica ou indisponível fora da grade): **toque abre sempre** um modal a orientar **Configurar horários da clínica** vs **Profissionais → Horário extra**; `agenda-portal.tsx` liga `onGoToClinicAgendaSettings` (`sidebarPage` → `clinic-hours`) e `onGoToProfessionalsExtraHour` (aba Profissionais com foco no nome).
-- **Painel web — `web/src/components/agenda-portal.tsx`:** cancelar agendamento (ícone lixeira) → **modal** próprio com checkbox «Confirmo…» antes de «Sim, cancelar» (sem `window.confirm`). Data no dashboard: **`AgendaDatePickerPopover`** (calendário mensal em vez de só `<input type="date">`).
+- **Painel web — `web/src/components/agenda-portal.tsx`:** cancelar agendamento (ícone lixeira) → **modal** próprio com checkbox «Confirmo…» antes de «Sim, cancelar» (sem `window.confirm`). Data no dashboard: **`AgendaDatePickerPopover`** (calendário mensal em vez de só `<input type="date">`). **Sininho / inbox:** diff de `rows` após `loadAppointments` detecta novo / cancelamento / reagendamento (`starts_at` comparado pelo **instante** `Date.getTime`, não só string ISO). Realtime: canal `cs_agendamentos` com filtro `clinic_id` — aplicar migration `20260401120000_realtime_cs_agendamentos.sql` se updates WhatsApp/n8n não refrescarem a lista; há **poll 25 s** e **refetch ao focar** o separador. Preferências do sininho: tipo **reagendamento** desligado = sem entrada nem som. **`painel-notify-professional`:** match de nome do profissional para WhatsApp ignora prefixo **Dr./Dra.**
 
 ### Serviços (dual-source)
 - O painel v2 salva procedimentos em `clinic_procedures` (campos: `id`, `name`, `clinic_id`)
@@ -102,6 +103,7 @@ web/
    - injeta `clinic_id`, `remoteJid`, `instanceName` (usados pelos agentes e handoff)
    - injeta `instr_triagem`, `instr_faq`, `instr_transferir` (seções de `agent_instructions`)
    - `instr_outros` ainda pode existir no Code node por compatibilidade com dados legados, mas não é alimentado pelo painel
+   - **Calendário (America/Sao_Paulo):** calcula `cal_hoje_ymd`, `cal_hoje_br`, `cal_hoje_weekday`, `cal_amanha_ymd`, `cal_amanha_br`, `cal_amanha_weekday` e acrescenta ao `agent_instructions` o bloco **CALENDÁRIO OBRIGATÓRIO** — o `agente_agendador` usa `{{ $json.cal_amanha_ymd }}` no system message para «amanhã» bater com a data real (evita confundir com outro dia, ex. fim de semana). Script de manutenção: `n8n/patch-monta-contexto-calendario.mjs`
    - `nome_cliente` vazio = cliente novo → agente qualificador pergunta o nome
    - `nome_cliente` preenchido = cliente de retorno → agente qualificador saúda pelo nome
 10. **Sistema multi-agente** roteia para o agente especializado correto (ver seção abaixo)
@@ -134,6 +136,12 @@ Todos os agentes compartilham a mesma **Postgres Chat Memory** (session: `clinic
   - caso contrário → `concluido`
 - O padrão anterior era defaultar sempre para `concluido`, o que fazia o agendador nunca ser chamado quando a tag faltava
 
+#### `agente_agendador` — tools, confirmação e UX de vagas
+- **Nomes das tools no n8n:** o sub-agente usa prefixo **`agd_cs_*`** (`agd_cs_consultar_vagas`, `agd_cs_agendar`, …). O system message deve referir estes nomes (não `cs_agendar` só), senão o modelo tende a não chamar a tool. Manutenção: `n8n/patch-agendador-sm-tools-ok.mjs` (substituições com `(?<!agd_)` para não gerar `agd_agd_cs_`).
+- **Confirmação:** é proibido dizer que agendou sem JSON da tool de escrita com **`ok: true`**.
+- **Listagem de vagas:** secção **«VAGAS — MENSAGENS CURTAS»** — não enviar grade completa (todas as horas × todos os profissionais). Se o cliente ainda não escolheu **com qual profissional** agendar, perguntar só isso e citar **só nomes**; depois listar **apenas** horários desse profissional (máx. ~10; manhã/tarde se necessário). Script: `n8n/patch-agendador-sm-vagas-curtas.mjs`.
+- O ramo agendamento passa por `IF mensagem válida` → prefetch HTTP → **`Enrich Agendador`**, que faz spread do contexto; os `cal_*` vindos de `Monta Contexto` chegam ao `agente_agendador` via `Code Extrair Rota` (`...montaCtx`).
+
 #### Regra do qualificador (`agente_atende_qualifica`)
 - O qualificador **NÃO deve dizer** "Vou verificar", "Um momento", "Aguarde" ou qualquer frase que implique que ele fará algo — essas ações são dos agentes especializados
 - Resposta correta: confirmar a intenção brevemente e incluir a tag — ex: `"Certo! [ROTA: agendamento]"`
@@ -142,6 +150,9 @@ Todos os agentes compartilham a mesma **Postgres Chat Memory** (session: `clinic
 ### Agendar vs reagendar (duplicados na grade)
 - Se o cliente **já** tem consulta activa com o **mesmo** profissional na **mesma** data, `n8n_cs_agendar` responde `ok: false`, `error: ja_existe_agendamento_mesmo_dia` e devolve `agendamento_id` — usar **`n8n_cs_reagendar`** com esse id. Chamar `cs_agendar` de novo cria um **segundo** `cs_agendamentos` e o painel mostra dois horários «AGEND.».
 - `n8n_cs_reagendar` liberta o slot antigo com `date_trunc('minute', horario)` e cancela duplicados órfãos no slot antigo após mover o registo principal.
+
+### Cancelar via agente (`n8n_cs_cancelar`)
+- Migration **`20260424193000_n8n_cs_cancelar_rowcount_slot_from_row.sql`**: a RPC **já não** devolve `ok: true` quando o `UPDATE` não cancela nenhuma linha (id inexistente / erro). Liberta **`cs_horarios_disponiveis`** com **data e horário lidos da própria linha** em `cs_agendamentos` (com `date_trunc(minute)`), não só com `p_data`/`p_horario` da tool — evita slot errado após **reagendar** com parâmetros antigos no n8n. `profissional_whatsapp` na resposta usa o profissional **da linha cancelada**. Se o WhatsApp do cliente diz «cancelado» mas o painel não muda, o agente pode estar a responder sem tool ou com `agendamento_id` errado; com a RPC nova o JSON traz `ok: false` e `error` explícito.
 
 ### Tools por Agente
 
@@ -164,11 +175,11 @@ Todos os agentes compartilham a mesma **Postgres Chat Memory** (session: `clinic
 
 ### Notificação de profissionais
 - O workflow tem **Code auto-notify profissional** (após o agendador): chama `n8n_cs_profissional_whatsapp_mudanca_recente` quando a resposta parece mutação; usa só dígitos no telefone; janela de «mudança recente» **45 min** no Supabase. O texto inclui **telefone do cliente** quando obtido via `cs_agendamentos.cliente_id` → `cs_clientes.telefone` (GET no Code node).
-- Após `cs_agendar`, `cs_reagendar` ou `cs_cancelar`, o agente chama `cs_notificar_profissional` se `profissional_whatsapp` não for nulo
+- O system message do agendador diz para **não** chamar `agd_cs_notificar_profissional` — o fluxo notifica via este Code node quando a RPC devolve `profissional_whatsapp`.
 - O `profissional_whatsapp` vem das RPCs via `LEFT JOIN professionals ON cs_profissional_id = cs_profissionais.id`
 - O campo `professionals.whatsapp` é cadastrado no painel web (componente `professionals-manager-modal.tsx`)
 - Se o profissional não tiver WhatsApp cadastrado, `profissional_whatsapp` retorna `null` e a notificação é pulada silenciosamente
-- O tool `cs_notificar_profissional` usa a mesma `instanceName` da clínica (Evolution API)
+- O node tool `agd_cs_notificar_profissional` existe no workflow mas o comportamento pretendido é notificação automática no fluxo (Evolution), não depender do LLM para esse passo
 - **Painel Next.js (Evolution):** `web/src/lib/professional-notify-message.ts` formata novo / reagendar / cancelar com linha **📱 Telefone** do cliente quando `clienteTelefone` / `patients.phone` / RPC `painel_cancel_cs_agendamento` (`cliente_telefone`, migration `20260427220000_painel_cancel_cliente_telefone.sql`) / webhook `web/src/app/api/webhooks/cs-agendamento-notify/route.ts` (lê `cs_clientes.telefone`). Rota `POST /api/whatsapp/notify-professional` envia o texto. Sincronização em tempo real na agenda: `fireNotifyProfessionalFromAgendaDiff` em `painel-notify-professional.ts`.
 
 ### Identificação de cliente novo vs retorno
