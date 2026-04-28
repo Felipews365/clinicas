@@ -97,7 +97,7 @@ function blocoClienteENumero(
 ): string[] {
   const tel = formatTelefoneClienteNotificacao(clienteTelefone);
   const lines = [`👤 Cliente: ${cliente}`];
-  if (tel) lines.push(`📱 Telefone: ${tel}`);
+  if (tel) lines.push(`📞 Telefone: ${tel}`);
   return lines;
 }
 
@@ -124,9 +124,9 @@ export function profWhatsAppNovoAgendamento(p: {
     "🟢 Novo agendamento",
     "",
     ...blocoClienteENumero(p.cliente, p.clienteTelefone),
-    `🩺 Serviço: ${p.servico}`,
+    `📌 Serviço: ${p.servico}`,
     `📅 Data: ${p.data}`,
-    `🕘 Horário: ${p.hora}`,
+    `🕒 Horário: ${p.hora}`,
   ].join("\n");
 }
 
@@ -152,9 +152,9 @@ export function profWhatsAppCancelamento(p: {
     "🔴 Cancelamento de agendamento",
     "",
     ...blocoClienteENumero(p.cliente, p.clienteTelefone),
-    `🩺 Serviço: ${p.servico}`,
+    `📌 Serviço: ${p.servico}`,
     `📅 Data: ${p.data}`,
-    `🕘 Horário: ${p.hora}`,
+    `🕒 Horário: ${p.hora}`,
   ].join("\n");
 }
 
@@ -184,7 +184,7 @@ export function profWhatsAppReagendamento(p: {
     "🟡 Reagendamento de agendamento",
     "",
     ...blocoClienteENumero(p.cliente, p.clienteTelefone),
-    `🩺 Serviço: ${p.servico}`,
+    `📌 Serviço: ${p.servico}`,
   ];
   const da = (p.dataAnterior ?? "").trim();
   const ha = (p.horaAnterior ?? "").trim();
@@ -213,11 +213,11 @@ export function clienteWhatsAppConfirmacaoAgendamento(p: {
 }): string {
   const n = clientePrimeiroNomeSaudacao(p.nomeCliente);
   return [
-    `Olá, ${n}! Seu agendamento está confirmado.`,
+    `Olá, ${n}! Seu agendamento foi confirmado ✨`,
     "",
-    "🟢 Novo agendamento",
+    "Seu atendimento está reservado com sucesso.",
     "",
-    `🩺 Serviço: ${p.servico}`,
+    `📌 Serviço: ${p.servico}`,
     `👤 Profissional: ${p.nomeProfissional}`,
     `📅 Data: ${p.data}`,
     `🕒 Horário: ${p.horario}`,
@@ -236,11 +236,11 @@ export function clienteWhatsAppReagendamentoAgendamento(p: {
 }): string {
   const n = clientePrimeiroNomeSaudacao(p.nomeCliente);
   return [
-    `Olá, ${n}! Seu agendamento foi reagendado.`,
+    `Olá, ${n}! Seu agendamento foi reagendado ✨`,
     "",
-    "🟡 Reagendamento",
+    "Seu novo horário foi atualizado com sucesso.",
     "",
-    `🩺 Serviço: ${p.servico}`,
+    `📌 Serviço: ${p.servico}`,
     `👤 Profissional: ${p.nomeProfissional}`,
     `📅 Nova data: ${p.novaData}`,
     `🕒 Novo horário: ${p.novoHorario}`,
@@ -259,15 +259,15 @@ export function clienteWhatsAppCancelamentoAgendamento(p: {
 }): string {
   const n = clientePrimeiroNomeSaudacao(p.nomeCliente);
   return [
-    `Olá, ${n}! Seu agendamento foi cancelado.`,
+    `Olá, ${n}! Seu agendamento foi cancelado ✨`,
     "",
-    "🔴 Cancelamento",
+    "Seu atendimento foi cancelado com sucesso.",
     "",
-    `🩺 Serviço: ${p.servico}`,
+    `📌 Serviço: ${p.servico}`,
     `👤 Profissional: ${p.nomeProfissional}`,
     `📅 Data: ${p.data}`,
     `🕒 Horário: ${p.horario}`,
     "",
-    "Se precisar remarcar, é só responder esta mensagem.",
+    "Se quiser remarcar, é só responder esta mensagem.",
   ].join("\n");
 }

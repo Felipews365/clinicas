@@ -53,6 +53,7 @@ web/
   - INSERT cria nova linha em `cs_profissionais` e preenche `professionals.cs_profissional_id`
   - UPDATE (quando `cs_profissional_id` não é null) atualiza `nome`, `especialidade`, **`gender`** e `ativo`
 - Tabela **`professional_procedures`** (migration `20260427100000_professional_procedures.sql`): N:N entre `professionals` e `clinic_procedures` — filtra «tipo de consulta» no agendamento do painel; vazio = todos os procedimentos ativos
+- **UI aba Profissionais (`web/src/components/professionals-manager-modal.tsx`, `presentation="panel"`):** mostra primeiro só a lista **Equipa**; **+ Adicionar profissional** abre o formulário novo e **oculta** a lista até **Voltar à lista**, Cancelar, sucesso ao gravar ou Escape. Se `clinic_procedures` estiver vazio, «Procedimentos que realiza» usa **`ProceduresEmptyClinicHint`** (orienta **Clínica / Perfil → Procedimentos**). Modal (`presentation="modal"`) mantém fluxo compacto sem este layout
 - **Compat. BD antiga:** `web/src/lib/supabase-gender-column-fallback.ts` (reads sem `gender` se coluna em falta); `web/src/lib/supabase-schema-cache-errors.ts` (ignora sync de vínculos se tabela `professional_procedures` não existir); writes no painel repetem sem `gender`/`professional_procedures` quando o PostgREST devolve erro de schema
 - A agenda (`painel_cs_slots_dia`, `painel_cs_ensure_slots_grid`) e as RPCs do agente usam `cs_profissionais` — **nunca editar essas funções para ler de `professionals` diretamente**
 - O campo `professionals.cs_profissional_id` é a FK que liga as duas tabelas; se for null, o profissional não aparece na agenda nem no agente
@@ -139,6 +140,8 @@ Todos os agentes compartilham a mesma **Postgres Chat Memory** (session: `clinic
 #### `agente_agendador` — tools, confirmação e UX de vagas
 - **Nomes das tools no n8n:** o sub-agente usa prefixo **`agd_cs_*`** (`agd_cs_consultar_vagas`, `agd_cs_agendar`, …). O system message deve referir estes nomes (não `cs_agendar` só), senão o modelo tende a não chamar a tool. Manutenção: `n8n/patch-agendador-sm-tools-ok.mjs` (substituições com `(?<!agd_)` para não gerar `agd_agd_cs_`).
 - **Confirmação:** é proibido dizer que agendou sem JSON da tool de escrita com **`ok: true`**.
+- **Erros de tool (seção `## ERROS DE TOOL` no SM):** o agente **nunca** deve dizer ao cliente "houve um problema técnico", "vou tentar novamente" ou "um momento" como reação a falha interna. Se tool falha: tentar com parâmetros corrigidos; se persistir, dizer apenas "Não consegui verificar os horários agora, tente em instantes."
+- **Mensagem ao cliente (seção `## MENSAGEM AO CLIENTE` no SM):** usa modelo obrigatório com emojis e campos nomeados — proibido texto livre. Padrão: `Olá, {Nome}! Seu agendamento está confirmado.` → linha em branco → `🟢 Novo agendamento` → campos `📌 Serviço`, `👤 Profissional`, `📅 Data`, `🕒 Horário`.
 - **Listagem de vagas:** secção **«VAGAS — MENSAGENS CURTAS»** — não enviar grade completa (todas as horas × todos os profissionais). Se o cliente ainda não escolheu **com qual profissional** agendar, perguntar só isso e citar **só nomes**; depois listar **apenas** horários desse profissional (máx. ~10; manhã/tarde se necessário). Script: `n8n/patch-agendador-sm-vagas-curtas.mjs`.
 - O ramo agendamento passa por `IF mensagem válida` → prefetch HTTP → **`Enrich Agendador`**, que faz spread do contexto; os `cal_*` vindos de `Monta Contexto` chegam ao `agente_agendador` via `Code Extrair Rota` (`...montaCtx`).
 
@@ -160,8 +163,9 @@ Todos os agentes compartilham a mesma **Postgres Chat Memory** (session: `clinic
 |---|---|---|
 | `qualifica_cs_salvar_nome` | qualifica | `n8n_cs_salvar_nome` — salva nome confirmado |
 | `agd_cs_consultar_servicos` | agendador | `n8n_clinic_procedimentos` — lista procedimentos |
-| `agd_cs_consultar_profissionais` | agendador | `cs_profissionais` — lista profissionais |
-| `agd_cs_consultar_vagas` | agendador | `n8n_cs_consultar_vagas` — só placeholder `data_solicitada`; `jsonBody` em string concatenada com `{data_solicitada}` (não `JSON.stringify`+`profissional_id` — n8n 2.10 «Misconfigured placeholder»); `p_profissional_id` sempre `null` (RPC lista todos) |
+| `agd_cs_consultar_profissionais` | agendador | `cs_profissionais` — lista profissionais; tem placeholder dummy `chamada` (obrigatório n8n 2.10.x — ver nota abaixo) |
+| `agd_cs_profissionais_aptos_procedimento` | agendador | `n8n_cs_profissionais_aptos_procedimento` — filtra profissionais aptos ao procedimento; placeholders `aptos_uuid` (UUID do catálogo) e `aptos_nome` (nome texto); preencher um ou ambos |
+| `agd_cs_consultar_vagas` | agendador | `n8n_cs_consultar_vagas` — 3 placeholders: `data_solicitada` (YYYY-MM-DD, obrigatório), `servico_id` (UUID opcional), `procedimento` (nome texto opcional); `jsonBody` é expression que resolve `p_clinic_procedure_id`/`p_procedimento_nome` a partir dos placeholders + `_procedimento_tool_hint` do Enrich; **não enviar `p_exigir_procedimento`** (parâmetro removido da RPC em `20260502`); `p_profissional_id` sempre `null` |
 | `agd_cs_agendar` | agendador | `n8n_cs_agendar` — cria agendamento |
 | `agd_cs_buscar_agendamentos` | agendador | `n8n_cs_buscar_agendamentos` — consulta agendamentos |
 | `agd_cs_reagendar` | agendador | `n8n_cs_reagendar` — reagenda |
@@ -173,11 +177,14 @@ Todos os agentes compartilham a mesma **Postgres Chat Memory** (session: `clinic
 > Cada agente tem também um **Refletir** (Think tool) para raciocínio antes de responder.
 > Os nodes `agd_*`, `faq_*`, `esp_*` são cópias independentes — não compartilhar entre agentes.
 
+> **n8n 2.10.x — bug de schema em tools sem `placeholderDefinitions`:** Tools `toolHttpRequest` sem nenhum `placeholderDefinitions` definido geram schema com chave vazia obrigatória → erro `Required → at ` no agente. Solução: sempre adicionar pelo menos um placeholder dummy `chamada` (type `string`) com descrição, mesmo que a tool não precise de input. Exemplo: `cs_consultar_profissionais` e `agd_cs_consultar_profissionais`.
+
 ### Notificação de profissionais
-- O workflow tem **Code auto-notify profissional** (após o agendador): chama `n8n_cs_profissional_whatsapp_mudanca_recente` quando a resposta parece mutação; usa só dígitos no telefone; janela de «mudança recente» **45 min** no Supabase. O texto inclui **telefone do cliente** quando obtido via `cs_agendamentos.cliente_id` → `cs_clientes.telefone` (GET no Code node).
+- O workflow tem **Code auto-notify profissional** (após o agendador): chama `n8n_cs_profissional_whatsapp_mudanca_recente` quando a resposta parece mutação; usa só dígitos no telefone; janela de «mudança recente» **25 min** no Supabase. O texto inclui **telefone do cliente**: tenta `cs_agendamentos.cliente_id` → `cs_clientes.telefone` (GET); fallback para `ctx.remoteJid` (número da conversa, sempre disponível) se a query não resolver.
+- **Formato das mensagens** (padrão unificado em `professional-notify-message.ts` e Code node): cabeçalho `{Dr/Dra Nome}, você tem um …:` → linha em branco → indicador de tipo (`🟢 Novo agendamento` / `🟡 Reagendamento` / `🔴 Cancelamento`) → linha em branco → campos com emojis: `👤 Cliente`, `📱 Telefone`, `📌 Serviço`, `📅 Data`, `🕒 Horário`. Mensagem ao cliente segue o mesmo padrão (sem linha de cliente/telefone).
 - O system message do agendador diz para **não** chamar `agd_cs_notificar_profissional` — o fluxo notifica via este Code node quando a RPC devolve `profissional_whatsapp`.
 - O `profissional_whatsapp` vem das RPCs via `LEFT JOIN professionals ON cs_profissional_id = cs_profissionais.id`
-- O campo `professionals.whatsapp` é cadastrado no painel web (componente `professionals-manager-modal.tsx`)
+- O campo `professionals.whatsapp` (e resto do cadastro) é configurado no painel — **UI** em `professionals-manager-modal.tsx` está descrita na secção **Profissionais (dual-table)** acima
 - Se o profissional não tiver WhatsApp cadastrado, `profissional_whatsapp` retorna `null` e a notificação é pulada silenciosamente
 - O node tool `agd_cs_notificar_profissional` existe no workflow mas o comportamento pretendido é notificação automática no fluxo (Evolution), não depender do LLM para esse passo
 - **Painel Next.js (Evolution):** `web/src/lib/professional-notify-message.ts` formata novo / reagendar / cancelar com linha **📱 Telefone** do cliente quando `clienteTelefone` / `patients.phone` / RPC `painel_cancel_cs_agendamento` (`cliente_telefone`, migration `20260427220000_painel_cancel_cliente_telefone.sql`) / webhook `web/src/app/api/webhooks/cs-agendamento-notify/route.ts` (lê `cs_clientes.telefone`). Rota `POST /api/whatsapp/notify-professional` envia o texto. Sincronização em tempo real na agenda: `fireNotifyProfessionalFromAgendaDiff` em `painel-notify-professional.ts`.
