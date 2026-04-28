@@ -12,6 +12,9 @@ export type ProfessionalEmbed = {
   avatar_emoji?: string | null;
 };
 
+/** Última mutação em `cs_agendamentos` (painel vs agente n8n). Só em linhas `cs:…`. */
+export type CsMutacaoOrigem = "agente" | "painel";
+
 export type AppointmentRow = {
   id: string;
   starts_at: string;
@@ -22,6 +25,8 @@ export type AppointmentRow = {
   notes: string | null;
   patients: PersonEmbed | PersonEmbed[] | null;
   professionals: ProfessionalEmbed | ProfessionalEmbed[] | null;
+  /** Preenchido por `painel_list_cs_agendamentos` para marcações do agente. */
+  cs_mutacao_origem?: CsMutacaoOrigem | null;
 };
 
 export const statusLabel: Record<AppointmentRow["status"], string> = {
@@ -49,6 +54,23 @@ export function awaitsConfirmation(r: AppointmentRow): boolean {
 /** Criado pelo fluxo cs/n8n (agente IA/WhatsApp). */
 export function isCsAgentBooking(r: AppointmentRow): boolean {
   return r.id.startsWith("cs:");
+}
+
+/** Texto da coluna ORIGEM no painel (inclui última alteração em marcações IA). */
+export function appointmentOriginLabel(r: AppointmentRow): string {
+  if (isCsAgentBooking(r)) {
+    if (r.cs_mutacao_origem === "painel") {
+      return "Agendamento IA · última alteração no painel";
+    }
+    if (r.cs_mutacao_origem === "agente") {
+      return "Agendamento IA · última alteração pelo agente";
+    }
+    return "Agendamento IA";
+  }
+  if (r.source === "painel") return "Clínica no painel";
+  if (r.source === "whatsapp") return "Agente WhatsApp";
+  const t = r.source?.trim();
+  return t || "—";
 }
 
 export function one<T>(x: T | T[] | null | undefined): T | null {

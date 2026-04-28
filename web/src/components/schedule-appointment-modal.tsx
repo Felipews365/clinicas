@@ -123,12 +123,15 @@ export function ScheduleAppointmentModal({
     setSubmitError(null);
   }, []);
 
-  const filteredProcedures = useMemo(() => {
-    if (!professionalId || procedureCatalog.length === 0) return [];
-    const allowed = profProcedureIds.get(professionalId);
-    if (!allowed || allowed.size === 0) return procedureCatalog;
-    return procedureCatalog.filter((p) => allowed.has(p.id));
-  }, [professionalId, procedureCatalog, profProcedureIds]);
+  /** Profissionais que realizam o procedimento selecionado (vazio em professional_procedures = todos). */
+  const professionalsEligibleForConsult = useMemo(() => {
+    if (procedureCatalog.length === 0 || !consultProcedureId) return professionals;
+    return professionals.filter((p) => {
+      const allowed = profProcedureIds.get(p.id);
+      if (!allowed || allowed.size === 0) return true;
+      return allowed.has(consultProcedureId);
+    });
+  }, [professionals, consultProcedureId, procedureCatalog.length, profProcedureIds]);
 
   const loadProfessionals = useCallback(async () => {
     setLoadingMeta(true);
@@ -205,18 +208,13 @@ export function ScheduleAppointmentModal({
     }
   }, [supabase, clinicId]);
 
-  useEffect(() => {
-    if (!consultProcedureId || procedureCatalog.length === 0) return;
-    if (!filteredProcedures.some((p) => p.id === consultProcedureId)) {
-      setConsultProcedureId("");
-    }
-  }, [filteredProcedures, consultProcedureId, procedureCatalog.length]);
-
+  /* eslint-disable react-hooks/set-state-in-effect -- ao abrir: recarregar lista e limpar campos */
   useEffect(() => {
     if (!open) return;
     void loadProfessionals();
     resetForm();
   }, [open, loadProfessionals, resetForm]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!open) return;
@@ -248,6 +246,14 @@ export function ScheduleAppointmentModal({
     if (useCatalog) {
       if (!consultProcedureId) {
         setSubmitError("Selecione o tipo de consulta (procedimento).");
+        return;
+      }
+      if (
+        !professionalsEligibleForConsult.some((p) => p.id === professionalId)
+      ) {
+        setSubmitError(
+          "Este profissional não está associado a este procedimento. Ajuste em «Profissionais» ou escolha outro profissional."
+        );
         return;
       }
     } else if (!consultLegacyType) {
@@ -415,7 +421,9 @@ export function ScheduleAppointmentModal({
             Agendar consulta
           </h2>
           <p className="mt-1 text-sm text-white/85">
-            Escolha o profissional certo — vários podem atender à mesma hora.
+            {procedureCatalog.length > 0
+              ? "Primeiro o procedimento — só aparecem profissionais que o realizam."
+              : "Escolha o profissional certo — vários podem atender à mesma hora."}
           </p>
         </div>
 
@@ -431,28 +439,82 @@ export function ScheduleAppointmentModal({
             </p>
           ) : null}
 
-          <label className="block sm:col-span-2">
-            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#6b635a]">
-              Profissional
-            </span>
-            <select
-              required
-              value={professionalId}
-              onChange={(e) => {
-                setProfessionalId(e.target.value);
-                setConsultProcedureId("");
-                setConsultLegacyType("");
-              }}
-              className="w-full rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2.5 text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
-            >
-              <option value="">Selecione quem atende</option>
-              {professionals.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {profLabel(p)}
-                </option>
-              ))}
-            </select>
-          </label>
+          {procedureCatalog.length > 0 ? (
+            <>
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#6b635a]">
+                  Tipo de consulta
+                </span>
+                <select
+                  required
+                  value={consultProcedureId}
+                  onChange={(e) => {
+                    setConsultProcedureId(e.target.value);
+                    setProfessionalId("");
+                  }}
+                  className="w-full rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2.5 text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
+                >
+                  <option value="">Selecione o procedimento</option>
+                  {procedureCatalog.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1.5 text-xs text-[#6b635a]">
+                  Só aparecem profissionais que realizam este procedimento (configurado em «Profissionais»).
+                </p>
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#6b635a]">
+                  Profissional
+                </span>
+                <select
+                  required
+                  value={professionalId}
+                  onChange={(e) => setProfessionalId(e.target.value)}
+                  disabled={!consultProcedureId}
+                  className="w-full rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2.5 text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">
+                    {!consultProcedureId
+                      ? "Selecione o tipo de consulta primeiro"
+                      : professionalsEligibleForConsult.length === 0
+                        ? "Nenhum profissional faz este procedimento — ajuste o cadastro"
+                        : "Selecione quem atende"}
+                  </option>
+                  {professionalsEligibleForConsult.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {profLabel(p)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : (
+            <label className="block sm:col-span-2">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#6b635a]">
+                Profissional
+              </span>
+              <select
+                required
+                value={professionalId}
+                onChange={(e) => {
+                  setProfessionalId(e.target.value);
+                  setConsultProcedureId("");
+                  setConsultLegacyType("");
+                }}
+                className="w-full rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2.5 text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
+              >
+                <option value="">Selecione quem atende</option>
+                {professionals.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {profLabel(p)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <div className="grid gap-5 sm:grid-cols-2">
             <label className="block">
@@ -535,47 +597,31 @@ export function ScheduleAppointmentModal({
                 ))}
               </select>
             </label>
-            <label className="block sm:col-span-2">
-              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#6b635a]">
-                Tipo de consulta
-              </span>
-              <select
-                required
-                value={
-                  procedureCatalog.length > 0
-                    ? consultProcedureId
-                    : consultLegacyType
-                }
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (procedureCatalog.length > 0) setConsultProcedureId(v);
-                  else setConsultLegacyType(v);
-                }}
-                disabled={
-                  !professionalId ||
-                  (procedureCatalog.length > 0 &&
-                    filteredProcedures.length === 0)
-                }
-                className="w-full rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2.5 text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <option value="">
-                  {!professionalId
-                    ? "Selecione o profissional primeiro"
-                    : procedureCatalog.length > 0 &&
-                        filteredProcedures.length === 0
-                      ? "Sem procedimentos — cadastre no catálogo ou em «Profissionais»"
+            {procedureCatalog.length === 0 ? (
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#6b635a]">
+                  Tipo de consulta
+                </span>
+                <select
+                  required
+                  value={consultLegacyType}
+                  onChange={(e) => setConsultLegacyType(e.target.value)}
+                  disabled={!professionalId}
+                  className="w-full rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2.5 text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">
+                    {!professionalId
+                      ? "Selecione o profissional primeiro"
                       : "Selecione"}
-                </option>
-                {(procedureCatalog.length > 0
-                  ? filteredProcedures
-                  : CONSULTATION_TYPES.map((name) => ({ id: name, name }))
-                ).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
                   </option>
-                ))}
-              </select>
-            </label>
+                  {CONSULTATION_TYPES.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </div>
 
           <label className="block">

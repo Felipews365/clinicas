@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { ProceduresManagerModal } from "@/components/procedures-manager-modal";
 import { ProfessionalsManagerModal } from "@/components/professionals-manager-modal";
+import { RescheduleAppointmentModal } from "@/components/reschedule-appointment-modal";
 import { ScheduleAppointmentModal } from "@/components/schedule-appointment-modal";
 import { ClinicAgendaHoursModal } from "@/components/clinic-agenda-hours-modal";
 import { SlotsManagerModal } from "@/components/slots-manager-modal";
@@ -16,6 +17,7 @@ import { ClinicProfilePanel } from "@/components/clinic-profile-panel";
 import { ClinicSubscriptionPanel } from "@/components/clinic-subscription-panel";
 import { ConectarWhatsapp } from "@/components/conectar-whatsapp";
 import { WhatsappInbox } from "@/components/whatsapp-inbox";
+import { PainelClientesCs } from "@/components/painel-clientes-cs";
 import {
   addDaysToYmd,
   formatLocalYmd,
@@ -293,6 +295,7 @@ export function AgendaPortal() {
     | "whatsapp-human"
     | "whatsapp-connect"
     | "whatsapp-inbox"
+    | "cs-clientes"
     | "clinic-subscription"
     | "agent"
     | "report"
@@ -332,6 +335,7 @@ export function AgendaPortal() {
   /** Abre o modal de confirmação antes de cancelar (substitui `window.confirm`). */
   const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null);
   const [removeConfirmAck, setRemoveConfirmAck] = useState(false);
+  const [rescheduleRow, setRescheduleRow] = useState<AppointmentRow | null>(null);
   const [access, setAccess] = useState<AccessState | null>(null);
   const locallyModified = useRef(new Set<string>());
   const prevRowsRef = useRef<AppointmentRow[]>([]);
@@ -1381,6 +1385,18 @@ export function AgendaPortal() {
             clinicId={access.clinicId}
             clinicAgendaConfig={clinicAgendaConfig}
           />
+          <RescheduleAppointmentModal
+            open={rescheduleRow != null}
+            onClose={() => setRescheduleRow(null)}
+            onSuccess={() => void loadAppointments()}
+            supabase={supabase}
+            clinicId={access.clinicId}
+            clinicAgendaConfig={clinicAgendaConfig}
+            appointment={rescheduleRow}
+            profRoster={profRoster}
+            rowBusy={rowBusy}
+            setRowBusy={setRowBusy}
+          />
           <ProceduresManagerModal
             open={proceduresOpen}
             onClose={() => setProceduresOpen(false)}
@@ -1478,6 +1494,15 @@ export function AgendaPortal() {
           <button type="button" onClick={() => setSidebarPage("whatsapp-inbox")} className={sidebarNavClass("whatsapp-inbox")}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8M8 14h5"/></svg>
             Inbox WhatsApp
+          </button>
+          <button type="button" onClick={() => setSidebarPage("cs-clientes")} className={sidebarNavClass("cs-clientes")}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+            Clientes
           </button>
           <button type="button" onClick={() => setSidebarPage("agent")} className={sidebarNavClass("agent")}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 15h.01M12 15h.01M16 15h.01"/></svg>
@@ -1741,6 +1766,21 @@ export function AgendaPortal() {
                 </button>
                 <button
                   type="button"
+                  className={mobileNavRowClass("cs-clientes")}
+                  onClick={() => goToSidebarPageAfterMobileMenuClose("cs-clientes")}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                  </span>
+                  Clientes
+                </button>
+                <button
+                  type="button"
                   className={mobileNavRowClass("agent")}
                   onClick={() => goToSidebarPageAfterMobileMenuClose("agent")}
                 >
@@ -1860,6 +1900,7 @@ export function AgendaPortal() {
               rowBusy={rowBusy}
               onConfirmAppointment={(id) => void confirmAppointment(id)}
               onRemoveAppointment={(id) => setRemoveConfirmId(id)}
+              onOpenReschedule={(row) => setRescheduleRow(row)}
               filterActive={filterActive}
               filterIdle={filterIdle}
               viewToggleActive={viewToggleActive}
@@ -1943,6 +1984,11 @@ export function AgendaPortal() {
             {sidebarPage === "whatsapp-inbox" ? (
               <div className="flex h-[calc(100vh-120px)] min-h-0 w-full p-2">
                 <WhatsappInbox supabase={supabase} clinicId={access.clinicId} />
+              </div>
+            ) : null}
+            {sidebarPage === "cs-clientes" ? (
+              <div className="flex h-[calc(100vh-120px)] min-h-0 w-full overflow-hidden p-4">
+                <PainelClientesCs supabase={supabase} clinicId={access.clinicId} />
               </div>
             ) : null}
             {sidebarPage === "whatsapp-connect" ? (

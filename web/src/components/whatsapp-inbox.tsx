@@ -16,6 +16,8 @@ type ClientRow = {
   telefone: string;
   nome: string;
   bot_ativo: boolean;
+  /** Só existe se a coluna existir na base; realtime pode enviar. */
+  nome_confirmado?: boolean | null;
 };
 
 type SessionInfo = {
@@ -40,6 +42,17 @@ function parsePhone(sessionId: string): string {
 function normPhone(p: string): string {
   const d = p.replace(/\D/g, "");
   return d.length >= 13 ? d.slice(2) : d;
+}
+
+/** Nome para exibir na lista: sem coluna `nome_confirmado`, qualquer nome preenchido conta. */
+function displayClientName(
+  nome: string | null | undefined,
+  nomeConfirmado?: boolean | null
+): string | null {
+  const t = nome?.trim() ?? "";
+  if (!t) return null;
+  if (nomeConfirmado === false) return null;
+  return t;
 }
 
 function parseHumanContent(content: string): string {
@@ -109,6 +122,12 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
   const [sendError, setSendError] = useState<string | null>(null);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [limparNomeTambem, setLimparNomeTambem] = useState(true);
+  const [limpandoAgente, setLimpandoAgente] = useState(false);
+  const [agenteResetMsg, setAgenteResetMsg] = useState<{
+    type: "ok" | "err";
+    text: string;
+  } | null>(null);
   // ticker para atualizar timestamps ao vivo, como no WhatsApp
   const [now, setNow] = useState(() => Date.now());
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -141,7 +160,10 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
     ]);
 
     setLoadingSessions(false);
-    if (!histRows?.length) return;
+    if (!histRows?.length) {
+      setSessions([]);
+      return;
+    }
 
     const clientList = (clients ?? []) as ClientRow[];
 
@@ -154,7 +176,7 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
       map.set(row.session_id, {
         sessionId: row.session_id,
         phone,
-        clientName: client?.nome?.trim() || null,
+        clientName: displayClientName(client?.nome, client?.nome_confirmado),
         botAtivo: client?.bot_ativo ?? true,
         lastPreview: parseContent(row.message),
         lastId: row.id,
@@ -236,10 +258,15 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
           const row = payload.new as ClientRow | undefined;
           if (!row?.telefone) return;
           const np = normPhone(row.telefone);
+          const name = displayClientName(row.nome, row.nome_confirmado);
           setSessions((prev) =>
             prev.map((s) =>
               normPhone(s.phone) === np
-                ? { ...s, clientName: row.nome?.trim() || null, botAtivo: row.bot_ativo ?? s.botAtivo }
+                ? {
+                    ...s,
+                    clientName: name,
+                    botAtivo: row.bot_ativo ?? s.botAtivo,
+                  }
                 : s
             )
           );
@@ -306,6 +333,55 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
       e.preventDefault();
       void sendMessage();
     }
+  }
+
+  async function limparMemoriaAgente() {
+    if (!selectedId) return;
+    const extra = limparNomeTambem
+      ? " O nome guardado no cadastro também será apagado (teste como cliente novo)."
+      : " O nome no cadastro será mantido.";
+    if (
+      !window.confirm(
+        "Apagar todo o histórico de mensagens do agente (memória LangChain) para esta conversa?" +
+          extra
+      )
+    ) {
+      return;
+    }
+    setAgenteResetMsg(null);
+    setLimpandoAgente(true);
+    const { data, error } = await supabase.rpc("painel_limpar_sessao_agente", {
+      p_clinic_id: clinicId,
+      p_session_id: selectedId,
+      p_limpar_nome: limparNomeTambem,
+    });
+    setLimpandoAgente(false);
+    if (error) {
+      setAgenteResetMsg({
+        type: "err",
+        text: error.message || "Não foi possível limpar a memória do agente.",
+      });
+      return;
+    }
+    const row = data as {
+      historico_removido?: number;
+      cadastro_nome_limpo?: number;
+    } | null;
+    const h = row?.historico_removido ?? 0;
+    const n = row?.cadastro_nome_limpo ?? 0;
+    setAgenteResetMsg({
+      type: "ok",
+      text:
+        `Memória limpa (${h} mensagem(ns)).` +
+        (limparNomeTambem
+          ? n > 0
+            ? ` Nome no cadastro zerado.`
+            : ` Nenhuma linha de nome atualizada (telefone pode não bater com cs_clientes).`
+          : ""),
+    });
+    setMessages([]);
+    setSelectedId(null);
+    await loadSessions();
   }
 
   // ── separadores de data nas mensagens ────────────────────────────────────
@@ -422,31 +498,63 @@ export function WhatsappInbox({ supabase, clinicId }: Props) {
       {/* Área de chat */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-[#e6e1d8] bg-white px-5 py-3">
-          {selectedSession ? (
-            <>
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#4D6D66] text-xs font-bold text-white">
-                {(selectedSession.clientName ?? selectedSession.phone).slice(-2).toUpperCase()}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-[#2c2825]">
-                  {selectedSession.clientName ?? selectedSession.phone}
-                </p>
-                <p className="text-xs text-[#8a8278]">
-                  {selectedSession.phone}
-                  <span
-                    className={`ml-2 font-medium ${
-                      selectedSession.botAtivo ? "text-[#4D6D66]" : "text-amber-600"
-                    }`}
+        <div className="flex flex-col gap-2 border-b border-[#e6e1d8] bg-white px-5 py-3">
+          <div className="flex items-center gap-3">
+            {selectedSession ? (
+              <>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#4D6D66] text-xs font-bold text-white">
+                  {(selectedSession.clientName ?? selectedSession.phone).slice(-2).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-[#2c2825]">
+                    {selectedSession.clientName ?? selectedSession.phone}
+                  </p>
+                  <p className="text-xs text-[#8a8278]">
+                    {selectedSession.phone}
+                    <span
+                      className={`ml-2 font-medium ${
+                        selectedSession.botAtivo ? "text-[#4D6D66]" : "text-amber-600"
+                      }`}
+                    >
+                      · {selectedSession.botAtivo ? "Bot ativo" : "Atendimento humano"}
+                    </span>
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center">
+                  <label className="flex cursor-pointer items-center gap-1.5 text-[10px] text-[#8a8278] sm:text-xs">
+                    <input
+                      type="checkbox"
+                      checked={limparNomeTambem}
+                      onChange={(e) => setLimparNomeTambem(e.target.checked)}
+                      className="rounded border-[#c8c3bb] text-[#4D6D66] focus:ring-[#4D6D66]"
+                    />
+                    Zerar nome (cliente novo)
+                  </label>
+                  <button
+                    type="button"
+                    disabled={limpandoAgente}
+                    onClick={() => void limparMemoriaAgente()}
+                    className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50 sm:text-xs"
+                    title="Apaga o histórico do agente para testes. Opcionalmente remove o nome do cadastro."
                   >
-                    · {selectedSession.botAtivo ? "Bot ativo" : "Atendimento humano"}
-                  </span>
-                </p>
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-[#8a8278]">Selecione uma conversa</p>
-          )}
+                    {limpandoAgente ? "A limpar…" : "Limpar memória do agente"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-[#8a8278]">Selecione uma conversa</p>
+            )}
+          </div>
+          {agenteResetMsg ? (
+            <p
+              className={`text-xs ${
+                agenteResetMsg.type === "ok" ? "text-[#4D6D66]" : "text-red-600"
+              }`}
+            >
+              {agenteResetMsg.text}
+              {agenteResetMsg.type === "ok" ? " Envie uma mensagem pelo WhatsApp para voltar a ver a conversa aqui." : ""}
+            </p>
+          ) : null}
         </div>
 
         {/* Mensagens */}

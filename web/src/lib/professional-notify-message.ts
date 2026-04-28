@@ -48,7 +48,7 @@ export function normalizeProfissionalGenero(raw: unknown): ProfissionalGenero {
 }
 
 /** Evita «Dr. Dra. …» quando o nome já traz tratamento. */
-function profissionalComTratamento(
+export function profissionalComTratamento(
   nome: string,
   genero: ProfissionalGenero,
 ): string {
@@ -167,6 +167,9 @@ export function profWhatsAppReagendamento(p: {
   servico: string;
   novaData: string;
   novoHorario: string;
+  /** Quando o painel ou o webhook têm o horário anterior (evita ambiguidade). */
+  dataAnterior?: string | null;
+  horaAnterior?: string | null;
 }): string {
   const gen = normalizeProfissionalGenero(p.profissionalGenero);
   const abertura = linhaAberturaProfissional(
@@ -175,14 +178,96 @@ export function profWhatsAppReagendamento(p: {
     (t) => `${t}, você tem um reagendamento:`,
     "Você tem um reagendamento:",
   );
-  return [
+  const lines = [
     abertura,
     "",
     "🟡 Reagendamento de agendamento",
     "",
     ...blocoClienteENumero(p.cliente, p.clienteTelefone),
     `🩺 Serviço: ${p.servico}`,
+  ];
+  const da = (p.dataAnterior ?? "").trim();
+  const ha = (p.horaAnterior ?? "").trim();
+  if (da && ha) {
+    lines.push(`📌 Horário anterior: ${da} às ${ha}`);
+  }
+  lines.push(`📅 Nova data: ${p.novaData}`, `🕙 Novo horário: ${p.novoHorario}`);
+  return lines.join("\n");
+}
+
+/** Primeiro nome para saudação «Olá, Maria!» (fallback «Cliente»). */
+export function clientePrimeiroNomeSaudacao(nomeCompleto: string | null | undefined): string {
+  const t = String(nomeCompleto ?? "").trim();
+  if (!t || t.toLowerCase() === "cliente") return "Cliente";
+  return t.split(/\s+/).filter(Boolean)[0] ?? t;
+}
+
+/** Cliente — novo agendamento confirmado (painel / webhook). */
+export function clienteWhatsAppConfirmacaoAgendamento(p: {
+  nomeCliente: string;
+  servico: string;
+  /** Ex.: «Dra. Maria» — `profissionalComTratamento`. */
+  nomeProfissional: string;
+  data: string;
+  horario: string;
+}): string {
+  const n = clientePrimeiroNomeSaudacao(p.nomeCliente);
+  return [
+    `Olá, ${n}! Seu agendamento está confirmado.`,
+    "",
+    "🟢 Novo agendamento",
+    "",
+    `🩺 Serviço: ${p.servico}`,
+    `👤 Profissional: ${p.nomeProfissional}`,
+    `📅 Data: ${p.data}`,
+    `🕒 Horário: ${p.horario}`,
+    "",
+    "Se precisar de qualquer coisa, é só responder esta mensagem.",
+  ].join("\n");
+}
+
+/** Cliente — reagendamento (painel / webhook). */
+export function clienteWhatsAppReagendamentoAgendamento(p: {
+  nomeCliente: string;
+  servico: string;
+  nomeProfissional: string;
+  novaData: string;
+  novoHorario: string;
+}): string {
+  const n = clientePrimeiroNomeSaudacao(p.nomeCliente);
+  return [
+    `Olá, ${n}! Seu agendamento foi reagendado.`,
+    "",
+    "🟡 Reagendamento",
+    "",
+    `🩺 Serviço: ${p.servico}`,
+    `👤 Profissional: ${p.nomeProfissional}`,
     `📅 Nova data: ${p.novaData}`,
-    `🕙 Novo horário: ${p.novoHorario}`,
+    `🕒 Novo horário: ${p.novoHorario}`,
+    "",
+    "Se precisar de qualquer coisa, é só responder esta mensagem.",
+  ].join("\n");
+}
+
+/** Cliente — cancelamento (painel / webhook). */
+export function clienteWhatsAppCancelamentoAgendamento(p: {
+  nomeCliente: string;
+  servico: string;
+  nomeProfissional: string;
+  data: string;
+  horario: string;
+}): string {
+  const n = clientePrimeiroNomeSaudacao(p.nomeCliente);
+  return [
+    `Olá, ${n}! Seu agendamento foi cancelado.`,
+    "",
+    "🔴 Cancelamento",
+    "",
+    `🩺 Serviço: ${p.servico}`,
+    `👤 Profissional: ${p.nomeProfissional}`,
+    `📅 Data: ${p.data}`,
+    `🕒 Horário: ${p.horario}`,
+    "",
+    "Se precisar remarcar, é só responder esta mensagem.",
   ].join("\n");
 }

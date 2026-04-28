@@ -40,6 +40,26 @@ Body: { "p_telefone": "5581...@s.whatsapp.net" }
 
 Body: {}
 
+**n8n 2.10+ (tool `agd_cs_consultar_vagas`):** se o `jsonBody` for um IIFE com `{data_solicitada}`, `{servico_id}`, `{procedimento}`, duplique esses placeholders na **URL** em um fragmento (após `#`), ex.: `.../n8n_cs_consultar_vagas#` + `{data_solicitada}` + `|` + `{servico_id}` + `|` + `{procedimento}` — o PostgREST ignora o `#...`; isso satisfaz o validador de placeholders do nó.
+
+---
+
+## n8n_cs_profissionais_aptos_procedimento
+
+Body (mínimo: clinic_id; pelo menos um de procedure_id ou nome):
+
+```json
+{
+  "p_clinic_id": "uuid",
+  "p_clinic_procedure_id": "text-optional (uuid em string ou vazio; n8n tool)",
+  "p_procedimento_nome": "text-optional"
+}
+```
+
+Retorno: `procedimento_id`, `procedimento_nome`, `duracao_minutos`, `profissionais` (json array).
+
+**n8n Tool HTTP Request:** alguns builds validam placeholders só se aparecerem também na URL. Use fragmento na URL (ignorado pelo PostgREST), ex.: `.../n8n_cs_profissionais_aptos_procedimento#` + `{aptos_uuid}` + `_` + `{aptos_nome}` na expressão, mantendo o `jsonBody` com `p_clinic_procedure_id` / `p_procedimento_nome`.
+
 ---
 
 ## n8n_cs_reagendar

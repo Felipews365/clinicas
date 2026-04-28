@@ -4,4 +4,4 @@
 ALTER TABLE public.cs_clientes ALTER COLUMN nome SET DEFAULT '';
 
 COMMENT ON COLUMN public.cs_clientes.nome IS
-  'Nome confirmado pelo cliente durante o atendimento. Vazio até o agente perguntar e o cliente informar.';
+  'Texto do nome no cadastro. Só deve ser usado pelo agente quando nome_confirmado = true (cliente digitou na conversa ou agendamento com nome explícito). Não usar o pushName do WhatsApp.';

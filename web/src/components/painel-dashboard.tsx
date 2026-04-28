@@ -25,6 +25,7 @@ import {
 import { resolveProfessionalCardStyle } from "@/lib/professional-palette";
 import type { PainelCsSlotRow, PainelDashboardRpc } from "@/types/painel-dashboard";
 import {
+  appointmentOriginLabel,
   type AppointmentRow,
   isClinicConfirmed,
   serviceNamesFromAppointment,
@@ -287,6 +288,7 @@ export type PainelDashboardProps = {
   rowBusy: string | null;
   onConfirmAppointment: (id: string) => void;
   onRemoveAppointment: (id: string) => void;
+  onOpenReschedule: (row: AppointmentRow) => void;
   filterActive: string;
   filterIdle: string;
   viewToggleActive: string;
@@ -323,6 +325,7 @@ export function PainelDashboard({
   rowBusy,
   onConfirmAppointment,
   onRemoveAppointment,
+  onOpenReschedule,
   filterActive,
   filterIdle,
   viewToggleActive,
@@ -526,7 +529,7 @@ export function PainelDashboard({
         const services = serviceNamesFromAppointment(appt.service_name);
         const initials = (patient?.name ?? "?")
           .split(" ").slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
-        const originLabel = isCs ? "Agendamento IA" : appt.source === "painel" ? "Painel" : (appt.source ?? "—");
+        const originLabel = appointmentOriginLabel(appt);
         const originIsTeal = isCs;
 
         return (
@@ -697,12 +700,23 @@ export function PainelDashboard({
                   ) : null}
 
                   {/* Acções */}
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGridModalAppt(null);
+                        onOpenReschedule(appt);
+                      }}
+                      disabled={gridModalBusy}
+                      className="flex-1 min-w-[8rem] rounded-xl border border-[var(--border)] bg-[var(--surface)] py-2.5 text-sm font-medium text-[var(--primary)] hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/10 disabled:opacity-50 transition-colors"
+                    >
+                      Alterar horário
+                    </button>
                     <button
                       type="button"
                       onClick={() => setGridModalAppt(null)}
                       disabled={gridModalBusy}
-                      className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] py-2.5 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-soft)] disabled:opacity-50 transition-colors"
+                      className="flex-1 min-w-[8rem] rounded-xl border border-[var(--border)] bg-[var(--surface)] py-2.5 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-soft)] disabled:opacity-50 transition-colors"
                     >
                       Fechar
                     </button>
@@ -710,7 +724,7 @@ export function PainelDashboard({
                       type="button"
                       onClick={() => void handleGridCancel()}
                       disabled={gridModalBusy}
-                      className="flex items-center gap-2 rounded-xl bg-red-600/90 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50 transition-colors"
+                      className="flex min-w-[8rem] flex-1 items-center justify-center gap-2 rounded-xl bg-red-600/90 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50 transition-colors"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                       {gridModalBusy ? "A cancelar…" : "Desmarcar agendamento"}
@@ -1144,6 +1158,7 @@ export function PainelDashboard({
           busyId={rowBusy}
           onConfirm={onConfirmAppointment}
           onRemove={onRemoveAppointment}
+          onReschedule={onOpenReschedule}
         />
       ) : null}
 

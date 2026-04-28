@@ -12,6 +12,44 @@ import {
   type ProfissionalGenero,
 } from "@/lib/professional-notify-message";
 
+/** Resposta de painel_reagendar_cs_agendamento / n8n_cs_reagendar (ok em JSON). */
+export type PainelReagendarCsResult = {
+  ok?: boolean;
+  error?: string;
+  message?: string;
+};
+
+/** A RPC devolve ok:false sem erro HTTP — interpretar mensagens de negócio. */
+export function painelRpcReagendarCsErrorMessage(data: unknown): string | null {
+  const o = data as PainelReagendarCsResult | null;
+  if (o?.ok === true) return null;
+  if (o?.ok === false) {
+    if (o.error === "not_found") {
+      return "Agendamento não encontrado ou sem permissão nesta clínica.";
+    }
+    if (o.error === "invalid_status") {
+      return "Este agendamento já está cancelado ou concluído.";
+    }
+    if (o.error === "profissional_invalido") {
+      return "Profissional inválido para esta clínica.";
+    }
+    if (o.error === "horario_indisponivel") {
+      return (
+        o.message ??
+        "O novo horário não está disponível. Escolha uma vaga livre na agenda."
+      );
+    }
+    if (o.error === "agendamento_nao_encontrado") {
+      return o.message ?? "Agendamento inexistente ou já cancelado/concluído.";
+    }
+    return o.message ?? "Não foi possível alterar o horário.";
+  }
+  if (data == null || typeof data !== "object") {
+    return "Resposta inválida ao reagendar.";
+  }
+  return "Não foi possível alterar o horário.";
+}
+
 /** Resposta estendida de painel_cancel_cs_agendamento após migration notify. */
 export type PainelCancelCsResult = {
   ok?: boolean;
@@ -83,6 +121,21 @@ export function buildPainelCancelWhatsAppText(p: {
     data: formatDateBrFromYmd(dRaw),
     hora: formatHoraBr(p.horario),
   });
+}
+
+/** Reagendamento feito no painel: API `notify-panel-reschedule` já enviou WhatsApp ao profissional. */
+const skipDuplicateRescheduleProfNotifyIds = new Set<string>();
+
+/** Marcar antes de `loadAppointments` após reagendar marcação nativa (evita 2.º WhatsApp ao profissional). */
+export function markSkipDuplicateRescheduleProfNotify(appointmentPanelId: string): void {
+  skipDuplicateRescheduleProfNotifyIds.add(appointmentPanelId.trim());
+}
+
+function consumeSkipDuplicateRescheduleProfNotify(appointmentPanelId: string): boolean {
+  const id = appointmentPanelId.trim();
+  if (!skipDuplicateRescheduleProfNotifyIds.has(id)) return false;
+  skipDuplicateRescheduleProfNotifyIds.delete(id);
+  return true;
 }
 
 /** Evita segundo aviso de cancelamento quando o painel já enviou após `painel_cancel_cs_agendamento`. */
@@ -176,6 +229,15 @@ export function fireNotifyProfessionalFromAgendaDiff(params: {
     return;
   }
 
+  /* cs_agendamentos: webhook `cs-agendamento-notify` já avisa o profissional no reagendamento. */
+  if (kind === "reagendamento" && row.id.startsWith("cs:")) {
+    return;
+  }
+
+  if (kind === "reagendamento" && consumeSkipDuplicateRescheduleProfNotify(row.id)) {
+    return;
+  }
+
   if (agendaProfNotifyDedupeShouldSkip(clinicId, row.id, kind)) return;
 
   const phone = resolveProfessionalWhatsappFromRoster(row, roster);
@@ -206,6 +268,7 @@ export function fireNotifyProfessionalFromAgendaDiff(params: {
       hora: formatHoraBrFromIso(row.starts_at),
     });
   } else if (kind === "reagendamento") {
+    const prev = params.prevStartsAt;
     text = profWhatsAppReagendamento({
       profissional: profNome,
       profissionalGenero: profGenero,
@@ -214,6 +277,8 @@ export function fireNotifyProfessionalFromAgendaDiff(params: {
       servico: serv,
       novaData: formatDateBrFromIso(row.starts_at),
       novoHorario: formatHoraBrFromIso(row.starts_at),
+      dataAnterior: prev ? formatDateBrFromIso(prev) : null,
+      horaAnterior: prev ? formatHoraBrFromIso(prev) : null,
     });
   } else {
     text = profWhatsAppCancelamento({

@@ -22,6 +22,11 @@ import {
   fireNotifyProfessionalAfterPanelCancel,
   painelRpcCancelCsErrorMessage,
 } from "@/lib/painel-notify-professional";
+import {
+  appointmentOriginLabel,
+  type CsMutacaoOrigem,
+  type AppointmentRow,
+} from "@/types/appointments";
 
 const DISPLAY_HOUR_START = 7;
 const DISPLAY_HOUR_END = 19;
@@ -392,6 +397,7 @@ export function SlotsManagerModal({
     source: string | null;
     startsAt: string;
     endsAt: string;
+    cs_mutacao_origem?: CsMutacaoOrigem | null;
   } | null>(null);
   const [confirmFetching, setConfirmFetching] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -873,6 +879,7 @@ export function SlotsManagerModal({
           source: found.source ?? null,
           startsAt: found.starts_at,
           endsAt: found.ends_at,
+          cs_mutacao_origem: null,
         });
         return;
       }
@@ -904,6 +911,9 @@ export function SlotsManagerModal({
         const p = Array.isArray(csFound.patients)
           ? (csFound.patients as Record<string, unknown>[])[0]
           : (csFound.patients as Record<string, unknown> | null);
+        const mu = csFound.cs_mutacao_origem;
+        const csMu: CsMutacaoOrigem | null =
+          mu === "agente" || mu === "painel" ? mu : null;
         setConfirmAppt({
           id: String(csFound.id ?? ""),
           patientName: (p?.name as string | null) ?? null,
@@ -912,6 +922,7 @@ export function SlotsManagerModal({
           source: (csFound.source as string | null) ?? "whatsapp",
           startsAt: String(csFound.starts_at),
           endsAt: String(csFound.ends_at ?? csFound.starts_at),
+          cs_mutacao_origem: csMu,
         });
       }
     } catch {/* ignore — mostra o modal mesmo sem dados completos */}
@@ -1591,8 +1602,20 @@ export function SlotsManagerModal({
     })();
     const initials = (appt?.patientName ?? "?")
       .split(" ").slice(0, 2).map((w: string) => w[0]?.toUpperCase() ?? "").join("");
-    const isCs = appt?.id?.startsWith("cs:") ?? false;
-    const originLabel = isCs ? "Agendamento IA" : appt?.source === "painel" ? "Painel" : (appt?.source ?? "—");
+    const originLabel = appt
+      ? appointmentOriginLabel({
+          id: appt.id,
+          starts_at: appt.startsAt,
+          ends_at: appt.endsAt,
+          service_name: appt.serviceName,
+          status: "scheduled",
+          source: appt.source,
+          notes: null,
+          patients: null,
+          professionals: null,
+          cs_mutacao_origem: appt.cs_mutacao_origem ?? null,
+        } satisfies AppointmentRow)
+      : "—";
 
     return (
       <div

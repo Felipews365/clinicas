@@ -268,6 +268,30 @@ function mapAddProfHourError(code: string): string {
   }
 }
 
+function ProceduresEmptyClinicHint({
+  compact,
+  className = "",
+}: {
+  compact?: boolean;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`rounded-xl border border-amber-200/90 bg-amber-50/95 text-amber-950 shadow-sm ${compact ? "px-2.5 py-2 text-[10px] leading-snug" : "px-3 py-2.5 text-[11px] leading-relaxed"} ${className}`.trim()}
+    >
+      <p className={`font-semibold text-amber-950 ${compact ? "" : "text-[11px]"}`}>
+        Nenhum procedimento cadastrado ainda
+      </p>
+      <p className={`mt-1 text-amber-950/90 ${compact ? "" : ""}`}>
+        Para acrescentar serviços nesta clínica, no menu lateral abra{" "}
+        <strong className="font-semibold">Clínica / Perfil</strong> e use o separador{" "}
+        <strong className="font-semibold">Procedimentos</strong>. Guarde, volte a{" "}
+        <strong className="font-semibold">Profissionais</strong> e marque aqui o que cada um realiza.
+      </p>
+    </div>
+  );
+}
+
 export function ProfessionalsManagerModal({
   open,
   onClose,
@@ -291,6 +315,8 @@ export function ProfessionalsManagerModal({
   const [newPhotoFile, setNewPhotoFile] = useState<File | null>(null);
   const [newPhotoPreview, setNewPhotoPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /** Painel só: formulário «novo» fica oculto até clicar em Adicionar. */
+  const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editSpecialty, setEditSpecialty] = useState("");
@@ -308,6 +334,7 @@ export function ProfessionalsManagerModal({
   /** "" = Dr. padrão; M = Dr. (homem); F = Dra. */
   const [newNotifyGender, setNewNotifyGender] = useState<"" | "M" | "F">("");
   const [editNotifyGender, setEditNotifyGender] = useState<"" | "M" | "F">("");
+  const [editPanelColor, setEditPanelColor] = useState(DEFAULT_PROFESSIONAL_PANEL_COLOR);
   const [extraHourYmd, setExtraHourYmd] = useState("");
   const [extraHourPick, setExtraHourPick] = useState<number | null>(null);
   const [extraHourBusy, setExtraHourBusy] = useState(false);
@@ -316,10 +343,14 @@ export function ProfessionalsManagerModal({
   const saveNoticeRef = useRef<HTMLParagraphElement | null>(null);
   /** Evita consumir `focusProfessionalName` antes do 1.º `load()` terminar (rows ainda []). */
   const listSettledRef = useRef(false);
+  const isPanel = presentation === "panel";
 
   type ClinicProcRow = { id: string; name: string; sort_order: number };
   const [clinicProcedures, setClinicProcedures] = useState<ClinicProcRow[]>([]);
   const [editProcedureIds, setEditProcedureIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [newProcedureIds, setNewProcedureIds] = useState<Set<string>>(
     () => new Set(),
   );
 
@@ -446,6 +477,7 @@ export function ProfessionalsManagerModal({
       setExtraHourErr(null);
       setExtraHourBusy(false);
       setSaveNotice(null);
+      setShowAddForm(false);
       setNewPhotoPreview((prev) => {
         revokePreview(prev);
         return null;
@@ -455,6 +487,7 @@ export function ProfessionalsManagerModal({
     }
     void load();
     setEditingId(null);
+    setShowAddForm(false);
     setName("");
     setSpecialty("");
     setNewWhatsapp("");
@@ -464,6 +497,7 @@ export function ProfessionalsManagerModal({
     setNewWorksSaturday(true);
     setNewSaturdayHours(new Set());
     setNewNotifyGender("");
+    setNewProcedureIds(new Set());
     setNewPhotoFile(null);
     setNewPhotoPreview((prev) => {
       revokePreview(prev);
@@ -489,12 +523,15 @@ export function ProfessionalsManagerModal({
         cancelEditRow();
         return;
       }
+      if (presentation === "panel" && showAddForm) {
+        setShowAddForm(false);
+        return;
+      }
       onClose();
     };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
-  }, [open, onClose, editingId]);
-  const isPanel = presentation === "panel";
+  }, [open, onClose, editingId, presentation, showAddForm]);
 
   async function addProfessional(e: React.FormEvent) {
     e.preventDefault();
@@ -580,14 +617,36 @@ export function ProfessionalsManagerModal({
       }
     }
 
+    let procNote = "";
+    const newProcIds = [...newProcedureIds];
+    if (newProcIds.length > 0) {
+      const { error: insLinks } = await supabase
+        .from("professional_procedures")
+        .insert(
+          newProcIds.map((clinic_procedure_id) => ({
+            professional_id: inserted.id,
+            clinic_procedure_id,
+          })),
+        );
+      if (insLinks) {
+        if (!isMissingProfessionalProceduresTableError(insLinks.message)) {
+          setBusy(null);
+          setError(insLinks.message);
+          return;
+        }
+        procNote =
+          " Procedimentos por profissional não foram gravados (tabela professional_procedures em falta).";
+      }
+    }
+
     setBusy(null);
     if (uploadErr) {
       setError(`Profissional criado, mas a foto não foi salva: ${uploadErr}`);
     } else {
       setSaveNotice(
-        savedGenderSkipped
+        (savedGenderSkipped
           ? "Profissional adicionado com sucesso. (Tratamento Dr./Dra. só será guardado após criar a coluna gender na tabela professionals — veja migration no repositório.)"
-          : "Profissional adicionado com sucesso.",
+          : "Profissional adicionado com sucesso.") + procNote,
       );
     }
     setName("");
@@ -598,6 +657,7 @@ export function ProfessionalsManagerModal({
     setNewEmoji("");
     setNewWorksSaturday(true);
     setNewSaturdayHours(new Set());
+    setNewProcedureIds(new Set());
     setNewPhotoFile(null);
     setNewPhotoPreview((prev) => {
       revokePreview(prev);
@@ -605,6 +665,7 @@ export function ProfessionalsManagerModal({
     });
     await load();
     onChanged();
+    setShowAddForm(false);
   }
 
   function onPickNewPhoto(file: File | null) {
@@ -724,6 +785,7 @@ export function ProfessionalsManagerModal({
 
   const startEditRow = useCallback(
     (r: Row) => {
+      setShowAddForm(false);
       setEditingId(r.id);
       setEditName(r.name);
       setEditSpecialty(r.specialty ?? "");
@@ -757,6 +819,7 @@ export function ProfessionalsManagerModal({
       setEditNotifyGender(
         r.gender === "F" || r.gender === "M" ? r.gender : ""
       );
+      setEditPanelColor(rowPaletteValue(r));
     },
     [agendaDayKey, clinicSaturdayHours]
   );
@@ -803,6 +866,7 @@ export function ProfessionalsManagerModal({
     setEditSaturdayHours(new Set());
     setEditProcedureIds(new Set());
     setEditNotifyGender("");
+    setEditPanelColor(DEFAULT_PROFESSIONAL_PANEL_COLOR);
     setExtraHourYmd("");
     setExtraHourPick(null);
     setExtraHourErr(null);
@@ -810,6 +874,15 @@ export function ProfessionalsManagerModal({
 
   function toggleEditProcedure(procId: string) {
     setEditProcedureIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(procId)) next.delete(procId);
+      else next.add(procId);
+      return next;
+    });
+  }
+
+  function toggleNewProcedure(procId: string) {
+    setNewProcedureIds((prev) => {
       const next = new Set(prev);
       if (next.has(procId)) next.delete(procId);
       else next.add(procId);
@@ -896,6 +969,8 @@ export function ProfessionalsManagerModal({
       specialty: editSpecialty.trim() || null,
       whatsapp: wNorm.digits,
       agenda_hours: agendaHours,
+      panel_color:
+        editPanelColor.trim() || DEFAULT_PROFESSIONAL_PANEL_COLOR,
       ...sabadoUpdate,
     };
     const genderVal = editNotifyGender === "" ? null : editNotifyGender;
@@ -1007,7 +1082,11 @@ export function ProfessionalsManagerModal({
 
   if (!open) return null;
 
-  const formBlock = (
+  const editingRow = editingId
+    ? rows.find((x) => x.id === editingId) ?? null
+    : null;
+
+  const addProfessionalForm = (
     <form
       onSubmit={(e) => void addProfessional(e)}
       className="space-y-4 rounded-[18px] border border-[#dfe8e5] bg-white/95 p-6 shadow-sm"
@@ -1135,6 +1214,37 @@ export function ProfessionalsManagerModal({
         onChange={setNewColor}
         disabled={busy === "add"}
       />
+      <div className="rounded-xl border border-[#e6e1d8] bg-[#faf8f4] p-4">
+        <p className="text-xs font-semibold text-[#5c5348]">Procedimentos que realiza</p>
+        {clinicProcedures.length > 0 ? (
+          <>
+            <p className="mt-0.5 text-[11px] text-[#8a8278]">
+              Marque o que este profissional realiza. O agente de WhatsApp só oferece vagas para um serviço
+              quando ele estiver marcado aqui. No agendamento manual do painel, sem nenhuma marcação, podem
+              aparecer todos os procedimentos — prefira marcar.
+            </p>
+            <div className="mt-2 max-h-40 space-y-1.5 overflow-y-auto pr-1">
+              {clinicProcedures.map((cp) => (
+                <label
+                  key={cp.id}
+                  className="flex cursor-pointer items-start gap-2 rounded-lg border border-transparent px-1 py-0.5 hover:border-[#e6e1d8] hover:bg-white/80"
+                >
+                  <input
+                    type="checkbox"
+                    checked={newProcedureIds.has(cp.id)}
+                    onChange={() => toggleNewProcedure(cp.id)}
+                    disabled={busy === "add"}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
+                  />
+                  <span className="text-xs text-[#2c2825]">{cp.name}</span>
+                </label>
+              ))}
+            </div>
+          </>
+        ) : (
+          <ProceduresEmptyClinicHint className="mt-2" />
+        )}
+      </div>
       {clinicSabadoOpen ? (
         <div className="space-y-2 rounded-xl border border-[#e6e1d8] bg-[#faf8f4] px-4 py-3">
           <label className="flex cursor-pointer items-start gap-3">
@@ -1211,15 +1321,301 @@ export function ProfessionalsManagerModal({
           ) : null}
         </div>
       ) : null}
-      <button
-        type="submit"
-        disabled={busy === "add"}
-        className="w-full rounded-xl bg-[#0f766e] py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0d6560] disabled:opacity-50"
+      <div
+        className={
+          isPanel
+            ? "flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch"
+            : ""
+        }
       >
-        {busy === "add" ? "A salvar…" : "Adicionar profissional"}
-      </button>
+        {isPanel ? (
+          <button
+            type="button"
+            onClick={() => setShowAddForm(false)}
+            disabled={busy === "add"}
+            className="rounded-xl border border-[#ddd8cf] bg-white px-4 py-2.5 text-sm font-medium text-[#4a453d] hover:bg-[#f7f4ef] disabled:opacity-50 sm:shrink-0"
+          >
+            Cancelar
+          </button>
+        ) : null}
+        <button
+          type="submit"
+          disabled={busy === "add"}
+          className={
+            isPanel
+              ? "min-w-0 flex-1 rounded-xl bg-[#0f766e] py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0d6560] disabled:opacity-50"
+              : "w-full rounded-xl bg-[#0f766e] py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0d6560] disabled:opacity-50"
+          }
+        >
+          {busy === "add" ? "A salvar…" : "Adicionar profissional"}
+        </button>
+      </div>
     </form>
   );
+
+  const editProfessionalFormPanel =
+    editingRow ? (
+      <div className="space-y-4 rounded-[18px] border border-[#0f766e]/30 bg-white/95 p-6 shadow-sm ring-1 ring-[#0f766e]/15">
+        <p className="text-xs font-semibold uppercase tracking-wider text-[#0f766e]">
+          Edição
+        </p>
+        <p className="text-sm font-medium text-[#2c2825]">
+          Editar profissional
+        </p>
+        <p className="text-[11px] text-[#6b635a]">
+          {isPanel
+            ? "Horários de dias úteis (personalizado) e horário extra ficam no cartão à direita."
+            : "Horários de dias úteis (personalizado) e horário extra ficam no cartão abaixo."}
+        </p>
+        <input
+          aria-label="Nome do profissional"
+          value={editName}
+          onChange={(e) => setEditName(e.target.value)}
+          className="w-full rounded-xl border border-[#d4cfc4] px-3 py-2.5 text-sm font-medium text-[#2c2825] outline-none ring-[#4D6D66] focus:ring-2"
+        />
+        <input
+          aria-label="Especialidade"
+          placeholder="Área / especialidade (opcional)"
+          value={editSpecialty}
+          onChange={(e) => setEditSpecialty(e.target.value)}
+          className="w-full rounded-xl border border-[#d4cfc4] px-3 py-2.5 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
+        />
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-[#5c5348]">
+            Tratamento nas mensagens ao profissional
+          </label>
+          <select
+            aria-label="Tratamento Dr. ou Dra."
+            value={editNotifyGender}
+            onChange={(e) =>
+              setEditNotifyGender(e.target.value as "" | "M" | "F")
+            }
+            disabled={busy === editingRow.id}
+            className="w-full rounded-xl border border-[#d4cfc4] bg-[#faf8f4] px-3 py-2 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2 disabled:opacity-50"
+          >
+            <option value="">Dr. (padrão)</option>
+            <option value="M">Dr. (homem)</option>
+            <option value="F">Dra. (mulher)</option>
+          </select>
+        </div>
+        <div>
+          <p className="mb-1 text-xs font-semibold text-[#5c5348]">
+            WhatsApp para notificações
+          </p>
+          <input
+            aria-label="WhatsApp do profissional"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            placeholder="11999999999 ou 5511999999999"
+            value={editWhatsapp}
+            onChange={(e) => {
+              setEditWhatsapp(e.target.value);
+              setEditWhatsappErr(null);
+            }}
+            onBlur={() => {
+              const norm = normalizeProfessionalWhatsappBr(editWhatsapp);
+              if (!norm.ok) {
+                if (editWhatsapp.trim()) setEditWhatsappErr(norm.error);
+                return;
+              }
+              setEditWhatsappErr(null);
+              setEditWhatsapp(norm.digits ?? "");
+            }}
+            className={`w-full rounded-xl border px-3 py-2.5 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2 ${
+              editWhatsappErr ? "border-red-400" : "border-[#d4cfc4]"
+            }`}
+          />
+          {editWhatsappErr ? (
+            <p className="mt-1 text-[11px] text-red-600">{editWhatsappErr}</p>
+          ) : (
+            <p className="mt-1 text-[11px] text-[#8a8278]">
+              Máscara ou +55: ao sair do campo normalizamos.
+            </p>
+          )}
+        </div>
+        {clinicProcedures.length > 0 ? (
+          <div className="rounded-xl border border-[#e6e1d8] bg-[#faf8f4] p-4">
+            <p className="text-xs font-semibold text-[#5c5348]">
+              Procedimentos que realiza
+            </p>
+            <p className="mt-0.5 text-[11px] text-[#8a8278]">
+              Marque o que ele faz. O agente só lista profissionais aptos ao procedimento pedido; no painel,
+              vazio pode mostrar todos os procedimentos no agendamento manual.
+            </p>
+            <div className="mt-2 max-h-40 space-y-1.5 overflow-y-auto pr-1">
+              {clinicProcedures.map((cp) => (
+                <label
+                  key={cp.id}
+                  className="flex cursor-pointer items-start gap-2 rounded-lg border border-transparent px-1 py-0.5 hover:border-[#e6e1d8] hover:bg-white/80"
+                >
+                  <input
+                    type="checkbox"
+                    checked={editProcedureIds.has(cp.id)}
+                    onChange={() => toggleEditProcedure(cp.id)}
+                    disabled={busy === editingRow.id}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
+                  />
+                  <span className="text-xs text-[#2c2825]">{cp.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-[#e6e1d8] bg-[#faf8f4] p-4">
+            <p className="text-xs font-semibold text-[#5c5348]">Procedimentos que realiza</p>
+            <ProceduresEmptyClinicHint className="mt-2" />
+          </div>
+        )}
+        <div className="rounded-2xl border border-[#e6e1d8] bg-[#faf8f4] p-4">
+          <p className="text-xs font-semibold text-[#5c5348]">Avatar</p>
+          <div className="mt-3 flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+            <ProfessionalAvatar
+              name={editName.trim() || editingRow.name}
+              photoUrl={professionalAvatarPublicUrl(supabase, editingRow.avatar_path)}
+              emoji={editingRow.avatar_emoji}
+              panelColor={editPanelColor}
+              size="lg"
+            />
+            <div className="w-full min-w-0 flex-1 space-y-3">
+              <label className="cursor-pointer rounded-lg border border-[#e6e1d8] bg-white px-3 py-2 text-xs font-semibold text-[#5c5348] hover:bg-[#f0ebe3]">
+                Nova foto
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="sr-only"
+                  disabled={busy === editingRow.id}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null;
+                    e.target.value = "";
+                    if (f) void uploadRowPhoto(editingRow, f);
+                  }}
+                />
+              </label>
+              {editingRow.avatar_path ? (
+                <button
+                  type="button"
+                  disabled={busy === editingRow.id}
+                  onClick={() => void clearRowPhoto(editingRow)}
+                  className="text-xs font-medium text-[#b45309] hover:underline disabled:opacity-50"
+                >
+                  Remover foto
+                </button>
+              ) : null}
+              <EmojiFallbackPicker
+                value={editingRow.avatar_emoji ?? ""}
+                onChange={(em) =>
+                  void updateRowEmoji(editingRow, em.trim() || null)
+                }
+                disabled={busy === editingRow.id}
+                label="Emoji de reserva"
+              />
+            </div>
+          </div>
+        </div>
+        <ProfessionalPanelColorField
+          value={editPanelColor}
+          onChange={setEditPanelColor}
+          disabled={busy === editingRow.id}
+        />
+        {clinicSabadoOpen ? (
+          <div className="space-y-2 rounded-xl border border-[#e6e1d8] bg-[#faf8f4] px-4 py-3">
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={editWorksSaturday}
+                onChange={(e) => {
+                  const v = e.target.checked;
+                  setEditWorksSaturday(v);
+                  if (v) {
+                    setEditSaturdayHours((prev) =>
+                      prev.size > 0
+                        ? prev
+                        : buildDefaultSaturdayHours(
+                            clinicSaturdayHours,
+                            editingRow.sabado_agenda_hours,
+                            editAgendaCustom,
+                            editAgendaHours,
+                          ),
+                    );
+                  }
+                }}
+                disabled={busy === editingRow.id}
+                className="mt-1 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
+              />
+              <span className="text-sm text-[#2c2825]">
+                <span className="font-medium">Atende aos sábados</span>
+                <span className="mt-1 block text-[11px] text-[#8a8278]">
+                  Se desligar, o agente e o painel não mostram este profissional ao sábado.
+                </span>
+              </span>
+            </label>
+            {editWorksSaturday ? (
+              <div className="rounded-lg border border-[#e6e1d8] bg-white px-3 py-2.5">
+                <p className="text-[11px] font-semibold text-[#5c5348]">
+                  Horários ao sábado
+                </p>
+                <div className="mt-2 grid gap-1 [grid-template-columns:repeat(auto-fit,minmax(4.5rem,1fr))]">
+                  {(clinicSaturdayHours.length > 0
+                    ? clinicSaturdayHours
+                    : [...FULL_CLINIC_AGENDA_HOURS]
+                  ).map((h) => {
+                    const on = editSaturdayHours.has(h);
+                    return (
+                      <button
+                        key={h}
+                        type="button"
+                        disabled={busy === editingRow.id}
+                        onClick={() => {
+                          setEditSaturdayHours((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(h)) {
+                              if (next.size > 1) next.delete(h);
+                            } else {
+                              next.add(h);
+                            }
+                            return next;
+                          });
+                        }}
+                        className={`rounded-lg border py-1.5 text-xs font-semibold tabular-nums transition-colors disabled:opacity-50 ${
+                          on
+                            ? "border-teal-700/70 bg-teal-950/90 text-teal-100"
+                            : "border-dashed border-[#d4cfc4] bg-white text-[#9a9288] line-through"
+                        }`}
+                      >
+                        {formatAgendaHourLabel(h)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy === editingRow.id}
+            onClick={() => void saveRowDetails(editingRow)}
+            className="rounded-xl border border-[#0f766e] bg-[#0f766e] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#0d6560] disabled:opacity-50"
+          >
+            {busy === editingRow.id ? "A salvar…" : "Salvar alterações"}
+          </button>
+          <button
+            type="button"
+            disabled={busy === editingRow.id}
+            onClick={cancelEditRow}
+            className="rounded-xl border border-[#ddd8cf] bg-white px-4 py-2.5 text-sm font-medium text-[#4a453d] hover:bg-[#f7f4ef] disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    ) : null;
+
+  const teamListRows = editingRow
+    ? rows.filter((r) => r.id === editingRow.id)
+    : rows;
 
   const listBlock = (
     <div className="rounded-[18px] border border-[#dfe8e5] bg-[#fffdf9] p-6 shadow-sm">
@@ -1229,12 +1625,12 @@ export function ProfessionalsManagerModal({
         <p className="mt-4 text-sm text-[#6b635a]">A carregar…</p>
       ) : (
         <ul className="mt-4 space-y-2">
-          {rows.length === 0 ? (
+          {teamListRows.length === 0 ? (
             <li className="text-sm text-[#8a8278]">
               Nenhum profissional ainda. Adicione pelo menos um para poder agendar.
             </li>
           ) : (
-            rows.map((r) => {
+            teamListRows.map((r) => {
               const isEditing = editingId === r.id;
               const displayName = isEditing
                 ? editName.trim() || r.name
@@ -1258,7 +1654,18 @@ export function ProfessionalsManagerModal({
                   className="self-start"
                 />
                 <div className="min-w-0 flex-1">
-                  {isEditing ? (
+                  {isEditing && editingRow ? (
+                    <div className="space-y-1 rounded-xl border border-dashed border-[#c5d9d4] bg-[#f8faf9] px-3 py-2.5">
+                      <p className="text-sm font-semibold text-[#0f766e]">
+                        Grade da semana e horário extra
+                      </p>
+                      <p className="text-[11px] leading-relaxed text-[#6b635a]">
+                        {isPanel
+                          ? "Nome, WhatsApp, procedimentos, cor e sábado estão no formulário à esquerda. Ajuste aqui apenas os dias úteis (se forem diferentes da clínica) e blocos fora da grade."
+                          : "Nome, WhatsApp, procedimentos, cor e sábado estão no formulário acima. Use este cartão só para a grade de dias úteis e horário extra."}
+                      </p>
+                    </div>
+                  ) : isEditing ? (
                     <div className="space-y-2">
                       <input
                         aria-label="Nome do profissional"
@@ -1325,34 +1732,38 @@ export function ProfessionalsManagerModal({
                           </p>
                         )}
                       </div>
-                      {clinicProcedures.length > 0 ? (
-                        <div className="mt-3 rounded-xl border border-[#e6e1d8] bg-[#faf8f4] p-3">
-                          <p className="text-[11px] font-semibold text-[#5c5348]">
-                            Procedimentos que realiza
-                          </p>
-                          <p className="mt-0.5 text-[10px] text-[#8a8278]">
-                            Serviços do catálogo da clínica. Se nenhum estiver marcado, no
-                            agendamento do painel aparecem todos os procedimentos ativos.
-                          </p>
-                          <div className="mt-2 max-h-40 space-y-1.5 overflow-y-auto pr-1">
-                            {clinicProcedures.map((cp) => (
-                              <label
-                                key={cp.id}
-                                className="flex cursor-pointer items-start gap-2 rounded-lg border border-transparent px-1 py-0.5 hover:border-[#e6e1d8] hover:bg-white/80"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={editProcedureIds.has(cp.id)}
-                                  onChange={() => toggleEditProcedure(cp.id)}
-                                  disabled={busy === r.id}
-                                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
-                                />
-                                <span className="text-xs text-[#2c2825]">{cp.name}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
+                      <div className="mt-3 rounded-xl border border-[#e6e1d8] bg-[#faf8f4] p-3">
+                        <p className="text-[11px] font-semibold text-[#5c5348]">
+                          Procedimentos que realiza
+                        </p>
+                        {clinicProcedures.length > 0 ? (
+                          <>
+                            <p className="mt-0.5 text-[10px] text-[#8a8278]">
+                              Marque o que ele faz. O agente só oferece vagas para serviços marcados; vazio no
+                              painel pode listar todos no agendamento manual.
+                            </p>
+                            <div className="mt-2 max-h-40 space-y-1.5 overflow-y-auto pr-1">
+                              {clinicProcedures.map((cp) => (
+                                <label
+                                  key={cp.id}
+                                  className="flex cursor-pointer items-start gap-2 rounded-lg border border-transparent px-1 py-0.5 hover:border-[#e6e1d8] hover:bg-white/80"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={editProcedureIds.has(cp.id)}
+                                    onChange={() => toggleEditProcedure(cp.id)}
+                                    disabled={busy === r.id}
+                                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
+                                  />
+                                  <span className="text-xs text-[#2c2825]">{cp.name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </>
+                        ) : (
+                          <ProceduresEmptyClinicHint compact className="mt-2" />
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <>
@@ -1385,6 +1796,8 @@ export function ProfessionalsManagerModal({
                   ) : null}
                   {isEditing ? (
                     <>
+                      {!editingRow ? (
+                      <>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <label className="cursor-pointer rounded-lg border border-[#e6e1d8] bg-[#faf8f4] px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#6b635a] hover:bg-[#f0ebe3]">
                           Foto
@@ -1426,8 +1839,14 @@ export function ProfessionalsManagerModal({
                         busy={busy === r.id}
                         onPick={(v) => void updatePanelColor(r, v)}
                       />
+                      </>
+                      ) : null}
                       {/* Horários de atendimento */}
-                      <div className="mt-3 rounded-xl border border-[#e6e1d8] bg-[#faf8f4] p-3">
+                      <div
+                        className={`rounded-xl border border-[#e6e1d8] bg-[#faf8f4] p-3 ${
+                          editingRow && isEditing ? "mt-0" : "mt-3"
+                        }`}
+                      >
                         <p className="text-xs font-semibold text-[#5c5348]">Horários de atendimento</p>
                         <div className="mt-2 flex gap-2">
                           <button
@@ -1497,7 +1916,7 @@ export function ProfessionalsManagerModal({
                             Usa os horários configurados em «Horários da clínica».
                           </p>
                         )}
-                        {clinicSabadoOpen ? (
+                        {clinicSabadoOpen && !(editingRow && isEditing) ? (
                           <div className="mt-3 space-y-2 rounded-xl border border-[#e6e1d8] bg-white px-3 py-2.5">
                             <label className="flex cursor-pointer items-start gap-3">
                               <input
@@ -1574,11 +1993,11 @@ export function ProfessionalsManagerModal({
                               </div>
                             ) : null}
                           </div>
-                        ) : (
+                        ) : !clinicSabadoOpen ? (
                           <p className="mt-3 text-[11px] text-[#8a8278]">
                             A clínica não abre aos sábados — a regra é a mesma para toda a equipa.
                           </p>
-                        )}
+                        ) : null}
                       </div>
                       <div className="mt-3 rounded-xl border border-[#e6e1d8] bg-white p-3">
                         <p className="text-xs font-semibold text-[#5c5348]">Horário extra (fora da grade)</p>
@@ -1661,18 +2080,18 @@ export function ProfessionalsManagerModal({
                       <button
                         type="button"
                         disabled={busy === r.id}
-                        onClick={() => void saveRowDetails(r)}
-                        className="rounded-lg border border-[#0f766e] bg-[#0f766e] px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-[#0d6560] disabled:opacity-50"
+                        onClick={() => void toggleActive(r)}
+                        className="rounded-lg border border-[#ddd8cf] px-3 py-1.5 text-xs font-medium text-[#4a453d] hover:bg-[#f7f4ef] disabled:opacity-50"
                       >
-                        {busy === r.id ? "A salvar…" : "Salvar"}
+                        {r.is_active ? "Desativar" : "Ativar"}
                       </button>
                       <button
                         type="button"
                         disabled={busy === r.id}
-                        onClick={cancelEditRow}
-                        className="rounded-lg border border-[#ddd8cf] bg-white px-3 py-1.5 text-xs font-medium text-[#4a453d] hover:bg-[#f7f4ef] disabled:opacity-50"
+                        onClick={() => void removeRow(r)}
+                        className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-800 hover:bg-red-50 disabled:opacity-50"
                       >
-                        Cancelar
+                        Apagar
                       </button>
                     </>
                   ) : (
@@ -1721,14 +2140,27 @@ export function ProfessionalsManagerModal({
         aria-labelledby="pros-panel-title"
       >
         <header className="mb-6 border-b border-[#c5d9d4] pb-6">
-          <p className="text-xs font-semibold uppercase tracking-widest text-[#0f766e]">Equipa clínica</p>
-          <h1 id="pros-panel-title" className="font-display mt-2 text-2xl font-semibold tracking-tight text-[#0f2d28] sm:text-3xl">
-            Profissionais
-          </h1>
-          <p className="mt-3 max-w-4xl text-sm leading-relaxed text-[#5c5348]">
-            Cadastre médicos, esteticistas, odontologia, etc. Cada um pode ter horários em paralelo — o
-            sistema evita apenas conflito no mesmo profissional.
-          </p>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold uppercase tracking-widest text-[#0f766e]">Equipa clínica</p>
+              <h1 id="pros-panel-title" className="font-display mt-2 text-2xl font-semibold tracking-tight text-[#0f2d28] sm:text-3xl">
+                Profissionais
+              </h1>
+              <p className="mt-3 max-w-4xl text-sm leading-relaxed text-[#5c5348]">
+                Cadastre médicos, esteticistas, odontologia, etc. Cada um pode ter horários em paralelo — o
+                sistema evita apenas conflito no mesmo profissional.
+              </p>
+            </div>
+            {!editingRow ? (
+              <button
+                type="button"
+                onClick={() => setShowAddForm((v) => !v)}
+                className="shrink-0 rounded-xl border border-[#0f766e] bg-[#0f766e] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0d6560] sm:mt-6"
+              >
+                {showAddForm ? "Voltar à lista" : "+ Adicionar profissional"}
+              </button>
+            ) : null}
+          </div>
         </header>
         {error ? (
           <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -1745,9 +2177,18 @@ export function ProfessionalsManagerModal({
             {saveNotice}
           </p>
         ) : null}
-        <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-          {formBlock}
-          {listBlock}
+        <div className="space-y-6">
+          {editingRow ? (
+            <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+              {editProfessionalFormPanel}
+              {listBlock}
+            </div>
+          ) : (
+            <>
+              {showAddForm ? addProfessionalForm : null}
+              {!showAddForm ? listBlock : null}
+            </>
+          )}
         </div>
         <div className="mt-8 flex justify-end border-t border-[#c5d9d4] pt-6">
           <button
@@ -1778,6 +2219,9 @@ export function ProfessionalsManagerModal({
         </div>
 
         <div className="flex flex-1 flex-col overflow-y-auto px-5 py-4">
+          {editingRow ? (
+            <div className="mb-5">{editProfessionalFormPanel}</div>
+          ) : (
           <form
             onSubmit={(e) => void addProfessional(e)}
             className="mb-5 space-y-3 rounded-xl border border-[#e6e1d8] bg-white p-4"
@@ -1842,6 +2286,35 @@ export function ProfessionalsManagerModal({
               onChange={setNewColor}
               disabled={busy === "add"}
             />
+            <div className="rounded-lg border border-[#e6e1d8] bg-[#faf8f4] p-3">
+              <p className="text-xs font-semibold text-[#5c5348]">Procedimentos que realiza</p>
+              {clinicProcedures.length > 0 ? (
+                <>
+                  <p className="mt-0.5 text-[10px] text-[#8a8278]">
+                    Marque o que ele faz (o agente usa isto). Vazio no painel pode equivaler a todos no manual.
+                  </p>
+                  <div className="mt-1.5 max-h-32 space-y-1 overflow-y-auto">
+                    {clinicProcedures.map((cp) => (
+                      <label
+                        key={cp.id}
+                        className="flex cursor-pointer items-start gap-1.5"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={newProcedureIds.has(cp.id)}
+                          onChange={() => toggleNewProcedure(cp.id)}
+                          disabled={busy === "add"}
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-[#d4cfc4]"
+                        />
+                        <span className="text-[11px] text-[#2c2825]">{cp.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <ProceduresEmptyClinicHint compact className="mt-1.5" />
+              )}
+            </div>
             {clinicSabadoOpen ? (
               <div className="space-y-2 rounded-lg border border-[#e6e1d8] bg-[#faf8f4] px-3 py-2">
                 <label className="flex cursor-pointer items-start gap-2">
@@ -1922,6 +2395,7 @@ export function ProfessionalsManagerModal({
               {busy === "add" ? "A salvar…" : "Adicionar profissional"}
             </button>
           </form>
+          )}
 
           {error ? (
             <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -1943,12 +2417,12 @@ export function ProfessionalsManagerModal({
             <p className="text-sm text-[#6b635a]">A carregar…</p>
           ) : (
             <ul className="space-y-2">
-              {rows.length === 0 ? (
+              {teamListRows.length === 0 ? (
                 <li className="text-sm text-[#8a8278]">
                   Nenhum profissional ainda. Adicione pelo menos um para poder agendar.
                 </li>
               ) : (
-                rows.map((r) => {
+                teamListRows.map((r) => {
                   const isEditing = editingId === r.id;
                   const displayName = isEditing
                     ? editName.trim() || r.name
@@ -1972,68 +2446,17 @@ export function ProfessionalsManagerModal({
                       className="self-start"
                     />
                     <div className="min-w-0 flex-1">
-                      {isEditing ? (
-                        <div className="space-y-1.5">
-                          <input
-                            aria-label="Nome do profissional"
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            className="w-full rounded-lg border border-[#d4cfc4] px-2 py-1.5 text-sm font-medium text-[#2c2825] outline-none ring-[#4D6D66] focus:ring-2"
-                          />
-                          <input
-                            aria-label="Especialidade"
-                            placeholder="Área / especialidade (opcional)"
-                            value={editSpecialty}
-                            onChange={(e) => setEditSpecialty(e.target.value)}
-                            className="w-full rounded-lg border border-[#d4cfc4] px-2 py-1.5 text-sm text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2"
-                          />
-                          <div>
-                            <label className="mb-0.5 block text-[10px] font-semibold text-[#5c5348]">
-                              Tratamento (WhatsApp)
-                            </label>
-                            <select
-                              aria-label="Tratamento Dr. ou Dra."
-                              value={editNotifyGender}
-                              onChange={(e) =>
-                                setEditNotifyGender(e.target.value as "" | "M" | "F")
-                              }
-                              disabled={busy === r.id}
-                              className="w-full rounded-lg border border-[#d4cfc4] bg-[#faf8f4] px-2 py-1 text-xs text-[#1a1a1a] outline-none ring-[#4D6D66] focus:ring-2 disabled:opacity-50"
-                            >
-                              <option value="">Dr. (padrão)</option>
-                              <option value="M">Dr. (homem)</option>
-                              <option value="F">Dra. (mulher)</option>
-                            </select>
-                          </div>
-                          {clinicProcedures.length > 0 ? (
-                            <div className="mt-2 rounded-lg border border-[#e6e1d8] bg-[#faf8f4] p-2">
-                              <p className="text-[10px] font-semibold text-[#5c5348]">
-                                Procedimentos
-                              </p>
-                              <p className="mt-0.5 text-[9px] text-[#8a8278]">
-                                Vazio = todos no agendamento. Marque para filtrar.
-                              </p>
-                              <div className="mt-1.5 max-h-32 space-y-1 overflow-y-auto">
-                                {clinicProcedures.map((cp) => (
-                                  <label
-                                    key={cp.id}
-                                    className="flex cursor-pointer items-start gap-1.5"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={editProcedureIds.has(cp.id)}
-                                      onChange={() => toggleEditProcedure(cp.id)}
-                                      disabled={busy === r.id}
-                                      className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-[#d4cfc4]"
-                                    />
-                                    <span className="text-[11px] text-[#2c2825]">{cp.name}</span>
-                                  </label>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
+                      {isEditing && editingRow ? (
+                        <div className="space-y-1 rounded-lg border border-dashed border-[#c5d9d4] bg-[#f8faf9] px-2 py-2">
+                          <p className="text-xs font-semibold text-[#0f766e]">
+                            Grade da semana e horário extra
+                          </p>
+                          <p className="text-[10px] leading-relaxed text-[#6b635a]">
+                            Nome, WhatsApp, procedimentos, cor e sábado estão no formulário acima. Use este cartão
+                            só para a grade de dias úteis e horário extra.
+                          </p>
                         </div>
-                      ) : (
+                      ) : !isEditing ? (
                         <>
                           <p className="font-medium text-[#2c2825]">{r.name}</p>
                           {r.specialty ? (
@@ -2053,7 +2476,7 @@ export function ProfessionalsManagerModal({
                             </p>
                           ) : null}
                         </>
-                      )}
+                      ) : null}
                       {!r.is_active ? (
                         <span className="mt-1 inline-block rounded bg-zinc-200 px-2 py-0.5 text-[10px] font-semibold uppercase text-zinc-700">
                           Inativo
@@ -2061,6 +2484,8 @@ export function ProfessionalsManagerModal({
                       ) : null}
                       {isEditing ? (
                         <>
+                          {!editingRow ? (
+                          <>
                           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                             <label className="cursor-pointer rounded border border-[#e6e1d8] bg-[#faf8f4] px-1.5 py-0.5 text-[10px] font-semibold uppercase text-[#6b635a]">
                               Foto
@@ -2102,7 +2527,85 @@ export function ProfessionalsManagerModal({
                             busy={busy === r.id}
                             onPick={(v) => void updatePanelColor(r, v)}
                           />
-                          {clinicSabadoOpen ? (
+                          </>
+                          ) : null}
+                          {!isPanel && editingRow ? (
+                            <div className="mt-2 rounded-lg border border-[#e6e1d8] bg-[#faf8f4] p-2">
+                              <p className="text-[11px] font-semibold text-[#5c5348]">
+                                Horários de atendimento (dias úteis)
+                              </p>
+                              <div className="mt-1.5 flex flex-wrap gap-1">
+                                <button
+                                  type="button"
+                                  disabled={busy === r.id}
+                                  onClick={() => setEditAgendaCustom(false)}
+                                  className={`rounded border px-2 py-1 text-[10px] font-semibold disabled:opacity-50 ${
+                                    !editAgendaCustom
+                                      ? "border-[#0f766e] bg-[#e6f5f3] text-[#0f766e]"
+                                      : "border-[#d4cfc4] bg-white text-[#6b635a]"
+                                  }`}
+                                >
+                                  Padrão da clínica
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy === r.id}
+                                  onClick={() => {
+                                    setEditAgendaCustom(true);
+                                    if (editAgendaHours.size === 0) {
+                                      setEditAgendaHours(
+                                        new Set([8, 9, 10, 11, 14, 15, 16, 17]),
+                                      );
+                                    }
+                                  }}
+                                  className={`rounded border px-2 py-1 text-[10px] font-semibold disabled:opacity-50 ${
+                                    editAgendaCustom
+                                      ? "border-[#0f766e] bg-[#e6f5f3] text-[#0f766e]"
+                                      : "border-[#d4cfc4] bg-white text-[#6b635a]"
+                                  }`}
+                                >
+                                  Personalizado
+                                </button>
+                              </div>
+                              {editAgendaCustom ? (
+                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                  {FULL_CLINIC_AGENDA_HOURS.map((h) => {
+                                    const on = editAgendaHours.has(h);
+                                    return (
+                                      <button
+                                        key={h}
+                                        type="button"
+                                        disabled={busy === r.id}
+                                        onClick={() => {
+                                          setEditAgendaHours((prev) => {
+                                            const next = new Set(prev);
+                                            if (next.has(h)) {
+                                              if (next.size > 1) next.delete(h);
+                                            } else {
+                                              next.add(h);
+                                            }
+                                            return next;
+                                          });
+                                        }}
+                                        className={`min-w-[3.25rem] rounded border px-1.5 py-1 text-[10px] font-semibold tabular-nums disabled:opacity-50 ${
+                                          on
+                                            ? "border-teal-700/70 bg-teal-950/90 text-teal-100"
+                                            : "border-dashed border-[#d4cfc4] bg-white text-[#9a9288] line-through"
+                                        }`}
+                                      >
+                                        {formatAgendaHourLabel(h)}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <p className="mt-1 text-[10px] text-[#8a8278]">
+                                  Usa os horários da clínica.
+                                </p>
+                              )}
+                            </div>
+                          ) : null}
+                          {clinicSabadoOpen && !(editingRow && isEditing) ? (
                             <div className="mt-2 space-y-2 rounded-lg border border-[#e6e1d8] bg-[#faf8f4] px-2 py-2">
                               <label className="flex cursor-pointer items-start gap-2">
                                 <input
@@ -2248,18 +2751,18 @@ export function ProfessionalsManagerModal({
                           <button
                             type="button"
                             disabled={busy === r.id}
-                            onClick={() => void saveRowDetails(r)}
-                            className="rounded-lg border border-[#4D6D66] bg-[#4D6D66] px-2 py-1.5 text-xs font-semibold text-white hover:bg-[#3f5c56] disabled:opacity-50"
+                            onClick={() => void toggleActive(r)}
+                            className="rounded-lg border border-[#ddd8cf] px-2 py-1.5 text-xs font-medium text-[#4a453d] hover:bg-[#f7f4ef] disabled:opacity-50"
                           >
-                            {busy === r.id ? "…" : "Salvar"}
+                            {r.is_active ? "Desativar" : "Ativar"}
                           </button>
                           <button
                             type="button"
                             disabled={busy === r.id}
-                            onClick={cancelEditRow}
-                            className="rounded-lg border border-[#ddd8cf] bg-white px-2 py-1.5 text-xs font-medium text-[#4a453d] hover:bg-[#f7f4ef] disabled:opacity-50"
+                            onClick={() => void removeRow(r)}
+                            className="rounded-lg border border-red-200 px-2 py-1.5 text-xs font-medium text-red-800 hover:bg-red-50 disabled:opacity-50"
                           >
-                            Cancelar
+                            Apagar
                           </button>
                         </>
                       ) : (

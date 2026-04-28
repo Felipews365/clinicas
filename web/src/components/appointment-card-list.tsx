@@ -4,6 +4,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { professionalCardCssVars } from "@/lib/professional-palette";
 import { useDataTheme } from "@/lib/use-data-theme";
 import {
+  appointmentOriginLabel,
   awaitsConfirmation,
   isClinicConfirmed,
   isCsAgentBooking,
@@ -12,14 +13,6 @@ import {
   statusLabel,
   type AppointmentRow,
 } from "@/types/appointments";
-
-function bookingOriginLabel(r: AppointmentRow): string {
-  if (isCsAgentBooking(r)) return "Agendamento IA";
-  if (r.source === "painel") return "Clínica no painel";
-  if (r.source === "whatsapp") return "Agente WhatsApp";
-  const t = r.source?.trim();
-  return t || "—";
-}
 
 function initials(name: string | null | undefined): string {
   if (!name?.trim()) return "?";
@@ -299,11 +292,30 @@ function AppointmentFieldSubCard({
   );
 }
 
+function IconPencil({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
 type Props = {
   rows: AppointmentRow[];
   busyId: string | null;
   onConfirm: (id: string) => void;
   onRemove: (id: string) => void;
+  onReschedule: (row: AppointmentRow) => void;
 };
 
 export function AppointmentCardList({
@@ -311,6 +323,7 @@ export function AppointmentCardList({
   busyId,
   onConfirm,
   onRemove,
+  onReschedule,
 }: Props) {
   const theme = useDataTheme();
 
@@ -434,7 +447,7 @@ export function AppointmentCardList({
                           (fromAgentIa ? "text-[var(--primary)]" : "text-[var(--text)]")
                         }
                       >
-                        {bookingOriginLabel(r)}
+                        {appointmentOriginLabel(r)}
                       </span>
                     </AppointmentFieldSubCard>
                     {serviceNames.length > 0 ? (
@@ -505,6 +518,15 @@ export function AppointmentCardList({
                       <IconCheck />
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    aria-label={`Alterar horário de ${name}`}
+                    disabled={busyId === r.id}
+                    onClick={() => onReschedule(r)}
+                    className="inline-flex h-11 min-w-[2.75rem] shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--primary)] transition-[background-color,border-color,color] duration-200 hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] disabled:opacity-50"
+                  >
+                    <IconPencil className="h-[18px] w-[18px] shrink-0" />
+                  </button>
                   <button
                     type="button"
                     aria-label={`Cancelar agendamento de ${name}`}

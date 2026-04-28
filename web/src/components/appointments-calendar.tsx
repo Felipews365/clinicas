@@ -13,6 +13,7 @@ import {
   resolveProfessionalCardStyle,
 } from "@/lib/professional-palette";
 import {
+  appointmentOriginLabel,
   formatRange,
   isCsAgentBooking,
   one,
@@ -29,10 +30,11 @@ function rowsToEvents(rows: AppointmentRow[]): EventInput[] {
     const profNm = prof?.name?.trim() || "";
     const svc = r.service_name?.trim();
     const ia = isCsAgentBooking(r);
+    const iaLabel = ia ? appointmentOriginLabel(r) : "";
     const svcPart = ia
       ? svc
-        ? `Agendamento IA · ${svc}`
-        : "Agendamento IA"
+        ? `${iaLabel} · ${svc}`
+        : iaLabel
       : svc ?? "";
     const title = profNm
       ? svcPart
@@ -81,6 +83,7 @@ function rowsToEvents(rows: AppointmentRow[]): EventInput[] {
         service: r.service_name,
         source: r.source,
         agentIa: ia,
+        iaOriginLabel: ia ? appointmentOriginLabel(r) : null,
       },
     };
   });
@@ -304,8 +307,8 @@ export function AppointmentsCalendar({
               <dd>
                 {selected.extendedProps.agentIa
                   ? selected.extendedProps.service
-                    ? `Agendamento IA · ${String(selected.extendedProps.service)}`
-                    : "Agendamento IA"
+                    ? `${String(selected.extendedProps.iaOriginLabel ?? "Agendamento IA")} · ${String(selected.extendedProps.service)}`
+                    : String(selected.extendedProps.iaOriginLabel ?? "Agendamento IA")
                   : ((selected.extendedProps.service as string) ?? "—")}
               </dd>
             </div>

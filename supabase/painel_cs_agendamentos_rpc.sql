@@ -127,6 +127,7 @@ begin
 end;
 $$;
 
+-- Ver migration 20260429193000_painel_cancel_trigger_overlap_duracao.sql (overlap + mutacao_origem + meta WhatsApp).
 create or replace function public.painel_cancel_cs_agendamento (
   p_clinic_id uuid,
   p_cs_agendamento_id uuid
@@ -138,7 +139,10 @@ set search_path = public
 as $$
 declare
   v record;
-  v_slot uuid;
+  v_whatsapp text;
+  v_prof_nome text;
+  v_prof_genero text;
+  v_cliente_tel text;
 begin
   if not public.rls_has_clinic_access (p_clinic_id) then
     raise exception 'forbidden' using errcode = '42501';
@@ -146,19 +150,22 @@ begin
 
   select
     a.id,
+    a.cliente_id,
     a.profissional_id,
     a.data_agendamento,
     a.horario,
-    a.status
+    a.status,
+    coalesce(a.duracao_minutos, 60) as duracao_minutos,
+    coalesce(nullif(trim(a.nome_cliente), ''), '') as nome_cliente,
+    coalesce(nullif(trim(a.nome_procedimento), ''), '') as nome_procedimento
   into v
-  from
-    public.cs_agendamentos a
-    inner join public.cs_profissionais p on p.id = a.profissional_id
+  from public.cs_agendamentos a
+  inner join public.cs_profissionais p on p.id = a.profissional_id
   where
     a.id = p_cs_agendamento_id
     and p.clinic_id = p_clinic_id
-    and coalesce (a.clinic_id, p.clinic_id) = p_clinic_id
-  for update of cs_agendamentos;
+    and coalesce(a.clinic_id, p.clinic_id) = p_clinic_id
+  for update of a;
 
   if not found then
     return jsonb_build_object('ok', false, 'error', 'not_found');
@@ -168,33 +175,53 @@ begin
     return jsonb_build_object('ok', false, 'error', 'already_cancelled');
   end if;
 
-  select
-    h.id into v_slot
-  from
-    public.cs_horarios_disponiveis h
-  where
-    h.profissional_id = v.profissional_id
+  update public.cs_horarios_disponiveis h
+  set disponivel = true
+  where h.profissional_id = v.profissional_id
     and h.data = v.data_agendamento
-    and h.horario = v.horario
-  for update;
-
-  if found then
-    update public.cs_horarios_disponiveis
-    set
-      disponivel = true
-    where
-      id = v_slot;
-  end if;
+    and (h.data + h.horario) < (v.data_agendamento + v.horario) + (v.duracao_minutos || ' minutes')::interval
+    and (h.data + h.horario) + interval '1 hour' > (v.data_agendamento + v.horario);
 
   update public.cs_agendamentos
   set
     status = 'cancelado',
     motivo_cancelamento = coalesce(motivo_cancelamento, 'Cancelado pelo painel'),
-    atualizado_em = now()
-  where
-    id = v.id;
+    atualizado_em = now(),
+    mutacao_origem = 'painel'
+  where id = v.id;
 
-  return jsonb_build_object('ok', true);
+  select prof.name, prof.whatsapp, prof.gender
+  into v_prof_nome, v_whatsapp, v_prof_genero
+  from public.professionals prof
+  where
+    prof.cs_profissional_id = v.profissional_id
+    and prof.clinic_id = p_clinic_id;
+
+  if coalesce(trim(v_prof_nome), '') = '' then
+    select p.nome, p.gender into v_prof_nome, v_prof_genero
+    from public.cs_profissionais p
+    where p.id = v.profissional_id;
+  end if;
+
+  select nullif(trim(c.telefone), '') into v_cliente_tel
+  from public.cs_clientes c
+  where c.id = v.cliente_id
+    and c.clinic_id = p_clinic_id;
+
+  return jsonb_build_object(
+    'ok', true,
+    'profissional_whatsapp', v_whatsapp,
+    'profissional_nome', nullif(trim(v_prof_nome), ''),
+    'profissional_genero', case
+      when v_prof_genero in ('M', 'F') then v_prof_genero
+      else null
+    end,
+    'nome_cliente', nullif(trim(v.nome_cliente), ''),
+    'cliente_telefone', v_cliente_tel,
+    'nome_procedimento', nullif(trim(v.nome_procedimento), ''),
+    'data_agendamento', v.data_agendamento,
+    'horario', to_char(v.horario, 'HH24:MI')
+  );
 end;
 $$;
 
@@ -209,3 +236,81 @@ grant execute on function public.painel_confirm_cs_agendamento (uuid, uuid) to s
 revoke all on function public.painel_cancel_cs_agendamento (uuid, uuid) from public;
 grant execute on function public.painel_cancel_cs_agendamento (uuid, uuid) to authenticated;
 grant execute on function public.painel_cancel_cs_agendamento (uuid, uuid) to service_role;
+
+-- Reagendar cs_agendamentos a partir do painel (delega em n8n_cs_reagendar).
+-- Ver também migration 20260427120000_painel_reagendar_cs_agendamento.sql
+
+create or replace function public.painel_reagendar_cs_agendamento (
+  p_clinic_id uuid,
+  p_cs_agendamento_id uuid,
+  p_nova_data date,
+  p_novo_cs_profissional_id uuid,
+  p_novo_horario time
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v record;
+  v_novo_prof uuid;
+  v_res jsonb;
+begin
+  if not public.rls_has_clinic_access (p_clinic_id) then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+
+  select
+    a.id,
+    a.profissional_id,
+    a.data_agendamento,
+    a.horario,
+    a.status
+  into v
+  from public.cs_agendamentos a
+  inner join public.cs_profissionais p on p.id = a.profissional_id
+  where
+    a.id = p_cs_agendamento_id
+    and p.clinic_id = p_clinic_id
+    and coalesce(a.clinic_id, p.clinic_id) = p_clinic_id
+  for update of a;
+
+  if not found then
+    return jsonb_build_object('ok', false, 'error', 'not_found');
+  end if;
+
+  if v.status in ('cancelado', 'concluido') then
+    return jsonb_build_object('ok', false, 'error', 'invalid_status');
+  end if;
+
+  v_novo_prof := coalesce(p_novo_cs_profissional_id, v.profissional_id);
+
+  if v_novo_prof is distinct from v.profissional_id then
+    if not exists (
+      select 1
+      from public.cs_profissionais csp
+      where csp.id = v_novo_prof
+        and csp.clinic_id = p_clinic_id
+    ) then
+      return jsonb_build_object('ok', false, 'error', 'profissional_invalido');
+    end if;
+  end if;
+
+  v_res := public.n8n_cs_reagendar(
+    p_cs_agendamento_id,
+    p_nova_data,
+    p_novo_horario,
+    v_novo_prof,
+    v.profissional_id,
+    v.data_agendamento,
+    v.horario
+  );
+
+  return v_res;
+end;
+$$;
+
+revoke all on function public.painel_reagendar_cs_agendamento (uuid, uuid, date, uuid, time) from public;
+grant execute on function public.painel_reagendar_cs_agendamento (uuid, uuid, date, uuid, time) to authenticated;
+grant execute on function public.painel_reagendar_cs_agendamento (uuid, uuid, date, uuid, time) to service_role;

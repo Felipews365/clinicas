@@ -22,7 +22,9 @@
     "exemplo:7": "node backend/exemplo-uso.js 7",
     "exemplo:8": "node backend/exemplo-uso.js 8",
     "exemplo:9": "node backend/exemplo-uso.js 9",
-    "exemplo:10": "node backend/exemplo-uso.js 10"
+    "exemplo:10": "node backend/exemplo-uso.js 10",
+    "n8n:publish": "node n8n/publish-workflow.mjs",
+    "n8n:publish:clinica": "node n8n/publish-workflow.mjs n8n/workflow-kCX2-multi-agent.json"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

@@ -3,12 +3,16 @@ import { NextResponse } from "next/server";
 import { normalizeProfessionalWhatsappBr } from "@/lib/br-whatsapp";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import {
+  clienteWhatsAppCancelamentoAgendamento,
+  clienteWhatsAppConfirmacaoAgendamento,
+  clienteWhatsAppReagendamentoAgendamento,
   formatDateBrFromYmd,
   formatHoraBr,
   normalizeProfissionalGenero,
   profWhatsAppCancelamento,
   profWhatsAppNovoAgendamento,
   profWhatsAppReagendamento,
+  profissionalComTratamento,
   type ProfissionalGenero,
 } from "@/lib/professional-notify-message";
 import { sendEvolutionClinicInstanceText } from "@/lib/whatsapp-evolution-send";
@@ -381,6 +385,14 @@ export async function POST(req: Request) {
       hora: formatHoraBr(horaRaw),
     });
   } else {
+    const dataAnt =
+      oldRecord && !isTerminalStatus(String(oldRecord.status ?? ""))
+        ? formatDateBrFromYmd(normDate(oldRecord.data_agendamento))
+        : formatDateBrFromYmd(normDate(record?.data_agendamento) || String(row.data_agendamento));
+    const horaAntRaw =
+      oldRecord && !isTerminalStatus(String(oldRecord.status ?? ""))
+        ? oldRecord.horario
+        : record?.horario ?? row.horario;
     text = profWhatsAppReagendamento({
       profissional: profNome,
       profissionalGenero: profGenero,
@@ -389,6 +401,8 @@ export async function POST(req: Request) {
       servico: serv,
       novaData: formatDateBrFromYmd(row.data_agendamento),
       novoHorario: formatHoraBr(row.horario),
+      dataAnterior: dataAnt,
+      horaAnterior: formatHoraBr(horaAntRaw),
     });
   }
 
@@ -400,6 +414,54 @@ export async function POST(req: Request) {
     );
   }
 
+  const nomeProfissionalCliente =
+    profissionalComTratamento(profNome ?? "", profGenero) || "Profissional";
+
+  let clientNotified = false;
+  if (clienteTel) {
+    const cn = normalizeProfessionalWhatsappBr(clienteTel);
+    if (cn.ok && cn.digits) {
+      let clientText: string | null = null;
+      if (kind === "new") {
+        clientText = clienteWhatsAppConfirmacaoAgendamento({
+          nomeCliente: nome,
+          servico: serv,
+          nomeProfissional: nomeProfissionalCliente,
+          data: formatDateBrFromYmd(row.data_agendamento),
+          horario: formatHoraBr(row.horario),
+        });
+      } else if (kind === "cancel") {
+        const dataYmd =
+          oldRecord && !isTerminalStatus(String(oldRecord.status ?? ""))
+            ? normDate(oldRecord.data_agendamento)
+            : normDate(record?.data_agendamento) || String(row.data_agendamento);
+        const horaRaw =
+          oldRecord && !isTerminalStatus(String(oldRecord.status ?? ""))
+            ? oldRecord.horario
+            : record?.horario ?? row.horario;
+        clientText = clienteWhatsAppCancelamentoAgendamento({
+          nomeCliente: nome,
+          servico: serv,
+          nomeProfissional: nomeProfissionalCliente,
+          data: formatDateBrFromYmd(dataYmd),
+          horario: formatHoraBr(horaRaw),
+        });
+      } else if (kind === "reschedule") {
+        clientText = clienteWhatsAppReagendamentoAgendamento({
+          nomeCliente: nome,
+          servico: serv,
+          nomeProfissional: nomeProfissionalCliente,
+          novaData: formatDateBrFromYmd(row.data_agendamento),
+          novoHorario: formatHoraBr(row.horario),
+        });
+      }
+      if (clientText) {
+        const csent = await sendEvolutionClinicInstanceText(clinicId, cn.digits, clientText);
+        clientNotified = csent.ok;
+      }
+    }
+  }
+
   await recordSent(admin, agId, kind);
-  return NextResponse.json({ ok: true, kind });
+  return NextResponse.json({ ok: true, kind, client_notified: clientNotified });
 }
