@@ -296,8 +296,8 @@
       "name": "Get Empresa1",
       "credentials": {
         "supabaseApi": {
-          "id": "3OLdsDQmEZIdf1QP",
-          "name": "Supabase account"
+          "id": "SmHWpBnyL1cYuhlm",
+          "name": "Supabase clinicas"
         }
       }
     },
@@ -340,8 +340,8 @@
       "alwaysOutputData": false,
       "credentials": {
         "supabaseApi": {
-          "id": "3OLdsDQmEZIdf1QP",
-          "name": "Supabase account"
+          "id": "SmHWpBnyL1cYuhlm",
+          "name": "Supabase clinicas"
         }
       }
     },
@@ -485,8 +485,8 @@
       "name": "Get Empresa2",
       "credentials": {
         "supabaseApi": {
-          "id": "3OLdsDQmEZIdf1QP",
-          "name": "Supabase account"
+          "id": "SmHWpBnyL1cYuhlm",
+          "name": "Supabase clinicas"
         }
       }
     },
@@ -529,8 +529,8 @@
       "alwaysOutputData": false,
       "credentials": {
         "supabaseApi": {
-          "id": "3OLdsDQmEZIdf1QP",
-          "name": "Supabase account"
+          "id": "SmHWpBnyL1cYuhlm",
+          "name": "Supabase clinicas"
         }
       }
     },
@@ -2795,7 +2795,7 @@
             },
             {
               "id": "b3e8a901-teste-so-numero-prof-558196454656",
-              "leftValue": "={{ String($json.body?.data?.key?.remoteJid || '').replace(/\\D/g, '') }}",
+              "leftValue": "={{ String($json.body?.data?.key?.remoteJid || \"\").replace(/\\D/g, \"\") }}",
               "rightValue": "558196454656",
               "operator": {
                 "type": "string",
@@ -3901,7 +3901,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const ctx = $('Monta Contexto').first().json;\nconst msg = (ctx.instr_transferir || '').trim()\n  || 'Um momento! Vou te transferir para um atendente humano. Em breve alguém entrará em contato. 😊';\nreturn [{ json: {\n  mensagem_handoff: msg,\n  clinic_id: ctx.clinic_id,\n  remoteJid: ctx.remoteJid,\n  instanceName: ctx.instanceName,\n  telefone_numero: (ctx.remoteJid || '').split('@')[0].replace(/\\D/g, ''),\n} }];"
+        "jsCode": "const ctx = $('Monta Contexto').first().json;\nconst msg = (ctx.instr_transferir || '').trim()\n  || 'Um momento! Vou te transferir para um atendente humano. Em breve alguém entrará em contato. 😊';\nconst instanceName = $('Code merge webhook e resolucao').first().json._tenant?.instance_name\n  || ctx.instanceName\n  || $('Edit Fields1').first().json.instanceName\n  || $('Edit Fields1').first().json.instanceId\n  || '';\nreturn [{ json: {\n  mensagem_handoff: msg,\n  clinic_id: ctx.clinic_id,\n  remoteJid: ctx.remoteJid,\n  instanceName,\n  telefone_numero: (ctx.remoteJid || '').split('@')[0].replace(/\\D/g, ''),\n} }];"
       },
       "id": "ma-code-handoff",
       "name": "Code Preparar Handoff",
@@ -3950,15 +3950,15 @@
       "typeVersion": 1,
       "credentials": {
         "supabaseApi": {
-          "id": "3OLdsDQmEZIdf1QP",
-          "name": "Supabase account"
+          "id": "SmHWpBnyL1cYuhlm",
+          "name": "Supabase clinicas"
         }
       }
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ 'https://evo.plataformabot.top/message/sendText/' + $json.instanceName }}",
+        "url": "={{ 'https://evo.plataformabot.top/message/sendText/' + ($('Code Preparar Handoff').first().json.instanceName || $('Edit Fields1').first().json.instanceName || $('Edit Fields1').first().json.instanceId || '') }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -3974,7 +3974,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ number: $json.remoteJid, text: $json.mensagem_handoff, delay: 500 }) }}",
+        "jsonBody": "={{ JSON.stringify({ number: $('Code Preparar Handoff').first().json.remoteJid, text: $('Code Preparar Handoff').first().json.mensagem_handoff, delay: 500 }) }}",
         "options": {}
       },
       "id": "ma-evolution-handoff",
@@ -4193,6 +4193,198 @@
         "jsonBody": "={{ JSON.stringify({ number: $json._evolution_notify.number, text: $json._evolution_notify.text, delay: 1000 }) }}",
         "options": {}
       }
+    },
+    {
+      "id": "handoff-upsert-wh-sessions",
+      "name": "Upsert whatsapp_sessions handoff",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1992,
+        1424
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/rpc/n8n_cs_handoff_set_needs_human",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  p_clinic_id: $('Code Preparar Handoff').first().json.clinic_id,\n  p_phone: $('Code Preparar Handoff').first().json.telefone_numero,\n  p_mensagem: $('Code Preparar Handoff').first().json.mensagem_handoff\n}) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "check-inatividade-10min",
+      "name": "HTTP Verifica Inatividade 10min",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        700
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/rpc/n8n_cs_verificar_reativar_bot",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  p_clinic_id: $('Code merge webhook e resolucao').first().json.clinica_id,\n  p_telefone: $json.telefone\n}) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "if-bot-reativado",
+      "name": "IF Bot Reativado",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        870,
+        700
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "reativado-cond",
+              "leftValue": "={{ $json.reativado }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "if-staff-fromme",
+      "name": "IF Staff fromMe",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "staff-skip-cond",
+              "leftValue": "={{ $json.body?.data?.key?.fromMe }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "code-staff-fromme-handler",
+      "name": "Code Staff WhatsApp Assumir",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// Detecta resposta do staff pelo WhatsApp (fromMe=true)\n// Resolve clinic_id pelo instance_name e marca staff_handling=true, bot_ativo=false\n\nconst body = $input.first().json.body || {};\nconst data = body.data || {};\nconst fromMe = data?.key?.fromMe;\nconst event = String(body.event || body.data?.event || '').toUpperCase();\nconst instanceName = body.instance || body.instanceName || data.instanceName || '';\nconst remoteJid = data?.key?.remoteJid || '';\nconst phone = remoteJid.split('@')[0].replace(/\\D/g, '');\n\n// Só processa mensagens enviadas pelo staff (fromMe=true) que são do tipo MESSAGES_UPSERT\nif (!fromMe || !event.includes('MESSAGES') || !instanceName || !phone) {\n  return [{ json: { skip: true, reason: 'not staff message' } }];\n}\n\nreturn [{ json: { instanceName, phone, remoteJid, fromMe, event, skip: false } }];\n"
+      }
+    },
+    {
+      "id": "http-staff-assumir-rpc",
+      "name": "HTTP Staff Assumir Sessão",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/rpc/n8n_cs_staff_assumir_sessao",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_instance_name: $json.instanceName, p_phone: $json.phone }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
     }
   ],
   "connections": {
@@ -4302,7 +4494,7 @@
       "main": [
         [
           {
-            "node": "No Operation, do nothing",
+            "node": "HTTP Verifica Inatividade 10min",
             "type": "main",
             "index": 0
           }
@@ -4660,6 +4852,11 @@
         [
           {
             "node": "Filter1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF Staff fromMe",
             "type": "main",
             "index": 0
           }
@@ -5176,7 +5373,7 @@
       "main": [
         [
           {
-            "node": "Evolution Handoff",
+            "node": "Upsert whatsapp_sessions handoff",
             "type": "main",
             "index": 0
           }
@@ -5482,6 +5679,69 @@
           }
         ],
         []
+      ]
+    },
+    "Upsert whatsapp_sessions handoff": {
+      "main": [
+        [
+          {
+            "node": "Evolution Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Verifica Inatividade 10min": {
+      "main": [
+        [
+          {
+            "node": "IF Bot Reativado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Bot Reativado": {
+      "main": [
+        [
+          {
+            "node": "Verifica se ? Image, Texto ou ?udio1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Staff fromMe": {
+      "main": [
+        [
+          {
+            "node": "Code Staff WhatsApp Assumir",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Code Staff WhatsApp Assumir": {
+      "main": [
+        [
+          {
+            "node": "HTTP Staff Assumir Sessão",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
@@ -5997,8 +6257,8 @@
         "name": "Get Empresa1",
         "credentials": {
           "supabaseApi": {
-            "id": "3OLdsDQmEZIdf1QP",
-            "name": "Supabase account"
+            "id": "SmHWpBnyL1cYuhlm",
+            "name": "Supabase clinicas"
           }
         }
       },
@@ -6041,8 +6301,8 @@
         "alwaysOutputData": false,
         "credentials": {
           "supabaseApi": {
-            "id": "3OLdsDQmEZIdf1QP",
-            "name": "Supabase account"
+            "id": "SmHWpBnyL1cYuhlm",
+            "name": "Supabase clinicas"
           }
         }
       },
@@ -6186,8 +6446,8 @@
         "name": "Get Empresa2",
         "credentials": {
           "supabaseApi": {
-            "id": "3OLdsDQmEZIdf1QP",
-            "name": "Supabase account"
+            "id": "SmHWpBnyL1cYuhlm",
+            "name": "Supabase clinicas"
           }
         }
       },
@@ -6230,8 +6490,8 @@
         "alwaysOutputData": false,
         "credentials": {
           "supabaseApi": {
-            "id": "3OLdsDQmEZIdf1QP",
-            "name": "Supabase account"
+            "id": "SmHWpBnyL1cYuhlm",
+            "name": "Supabase clinicas"
           }
         }
       },
@@ -8467,7 +8727,7 @@
               },
               {
                 "id": "b3e8a901-teste-so-numero-prof-558196454656",
-                "leftValue": "={{ String($json.body?.data?.key?.remoteJid || '').replace(/\\D/g, '') }}",
+                "leftValue": "={{ String($json.body?.data?.key?.remoteJid || \"\").replace(/\\D/g, \"\") }}",
                 "rightValue": "558196454656",
                 "operator": {
                   "type": "string",
@@ -9534,7 +9794,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const ctx = $('Monta Contexto').first().json;\nconst msg = (ctx.instr_transferir || '').trim()\n  || 'Um momento! Vou te transferir para um atendente humano. Em breve alguém entrará em contato. 😊';\nreturn [{ json: {\n  mensagem_handoff: msg,\n  clinic_id: ctx.clinic_id,\n  remoteJid: ctx.remoteJid,\n  instanceName: ctx.instanceName,\n  telefone_numero: (ctx.remoteJid || '').split('@')[0].replace(/\\D/g, ''),\n} }];"
+          "jsCode": "const ctx = $('Monta Contexto').first().json;\nconst msg = (ctx.instr_transferir || '').trim()\n  || 'Um momento! Vou te transferir para um atendente humano. Em breve alguém entrará em contato. 😊';\nconst instanceName = $('Code merge webhook e resolucao').first().json._tenant?.instance_name\n  || ctx.instanceName\n  || $('Edit Fields1').first().json.instanceName\n  || $('Edit Fields1').first().json.instanceId\n  || '';\nreturn [{ json: {\n  mensagem_handoff: msg,\n  clinic_id: ctx.clinic_id,\n  remoteJid: ctx.remoteJid,\n  instanceName,\n  telefone_numero: (ctx.remoteJid || '').split('@')[0].replace(/\\D/g, ''),\n} }];"
         },
         "id": "ma-code-handoff",
         "name": "Code Preparar Handoff",
@@ -9583,15 +9843,15 @@
         "typeVersion": 1,
         "credentials": {
           "supabaseApi": {
-            "id": "3OLdsDQmEZIdf1QP",
-            "name": "Supabase account"
+            "id": "SmHWpBnyL1cYuhlm",
+            "name": "Supabase clinicas"
           }
         }
       },
       {
         "parameters": {
           "method": "POST",
-          "url": "={{ 'https://evo.plataformabot.top/message/sendText/' + $json.instanceName }}",
+          "url": "={{ 'https://evo.plataformabot.top/message/sendText/' + ($('Code Preparar Handoff').first().json.instanceName || $('Edit Fields1').first().json.instanceName || $('Edit Fields1').first().json.instanceId || '') }}",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -9607,7 +9867,7 @@
           },
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ JSON.stringify({ number: $json.remoteJid, text: $json.mensagem_handoff, delay: 500 }) }}",
+          "jsonBody": "={{ JSON.stringify({ number: $('Code Preparar Handoff').first().json.remoteJid, text: $('Code Preparar Handoff').first().json.mensagem_handoff, delay: 500 }) }}",
           "options": {}
         },
         "id": "ma-evolution-handoff",
@@ -9618,6 +9878,198 @@
           1424
         ],
         "typeVersion": 4.2
+      },
+      {
+        "id": "handoff-upsert-wh-sessions",
+        "name": "Upsert whatsapp_sessions handoff",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1992,
+          1424
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/rpc/n8n_cs_handoff_set_needs_human",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+              },
+              {
+                "name": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({\n  p_clinic_id: $('Code Preparar Handoff').first().json.clinic_id,\n  p_phone: $('Code Preparar Handoff').first().json.telefone_numero,\n  p_mensagem: $('Code Preparar Handoff').first().json.mensagem_handoff\n}) }}",
+          "options": {}
+        }
+      },
+      {
+        "id": "check-inatividade-10min",
+        "name": "HTTP Verifica Inatividade 10min",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          700,
+          700
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/rpc/n8n_cs_verificar_reativar_bot",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+              },
+              {
+                "name": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({\n  p_clinic_id: $('Code merge webhook e resolucao').first().json.clinica_id,\n  p_telefone: $json.telefone\n}) }}",
+          "options": {}
+        }
+      },
+      {
+        "id": "if-bot-reativado",
+        "name": "IF Bot Reativado",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          870,
+          700
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "reativado-cond",
+                "leftValue": "={{ $json.reativado }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals",
+                  "name": "filter.operator.equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "if-staff-fromme",
+        "name": "IF Staff fromMe",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          0,
+          100
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "staff-skip-cond",
+                "leftValue": "={{ $json.body?.data?.key?.fromMe }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals",
+                  "name": "filter.operator.equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "code-staff-fromme-handler",
+        "name": "Code Staff WhatsApp Assumir",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          200,
+          100
+        ],
+        "parameters": {
+          "jsCode": "// Detecta resposta do staff pelo WhatsApp (fromMe=true)\n// Resolve clinic_id pelo instance_name e marca staff_handling=true, bot_ativo=false\n\nconst body = $input.first().json.body || {};\nconst data = body.data || {};\nconst fromMe = data?.key?.fromMe;\nconst event = String(body.event || body.data?.event || '').toUpperCase();\nconst instanceName = body.instance || body.instanceName || data.instanceName || '';\nconst remoteJid = data?.key?.remoteJid || '';\nconst phone = remoteJid.split('@')[0].replace(/\\D/g, '');\n\n// Só processa mensagens enviadas pelo staff (fromMe=true) que são do tipo MESSAGES_UPSERT\nif (!fromMe || !event.includes('MESSAGES') || !instanceName || !phone) {\n  return [{ json: { skip: true, reason: 'not staff message' } }];\n}\n\nreturn [{ json: { instanceName, phone, remoteJid, fromMe, event, skip: false } }];\n"
+        }
+      },
+      {
+        "id": "http-staff-assumir-rpc",
+        "name": "HTTP Staff Assumir Sessão",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          400,
+          100
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/rpc/n8n_cs_staff_assumir_sessao",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+              },
+              {
+                "name": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ p_instance_name: $json.instanceName, p_phone: $json.phone }) }}",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            }
+          }
+        }
       }
     ],
     "connections": {

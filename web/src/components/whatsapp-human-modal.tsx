@@ -19,7 +19,7 @@ type Props = {
   onClose: () => void;
   supabase: SupabaseClient;
   clinicId: string;
-  onClaimed?: () => void;
+  onClaimed?: (phone: string) => void;
   presentation?: "modal" | "panel";
 };
 
@@ -35,6 +35,7 @@ export function WhatsappHumanModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [reactivatingPhone, setReactivatingPhone] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,6 +72,32 @@ export function WhatsappHumanModal({
     void load();
   }, [open, load]);
 
+  // Realtime: recarrega quando whatsapp_sessions mudar para esta clínica
+  useEffect(() => {
+    if (!open) return;
+    const channel = supabase
+      .channel(`whatsapp_sessions_${clinicId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "whatsapp_sessions",
+          filter: `clinic_id=eq.${clinicId}`,
+        },
+        () => { void load(); }
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [open, supabase, clinicId, load]);
+
+  // Poll a cada 20s como fallback se realtime não estiver activo
+  useEffect(() => {
+    if (!open) return;
+    const t = setInterval(() => { void load(); }, 20000);
+    return () => clearInterval(t);
+  }, [open, load]);
+
   useEffect(() => {
     if (!open) return;
     const k = (e: KeyboardEvent) => {
@@ -80,7 +107,7 @@ export function WhatsappHumanModal({
     return () => window.removeEventListener("keydown", k);
   }, [open, onClose]);
 
-  async function claim(sessionId: string) {
+  async function claim(sessionId: string, phone: string) {
     setBusyId(sessionId);
     setError(null);
     try {
@@ -97,11 +124,26 @@ export function WhatsappHumanModal({
         return;
       }
       await load();
-      onClaimed?.();
+      onClaimed?.(phone);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha de rede");
     }
     setBusyId(null);
+  }
+
+  async function reactivateBot(phone: string) {
+    setReactivatingPhone(phone);
+    try {
+      await fetch("/api/whatsapp/reactivate-bot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+        credentials: "include",
+      });
+      await load();
+    } finally {
+      setReactivatingPhone(null);
+    }
   }
 
   const pending = rows.filter((r) => r.needs_human && !r.staff_handling);
@@ -165,7 +207,7 @@ export function WhatsappHumanModal({
                       <button
                         type="button"
                         disabled={busyId === r.id}
-                        onClick={() => void claim(r.id)}
+                        onClick={() => void claim(r.id, r.phone)}
                         className="rounded-lg bg-[#4D6D66] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#3f5c56] disabled:opacity-50"
                       >
                         {busyId === r.id
@@ -195,14 +237,31 @@ export function WhatsappHumanModal({
                   key={r.id}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#e6e1d8] bg-white/80 px-3 py-2 text-xs"
                 >
-                  <span className="font-mono text-[#2c2825]">{r.phone}</span>
-                  <span className="text-[#8a8278]">
-                    {r.staff_handling
-                      ? "Equipa a tratar"
-                      : r.needs_human
-                        ? "Humano"
-                        : "Bot"}
-                  </span>
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="font-mono text-[#2c2825]">{r.phone}</span>
+                    {r.last_message_preview ? (
+                      <span className="truncate text-[#8a8278]">{r.last_message_preview}</span>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {r.staff_handling ? (
+                      <button
+                        type="button"
+                        disabled={reactivatingPhone === r.phone}
+                        onClick={() => void reactivateBot(r.phone)}
+                        className="rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        {reactivatingPhone === r.phone ? "…" : "Ativar agente"}
+                      </button>
+                    ) : null}
+                    <span className="text-[#8a8278]">
+                      {r.staff_handling
+                        ? "Humano ativo"
+                        : r.needs_human
+                          ? "Aguardando"
+                          : "Bot"}
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>

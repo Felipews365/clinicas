@@ -325,6 +325,7 @@ export function AgendaPortal() {
   /** Menu lateral em desktop (sm+); mobile continua a usar o drawer. */
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [humanQueueCount, setHumanQueueCount] = useState(0);
+  const [inboxInitialPhone, setInboxInitialPhone] = useState<string | null>(null);
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const handleWhatsappStatusChange = useCallback(
     (s: string) => setWhatsappConnected(s === "connected"),
@@ -1001,6 +1002,30 @@ export function AgendaPortal() {
   useEffect(() => {
     void refreshHumanQueue();
   }, [refreshHumanQueue, sidebarPage]);
+
+  // Realtime + poll para o badge "WhatsApp humano"
+  useEffect(() => {
+    if (!supabase || access?.kind !== "clinic") return;
+    const clinicId = access.clinicId;
+    const channel = supabase
+      .channel(`human_queue_badge_${clinicId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "whatsapp_sessions",
+          filter: `clinic_id=eq.${clinicId}`,
+        },
+        () => { void refreshHumanQueue(); }
+      )
+      .subscribe();
+    const timer = setInterval(() => { void refreshHumanQueue(); }, 20000);
+    return () => {
+      void supabase.removeChannel(channel);
+      clearInterval(timer);
+    };
+  }, [supabase, access, refreshHumanQueue]);
 
   const clinicNotifKey = access?.kind === "clinic" ? access.clinicId : null;
   useEffect(() => {
@@ -1969,7 +1994,11 @@ export function AgendaPortal() {
                 onClose={() => setSidebarPage("dashboard")}
                 supabase={supabase}
                 clinicId={access.clinicId}
-                onClaimed={() => void refreshHumanQueue()}
+                onClaimed={(phone) => {
+                  setInboxInitialPhone(phone);
+                  setSidebarPage("whatsapp-inbox");
+                  void refreshHumanQueue();
+                }}
               />
             ) : null}
             {sidebarPage === "agent" ? (
@@ -1983,7 +2012,12 @@ export function AgendaPortal() {
             ) : null}
             {sidebarPage === "whatsapp-inbox" ? (
               <div className="flex h-[calc(100vh-120px)] min-h-0 w-full p-2">
-                <WhatsappInbox supabase={supabase} clinicId={access.clinicId} />
+                <WhatsappInbox
+                  supabase={supabase}
+                  clinicId={access.clinicId}
+                  initialPhone={inboxInitialPhone ?? undefined}
+                  onInitialPhoneConsumed={() => setInboxInitialPhone(null)}
+                />
               </div>
             ) : null}
             {sidebarPage === "cs-clientes" ? (

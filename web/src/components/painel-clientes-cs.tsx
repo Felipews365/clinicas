@@ -18,6 +18,19 @@ function normPhone(p: string): string {
   return d.length >= 13 ? d.slice(2) : d;
 }
 
+function formatClienteCreatedAt(iso: string | null): string {
+  if (!iso) return "—";
+  try {
+    return new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short",
+      timeZone: "America/Sao_Paulo",
+    }).format(new Date(iso));
+  } catch {
+    return "—";
+  }
+}
+
 function friendlyDbMessage(err: { message?: string; code?: string } | null): string {
   if (!err?.message) return "Erro desconhecido.";
   if (err.code === "23505")
@@ -36,6 +49,10 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<CsClienteRow | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editNomeDraft, setEditNomeDraft] = useState("");
+  const [savingNomeId, setSavingNomeId] = useState<string | null>(null);
+  const [nomeEditError, setNomeEditError] = useState<string | null>(null);
 
   const loadRows = useCallback(async () => {
     setListError(null);
@@ -105,6 +122,36 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
     void loadRows();
   };
 
+  const startEditNome = (r: CsClienteRow) => {
+    setNomeEditError(null);
+    setEditingId(r.id);
+    setEditNomeDraft(r.nome ?? "");
+  };
+
+  const cancelEditNome = () => {
+    setEditingId(null);
+    setEditNomeDraft("");
+    setNomeEditError(null);
+  };
+
+  const saveNome = async (row: CsClienteRow) => {
+    setNomeEditError(null);
+    const trimmed = editNomeDraft.trim();
+    setSavingNomeId(row.id);
+    const { error } = await supabase
+      .from("cs_clientes")
+      .update({ nome: trimmed })
+      .eq("id", row.id)
+      .eq("clinic_id", clinicId);
+    setSavingNomeId(null);
+    if (error) {
+      setNomeEditError(error.message);
+      return;
+    }
+    cancelEditNome();
+    void loadRows();
+  };
+
   const runDelete = async (row: CsClienteRow) => {
     setDeleteError(null);
     setDeletingId(row.id);
@@ -139,9 +186,9 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
           Clientes
         </h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
-          Lista de clientes do agendamento (WhatsApp / CS). Pode acrescentar
-          manualmente ou apagar — os agendamentos ligados a esse cliente são
-          removidos primeiro.
+          Lista de clientes do agendamento (WhatsApp / CS). Pode acrescentar,
+          alterar o nome, ou apagar — os agendamentos ligados a esse cliente são
+          removidos primeiro ao apagar.
         </p>
       </div>
 
@@ -211,21 +258,48 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
           ) : null}
           <ul className="divide-y divide-[var(--border)]">
             {rows.map((r) => {
-              const nomeShow =
-                r.nome?.trim() !== ""
-                  ? r.nome.trim()
-                  : "(sem nome)";
-              const confirmed = (r.nome?.trim() ?? "") !== "";
+              const nomeTrim =
+                editingId === r.id
+                  ? editNomeDraft.trim()
+                  : (r.nome?.trim() ?? "");
+              const nomeShow = nomeTrim !== "" ? nomeTrim : "(sem nome)";
+              const confirmed = nomeTrim !== "";
               return (
                 <li
                   key={r.id}
-                  className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                  className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
                 >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-[var(--text)]">
-                      {nomeShow}
-                    </p>
-                    <p className="truncate text-sm text-[var(--text-muted)]">
+                  <div className="min-w-0 flex-1">
+                    {editingId === r.id ? (
+                      <label className="block">
+                        <span className="sr-only">Nome</span>
+                        <input
+                          type="text"
+                          value={editNomeDraft}
+                          onChange={(e) => setEditNomeDraft(e.target.value)}
+                          placeholder="Nome como na agenda"
+                          disabled={savingNomeId === r.id}
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelEditNome();
+                              return;
+                            }
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void saveNome(r);
+                            }
+                          }}
+                          className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm font-medium text-[var(--text)] outline-none ring-[var(--primary)] focus:ring-2 disabled:opacity-60"
+                        />
+                      </label>
+                    ) : (
+                      <p className="truncate font-medium text-[var(--text)]">
+                        {nomeShow}
+                      </p>
+                    )}
+                    <p className="mt-0.5 truncate text-sm text-[var(--text-muted)]">
                       {r.telefone}
                       {confirmed ? (
                         <span className="ml-2 rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-600 dark:text-emerald-400">
@@ -238,18 +312,61 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
                         </span>
                       ) : null}
                     </p>
+                    <p className="mt-1 text-[11px] tabular-nums text-[var(--text-muted)]">
+                      Criado em {formatClienteCreatedAt(r.created_at)}
+                    </p>
+                    {editingId === r.id && nomeEditError ? (
+                      <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                        {nomeEditError}
+                      </p>
+                    ) : null}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDeleteError(null);
-                      setDeleteConfirm(r);
-                    }}
-                    disabled={deletingId === r.id}
-                    className="shrink-0 rounded-lg border border-red-500/40 px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-500/10 disabled:opacity-50 dark:text-red-400"
-                  >
-                    Apagar
-                  </button>
+                  <div className="flex shrink-0 flex-wrap items-center gap-1.5 sm:justify-end sm:pt-0.5">
+                    {editingId === r.id ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void saveNome(r)}
+                          disabled={savingNomeId === r.id}
+                          className="rounded-lg border border-[var(--primary)] bg-[var(--primary)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/15 disabled:opacity-50"
+                        >
+                          {savingNomeId === r.id ? "A gravar…" : "Salvar"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEditNome}
+                          disabled={savingNomeId === r.id}
+                          className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text)] hover:bg-[var(--surface-soft)] disabled:opacity-50"
+                        >
+                          Cancelar
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => startEditNome(r)}
+                          disabled={
+                            deletingId === r.id || savingNomeId != null || editingId != null
+                          }
+                          className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-semibold text-[var(--text)] transition-colors hover:bg-[var(--surface-soft)] disabled:opacity-50"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeleteError(null);
+                            setDeleteConfirm(r);
+                          }}
+                          disabled={deletingId === r.id || editingId != null}
+                          className="rounded-lg border border-red-500/40 px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-500/10 disabled:opacity-50 dark:text-red-400"
+                        >
+                          Apagar
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </li>
               );
             })}
