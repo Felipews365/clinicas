@@ -324,6 +324,8 @@ export function AgendaPortal() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   /** Menu lateral em desktop (sm+); mobile continua a usar o drawer. */
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
+  const [agenteAtivo, setAgenteAtivo] = useState(true);
+  const [pauseConfirmOpen, setPauseConfirmOpen] = useState(false);
   const [humanQueueCount, setHumanQueueCount] = useState(0);
   const [inboxInitialPhone, setInboxInitialPhone] = useState<string | null>(null);
   const [whatsappConnected, setWhatsappConnected] = useState(false);
@@ -338,6 +340,24 @@ export function AgendaPortal() {
   const [removeConfirmAck, setRemoveConfirmAck] = useState(false);
   const [rescheduleRow, setRescheduleRow] = useState<AppointmentRow | null>(null);
   const [access, setAccess] = useState<AccessState | null>(null);
+
+  const handleToggleAgente = useCallback(() => {
+    if (!supabase || access?.kind !== "clinic") return;
+    if (agenteAtivo) {
+      setPauseConfirmOpen(true);
+    } else {
+      setAgenteAtivo(true);
+      void supabase.from("clinics").update({ agente_ativo: true }).eq("id", access.clinicId);
+    }
+  }, [supabase, access, agenteAtivo]);
+
+  const confirmPauseAgente = useCallback(async () => {
+    if (!supabase || access?.kind !== "clinic") return;
+    setPauseConfirmOpen(false);
+    setAgenteAtivo(false);
+    await supabase.from("clinics").update({ agente_ativo: false }).eq("id", access.clinicId);
+  }, [supabase, access]);
+
   const locallyModified = useRef(new Set<string>());
   const prevRowsRef = useRef<AppointmentRow[]>([]);
   /** 0 = ainda não houve um load completo; após 1º load finalizado só sincroniza; difs só a partir do 2º. */
@@ -834,7 +854,7 @@ export function AgendaPortal() {
     void (async () => {
       const { data: clinic, error: ec } = await supabase
         .from("clinics")
-        .select("id, name")
+        .select("id, name, agente_ativo")
         .eq("owner_id", uid)
         .limit(1)
         .maybeSingle();
@@ -844,6 +864,7 @@ export function AgendaPortal() {
         return;
       }
       if (clinic?.id) {
+        setAgenteAtivo(clinic.agente_ativo !== false);
         setAccess({
           kind: "clinic",
           clinicId: clinic.id,
@@ -1563,6 +1584,18 @@ export function AgendaPortal() {
         </nav>
         {/* Footer */}
         <div className="px-3 py-3 space-y-0.5">
+          <button
+            type="button"
+            onClick={() => void handleToggleAgente()}
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${agenteAtivo ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400" : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400"}`}
+            title={agenteAtivo ? "Clique para pausar o agente IA" : "Clique para ativar o agente IA"}
+          >
+            <span className={`h-2 w-2 shrink-0 rounded-full ${agenteAtivo ? "animate-pulse bg-emerald-500" : "bg-amber-500"}`} />
+            <span className="min-w-0 flex-1 text-left">{agenteAtivo ? "Agente ativo" : "Agente pausado"}</span>
+            <span className={`flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${agenteAtivo ? "bg-emerald-500" : "bg-[var(--border)]"}`}>
+              <span className={`h-4 w-4 rounded-full bg-white shadow transition-transform ${agenteAtivo ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+            </span>
+          </button>
           <p className="truncate px-3 py-1 text-[11px] text-[var(--text-muted)]">{session.user.email}</p>
           <button type="button" onClick={() => void handleSignOut()} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--primary)]">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
@@ -1614,10 +1647,15 @@ export function AgendaPortal() {
             Profissionais activos:{" "}
             <strong className="text-[var(--text)]">{profRoster.filter((p) => p.is_active !== false).length}</strong>
           </span>
-          {whatsappConnected ? (
+          {whatsappConnected && agenteAtivo ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-teal-500/15 px-2 py-0.5 text-[11px] font-semibold text-teal-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-teal-400" />
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-teal-400" />
               IA activa
+            </span>
+          ) : whatsappConnected && !agenteAtivo ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-500">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              IA pausada
             </span>
           ) : null}
         </div>
@@ -1879,6 +1917,19 @@ export function AgendaPortal() {
               </div>
               {/* Footer */}
               <div className="px-3 py-3 space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => void handleToggleAgente()}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${agenteAtivo ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20" : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"}`}
+                >
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${agenteAtivo ? "bg-emerald-500/15" : "bg-amber-500/15"}`}>
+                    <span className={`h-2.5 w-2.5 rounded-full ${agenteAtivo ? "animate-pulse bg-emerald-500" : "bg-amber-500"}`} />
+                  </span>
+                  <span className="min-w-0 flex-1 text-left">{agenteAtivo ? "Agente ativo" : "Agente pausado"}</span>
+                  <span className={`flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${agenteAtivo ? "bg-emerald-500" : "bg-[var(--border)]"}`}>
+                    <span className={`h-4 w-4 rounded-full bg-white shadow transition-transform ${agenteAtivo ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+                  </span>
+                </button>
                 <p className="truncate px-3 py-1 text-[11px] text-[var(--text-muted)]">{session.user.email}</p>
                 <button type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-[var(--text-muted)] hover:bg-[var(--surface-soft)]" onClick={() => { setMobileMenuOpen(false); void handleSignOut(); }}>
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-soft)] text-[var(--text-muted)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></span>
@@ -2060,6 +2111,29 @@ export function AgendaPortal() {
           </div>
         ) : null}
         </div>
+
+        {pauseConfirmOpen ? (
+          <div className="fixed inset-0 z-[230] flex items-center justify-center p-4" role="presentation">
+            <button type="button" className="absolute inset-0 bg-black/55 backdrop-blur-[1px]" aria-label="Fechar" onClick={() => setPauseConfirmOpen(false)} />
+            <div role="alertdialog" aria-modal="true" className="relative z-10 w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/15">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-500"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </div>
+              <h2 className="font-display text-lg font-semibold text-[var(--text)]">Pausar o agente?</h2>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
+                O agente IA vai parar de responder a <strong className="text-[var(--text)]">todos os clientes</strong> desta clínica. As conversas em curso ficam sem resposta até reativar.
+              </p>
+              <div className="mt-6 flex flex-wrap justify-end gap-2">
+                <button type="button" onClick={() => setPauseConfirmOpen(false)} className="rounded-xl border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-soft)]">
+                  Cancelar
+                </button>
+                <button type="button" onClick={() => void confirmPauseAgente()} className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600">
+                  Sim, pausar agente
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {removeConfirmId ? (
           <div
