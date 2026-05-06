@@ -13,12 +13,43 @@ type CsClienteRow = {
   nome_confirmado: boolean | null;
 };
 
+type SessionInfo = { staff_handling: boolean | null; updated_at: string | null };
+type SessionsMap = Record<string, SessionInfo>;
+
 type Tab = "conversas" | "todos";
 type Props = { supabase: SupabaseClient; clinicId: string };
+
+const REATIVACAO_MS = 10 * 60 * 1000; // 10 min
 
 function normPhone(p: string): string {
   const d = p.replace(/\D/g, "");
   return d.length >= 13 ? d.slice(2) : d;
+}
+
+function clientPhone(telefone: string): string {
+  return telefone.split("@")[0].replace(/\D/g, "");
+}
+
+// Retorna true se o bot está efetivamente ativo — considera a reativação automática por inatividade de 10 min
+function botEffective(r: CsClienteRow, sessions: SessionsMap): boolean {
+  if (r.bot_ativo !== false) return true;
+  const sess = sessions[clientPhone(r.telefone)];
+  if (!sess?.staff_handling) return false;
+  // staff_handling=true mas updated_at passou de 10 min → bot seria reativado na próxima mensagem
+  const updatedMs = sess.updated_at ? new Date(sess.updated_at).getTime() : 0;
+  return Date.now() - updatedMs >= REATIVACAO_MS;
+}
+
+// Retorna "reativa em X min" se o bot está pausado mas vai reativar automaticamente
+function reativaEm(r: CsClienteRow, sessions: SessionsMap): string | null {
+  if (r.bot_ativo !== false) return null;
+  const sess = sessions[clientPhone(r.telefone)];
+  if (!sess?.staff_handling || !sess.updated_at) return null;
+  const elapsed = Date.now() - new Date(sess.updated_at).getTime();
+  const leftMs = REATIVACAO_MS - elapsed;
+  if (leftMs <= 0) return null; // já passou — botEffective vai mostrar como ativo
+  const leftMin = Math.ceil(leftMs / 60_000);
+  return `reativa em ${leftMin} min`;
 }
 
 function formatTs(iso: string | null): string {
@@ -65,6 +96,8 @@ function friendlyDbMessage(err: { message?: string; code?: string } | null): str
 export function PainelClientesCs({ supabase, clinicId }: Props) {
   const [tab, setTab] = useState<Tab>("conversas");
   const [rows, setRows] = useState<CsClienteRow[]>([]);
+  const [sessions, setSessions] = useState<SessionsMap>({});
+  const [, setTick] = useState(0); // força re-render a cada 60s para recalcular 10 min
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [telefoneInput, setTelefoneInput] = useState("");
@@ -90,23 +123,65 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
       .order("updated_at", { ascending: false });
     setLoading(false);
     if (error) { setListError(error.message); setRows([]); return; }
-    setRows((data ?? []) as CsClienteRow[]);
+    const clientRows = (data ?? []) as CsClienteRow[];
+    setRows(clientRows);
+
+    // Carrega sessões para calcular reativação automática
+    const phones = clientRows.map((r) => clientPhone(r.telefone)).filter(Boolean);
+    if (phones.length > 0) {
+      const { data: sessData } = await supabase
+        .from("whatsapp_sessions")
+        .select("phone, staff_handling, updated_at")
+        .eq("clinic_id", clinicId)
+        .in("phone", phones);
+      const map: SessionsMap = {};
+      for (const s of sessData ?? []) {
+        map[s.phone as string] = { staff_handling: s.staff_handling as boolean | null, updated_at: s.updated_at as string | null };
+      }
+      setSessions(map);
+    }
   }, [supabase, clinicId]);
 
   useEffect(() => { void loadRows(); }, [loadRows]);
 
+  // Tick a cada 60 s para re-avaliar o limiar de 10 min sem precisar de evento do banco
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Realtime: cs_clientes e whatsapp_sessions
   useEffect(() => {
     const ch = supabase
       .channel(`painel-cs-clientes-${clinicId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "cs_clientes", filter: `clinic_id=eq.${clinicId}` }, () => { void loadRows(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_sessions", filter: `clinic_id=eq.${clinicId}` }, () => { void loadRows(); })
       .subscribe();
     return () => { void supabase.removeChannel(ch); };
   }, [supabase, clinicId, loadRows]);
 
-  const handleToggleBot = async (r: CsClienteRow) => {
+  const handleToggleBot = async (r: CsClienteRow, botOn: boolean) => {
     setTogglingBotId(r.id);
-    const next = r.bot_ativo === false ? true : false;
+    const next = !botOn;
     await supabase.from("cs_clientes").update({ bot_ativo: next }).eq("id", r.id).eq("clinic_id", clinicId);
+
+    const phone = clientPhone(r.telefone);
+    if (phone) {
+      if (!next) {
+        // Pausar: marca staff_handling=true com timestamp agora (reinicia timer)
+        await supabase.from("whatsapp_sessions").upsert(
+          { clinic_id: clinicId, phone, needs_human: false, staff_handling: true, updated_at: new Date().toISOString() },
+          { onConflict: "clinic_id,phone" }
+        );
+      } else {
+        // Reativar manualmente: limpa flags
+        await supabase.from("whatsapp_sessions")
+          .update({ staff_handling: false, needs_human: false })
+          .eq("clinic_id", clinicId)
+          .eq("phone", phone);
+      }
+    }
+
     setTogglingBotId(null);
     void loadRows();
   };
@@ -149,7 +224,7 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
     void loadRows();
   };
 
-  // "Conversas" = rows com updated_at (qualquer) — ordenados por recência
+  // "Conversas" = rows com updated_at — ordenados por recência
   const conversasRows = rows.filter((r) => r.updated_at != null);
   const displayRows = tab === "conversas" ? conversasRows : rows;
 
@@ -203,7 +278,8 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
               {conversasRows.map((r) => {
                 const nome = r.nome?.trim() || "";
                 const nomeShow = nome || r.telefone;
-                const botOn = r.bot_ativo !== false;
+                const botOn = botEffective(r, sessions);
+                const countdown = !botOn ? reativaEm(r, sessions) : null;
                 const isToggling = togglingBotId === r.id;
                 return (
                   <li key={r.id} className="flex items-center gap-4 px-4 py-3">
@@ -231,10 +307,13 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
                       <span className={`text-[10px] font-semibold uppercase ${botOn ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
                         {botOn ? "Agente ativo" : "Pausado"}
                       </span>
+                      {countdown && (
+                        <span className="text-[10px] text-amber-500 dark:text-amber-400">⏱ {countdown}</span>
+                      )}
                       <button
                         type="button"
                         disabled={isToggling}
-                        onClick={() => void handleToggleBot(r)}
+                        onClick={() => void handleToggleBot(r, botOn)}
                         aria-label={botOn ? "Pausar agente para este cliente" : "Ativar agente para este cliente"}
                         className={`flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${botOn ? "bg-emerald-500" : "bg-[var(--border)]"}`}
                       >
@@ -289,7 +368,7 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
                 {displayRows.map((r) => {
                   const nomeTrim = editingId === r.id ? editNomeDraft.trim() : (r.nome?.trim() ?? "");
                   const nomeShow = nomeTrim !== "" ? nomeTrim : "(sem nome)";
-                  const botOn = r.bot_ativo !== false;
+                  const botOn = botEffective(r, sessions);
                   const isToggling = togglingBotId === r.id;
                   return (
                     <li key={r.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
@@ -343,7 +422,7 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
                           <button
                             type="button"
                             disabled={isToggling || editingId != null}
-                            onClick={() => void handleToggleBot(r)}
+                            onClick={() => void handleToggleBot(r, botOn)}
                             aria-label={botOn ? "Pausar bot para este cliente" : "Ativar bot para este cliente"}
                             className={`flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 ${botOn ? "bg-emerald-500" : "bg-[var(--border)]"}`}
                           >
