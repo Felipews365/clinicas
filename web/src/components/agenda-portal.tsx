@@ -549,7 +549,7 @@ export function AgendaPortal() {
       ]);
 
     setProfRoster(
-      (pros ?? []) as {
+      (pros ?? []) as unknown as {
         id: string;
         name: string;
         gender?: string | null;

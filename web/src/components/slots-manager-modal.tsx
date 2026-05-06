@@ -890,6 +890,7 @@ export function SlotsManagerModal({
         (r) => typeof r.starts_at === "string" && matchHour(r.starts_at as string)
       );
       const slotNome = slot.profissional_nome.trim().toLowerCase();
+      const panelProfId = panelProfessionalIdForSlot(prosList, slot.profissional_id);
       let csFound: Record<string, unknown> | undefined;
       if (panelProfId) {
         csFound = csCandidates.find((r) => {
@@ -1602,6 +1603,7 @@ export function SlotsManagerModal({
     })();
     const initials = (appt?.patientName ?? "?")
       .split(" ").slice(0, 2).map((w: string) => w[0]?.toUpperCase() ?? "").join("");
+    const isCs = appt?.cs_mutacao_origem != null;
     const originLabel = appt
       ? appointmentOriginLabel({
           id: appt.id,

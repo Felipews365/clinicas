@@ -364,8 +364,7 @@ export function ProfessionalsManagerModal({
     setError(null);
     try {
       const { data, error: e } = await withProfessionalsGenderFallback(
-        (includeGender) =>
-          supabase
+        async (includeGender) => await supabase
             .from("professionals")
             .select(
               includeGender
@@ -381,7 +380,7 @@ export function ProfessionalsManagerModal({
         setRows([]);
         return;
       }
-      setRows((data ?? []) as Row[]);
+      setRows((data ?? []) as unknown as Row[]);
     } finally {
       setLoading(false);
       listSettledRef.current = true;

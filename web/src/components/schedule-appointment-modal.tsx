@@ -137,8 +137,7 @@ export function ScheduleAppointmentModal({
     setLoadingMeta(true);
     setLoadError(null);
     const { data: pros, error: pErr } = await withProfessionalsGenderFallback(
-      (includeGender) =>
-        supabase
+      async (includeGender) => await supabase
           .from("professionals")
           .select(
             includeGender
@@ -159,7 +158,7 @@ export function ScheduleAppointmentModal({
       setProfProcedureIds(new Map());
       return;
     }
-    const list = (pros ?? []) as Prof[];
+    const list = (pros ?? []) as unknown as Prof[];
     setProfessionals(list);
 
     const proIds = list.map((p) => p.id);
