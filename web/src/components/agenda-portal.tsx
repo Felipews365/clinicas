@@ -543,9 +543,9 @@ export function AgendaPortal() {
 
     const [{ data, error }, { data: csRaw, error: csErr }, { data: pros }] =
       await Promise.all([
-        withProfessionalsGenderFallback((g) => apptSelect(g)),
+        withProfessionalsGenderFallback(async (g) => await apptSelect(g)),
         supabase.rpc("painel_list_cs_agendamentos", { p_clinic_id: clinicId }),
-        withProfessionalsGenderFallback((g) => prosSelect(g)),
+        withProfessionalsGenderFallback(async (g) => await prosSelect(g)),
       ]);
 
     setProfRoster(
