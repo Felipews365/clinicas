@@ -44,6 +44,8 @@ type Props = {
   clinicId: string;
   initialPhone?: string;
   onInitialPhoneConsumed?: () => void;
+  agenteAtivo?: boolean;
+  onToggleAgente?: () => void;
 };
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -257,7 +259,7 @@ const wa = {
 
 // ─── componente ───────────────────────────────────────────────────────────────
 
-export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhoneConsumed }: Props) {
+export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhoneConsumed, agenteAtivo, onToggleAgente }: Props) {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<HistRow[]>([]);
@@ -757,6 +759,38 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
           </div>
         </header>
 
+        {agenteAtivo !== undefined && (
+          <div
+            className={`flex items-center gap-2 border-b px-3 py-2 text-[12px] font-medium ${
+              agenteAtivo
+                ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+                : "border-amber-100 bg-amber-50 text-amber-700"
+            }`}
+          >
+            <span
+              className={`h-2 w-2 shrink-0 rounded-full ${
+                agenteAtivo ? "animate-pulse bg-emerald-500" : "bg-amber-500"
+              }`}
+            />
+            <span className="flex-1">
+              {agenteAtivo ? "Agente ativo para toda a clínica" : "Agente pausado para toda a clínica"}
+            </span>
+            {onToggleAgente && (
+              <button
+                type="button"
+                onClick={onToggleAgente}
+                className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+                  agenteAtivo
+                    ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                    : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                }`}
+              >
+                {agenteAtivo ? "Pausar" : "Ativar"}
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto">
           {loadingSessions ? (
             <p className={`px-4 py-10 text-center text-[13px] ${wa.meta}`}>
@@ -815,7 +849,17 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
                         </span>
                       </div>
                     ) : null}
-                    {!s.botAtivo && (
+                    {agenteAtivo === false ? (
+                      <span className="mt-0.5 inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                        <span className="h-[5px] w-[5px] rounded-full bg-amber-500" />
+                        IA pausada
+                      </span>
+                    ) : s.botAtivo ? (
+                      <span className="mt-0.5 inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                        <span className="h-[5px] w-[5px] rounded-full bg-emerald-500" />
+                        IA ativa
+                      </span>
+                    ) : (
                       <span className="mt-0.5 inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
                         <span className="h-[5px] w-[5px] rounded-full bg-amber-500" />
                         Humano

@@ -43,7 +43,7 @@ import { resolveProfessionalCardStyle } from "@/lib/professional-palette";
 import { hasFullAccess } from "@/lib/crm-access";
 import { getSupportWhatsAppActivatePlanUrl } from "@/lib/support-whatsapp";
 import { createClient } from "@/lib/supabase/client";
-import { isClinicMembersUnavailableError } from "@/lib/supabase/clinic-members-compat";
+import { resolveClinicForUser } from "@/lib/supabase/clinic-access-resolve";
 import { withProfessionalsGenderFallback } from "@/lib/supabase-gender-column-fallback";
 import {
   awaitsConfirmation,
@@ -341,13 +341,17 @@ export function AgendaPortal() {
   const [rescheduleRow, setRescheduleRow] = useState<AppointmentRow | null>(null);
   const [access, setAccess] = useState<AccessState | null>(null);
 
-  const handleToggleAgente = useCallback(() => {
+  const handleToggleAgente = useCallback(async () => {
     if (!supabase || access?.kind !== "clinic") return;
     if (agenteAtivo) {
       setPauseConfirmOpen(true);
     } else {
       setAgenteAtivo(true);
-      void supabase.from("clinics").update({ agente_ativo: true }).eq("id", access.clinicId);
+      const { error } = await supabase.from("clinics").update({ agente_ativo: true }).eq("id", access.clinicId);
+      if (error) {
+        setAgenteAtivo(false);
+        console.error("Erro ao reativar agente:", error.message);
+      }
     }
   }, [supabase, access, agenteAtivo]);
 
@@ -355,7 +359,11 @@ export function AgendaPortal() {
     if (!supabase || access?.kind !== "clinic") return;
     setPauseConfirmOpen(false);
     setAgenteAtivo(false);
-    await supabase.from("clinics").update({ agente_ativo: false }).eq("id", access.clinicId);
+    const { error } = await supabase.from("clinics").update({ agente_ativo: false }).eq("id", access.clinicId);
+    if (error) {
+      setAgenteAtivo(true);
+      console.error("Erro ao pausar agente:", error.message);
+    }
   }, [supabase, access]);
 
   const locallyModified = useRef(new Set<string>());
@@ -852,60 +860,19 @@ export function AgendaPortal() {
     setAccess({ kind: "loading" });
     const uid = session.user.id;
     void (async () => {
-      const { data: clinic, error: ec } = await supabase
-        .from("clinics")
-        .select("id, name, agente_ativo")
-        .eq("owner_id", uid)
-        .limit(1)
-        .maybeSingle();
+      const resolved = await resolveClinicForUser(supabase, uid);
       if (cancelled) return;
-      if (ec) {
-        setAccess({ kind: "denied", message: ec.message });
-        return;
-      }
-      if (clinic?.id) {
-        setAgenteAtivo(clinic.agente_ativo !== false);
+      if (resolved.ok === true) {
+        setAgenteAtivo(resolved.clinic.agenteAtivo);
         setAccess({
           kind: "clinic",
-          clinicId: clinic.id,
-          clinicName: clinic.name,
+          clinicId: resolved.clinic.id,
+          clinicName: resolved.clinic.name,
         });
         return;
       }
-      const { data: membership, error: em } = await supabase
-        .from("clinic_members")
-        .select("clinic_id")
-        .eq("user_id", uid)
-        .limit(1)
-        .maybeSingle();
-      if (cancelled) return;
-      if (em) {
-        if (isClinicMembersUnavailableError(em)) {
-          setAccess({ kind: "onboarding" });
-          return;
-        }
-        setAccess({ kind: "denied", message: em.message });
-        return;
-      }
-      if (membership?.clinic_id) {
-        const { data: c2, error: e2 } = await supabase
-          .from("clinics")
-          .select("id, name")
-          .eq("id", membership.clinic_id)
-          .maybeSingle();
-        if (cancelled) return;
-        if (e2 || !c2?.id) {
-          setAccess({
-            kind: "denied",
-            message: e2?.message ?? "Clínica não encontrada.",
-          });
-          return;
-        }
-        setAccess({
-          kind: "clinic",
-          clinicId: c2.id,
-          clinicName: c2.name,
-        });
+      if (resolved.reason === "error") {
+        setAccess({ kind: "denied", message: resolved.message });
         return;
       }
       setAccess({ kind: "onboarding" });
@@ -1291,7 +1258,10 @@ export function AgendaPortal() {
 
   if (!supabase) {
     return (
-      <div className="mx-auto max-w-md px-4 py-16 text-center">
+      <div
+        className="mx-auto max-w-md px-4 py-16 text-center"
+        suppressHydrationWarning
+      >
         <p className="text-sm text-red-700 dark:text-red-400">
           Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY em
           .env.local (veja .env.example).
@@ -1302,7 +1272,10 @@ export function AgendaPortal() {
 
   if (!clientSynced) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-16 text-center text-zinc-500">
+      <div
+        className="mx-auto max-w-4xl px-4 py-16 text-center text-zinc-500"
+        suppressHydrationWarning
+      >
         A carregar…
       </div>
     );
@@ -1310,7 +1283,10 @@ export function AgendaPortal() {
 
   if (!session?.user) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center px-4 text-center text-sm text-[var(--text-muted)]">
+      <div
+        className="flex min-h-[50vh] flex-col items-center justify-center px-4 text-center text-sm text-[var(--text-muted)]"
+        suppressHydrationWarning
+      >
         <p>A abrir a página de login…</p>
       </div>
     );
@@ -1318,7 +1294,10 @@ export function AgendaPortal() {
 
   if (!access || access.kind === "loading") {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--bg)] px-4 text-[var(--text-muted)]">
+      <div
+        className="flex min-h-screen flex-col items-center justify-center bg-[var(--bg)] px-4 text-[var(--text-muted)]"
+        suppressHydrationWarning
+      >
         <p className="text-sm">A carregar permissões…</p>
       </div>
     );
@@ -1326,7 +1305,10 @@ export function AgendaPortal() {
 
   if (access.kind === "onboarding") {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--bg)] px-4 text-[var(--text-muted)]">
+      <div
+        className="flex min-h-screen flex-col items-center justify-center bg-[var(--bg)] px-4 text-[var(--text-muted)]"
+        suppressHydrationWarning
+      >
         <p className="text-sm">A abrir o cadastro da clínica…</p>
       </div>
     );
@@ -1334,7 +1316,10 @@ export function AgendaPortal() {
 
   if (access.kind === "denied") {
     return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
+      <div
+        className="mx-auto max-w-md px-4 py-20 text-center"
+        suppressHydrationWarning
+      >
         <h1 className="font-display text-xl font-semibold text-[var(--text)]">
           Sem acesso ao painel
         </h1>
@@ -1380,7 +1365,10 @@ export function AgendaPortal() {
   }
 
   return (
-    <div className="painel-root flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[var(--bg)] text-[var(--text)] transition-colors duration-300 sm:flex-row">
+    <div
+      className="painel-root flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[var(--bg)] text-[var(--text)] transition-colors duration-300 sm:flex-row"
+      suppressHydrationWarning
+    >
       {crmUpgradeOpen ? (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4 backdrop-blur-[2px]"
@@ -2068,6 +2056,8 @@ export function AgendaPortal() {
                   clinicId={access.clinicId}
                   initialPhone={inboxInitialPhone ?? undefined}
                   onInitialPhoneConsumed={() => setInboxInitialPhone(null)}
+                  agenteAtivo={agenteAtivo}
+                  onToggleAgente={handleToggleAgente}
                 />
               </div>
             ) : null}

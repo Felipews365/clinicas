@@ -87,8 +87,14 @@ export function ClinicLoginForm() {
       setError(friendlyAuthError(signErr.message));
       return;
     }
-    router.push(afterLoginPath);
-    router.refresh();
+    const { data: afterSession } = await supabase.auth.getSession();
+    if (!afterSession.session) {
+      setError("Não foi possível iniciar a sessão. Tente outra vez.");
+      return;
+    }
+    // Navegação completa: garante cookies de sessão no pedido ao proxy antes do /painel
+    // (router.push sozinho pode deixar o painel a resolver clínica sem JWT sincronizado).
+    window.location.assign(afterLoginPath);
   }
 
   async function handleForgot(e: React.FormEvent) {

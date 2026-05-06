@@ -213,6 +213,20 @@ export function ClinicRegisterForm() {
     router.refresh();
   }
 
+  async function goToClinicLogin() {
+    if (!supabase) {
+      router.push("/login");
+      return;
+    }
+    if (session) {
+      await supabase.auth.signOut();
+      setSession(null);
+      setEmail("");
+    }
+    router.push("/login");
+    router.refresh();
+  }
+
   if (!supabase) {
     return (
       <AuthVisualShell>
@@ -493,12 +507,13 @@ export function ClinicRegisterForm() {
       </p>
       <p className="mt-4 text-center text-sm text-slate-600">
         Já tem conta?{" "}
-        <Link
-          href="/login"
-          className="font-semibold text-[#0047AB] underline-offset-2 hover:underline"
+        <button
+          type="button"
+          onClick={() => void goToClinicLogin()}
+          className="inline cursor-pointer border-0 bg-transparent p-0 font-sans text-sm font-semibold text-[#0047AB] underline-offset-2 hover:underline"
         >
           Entrar
-        </Link>
+        </button>
       </p>
     </AuthVisualShell>
   );

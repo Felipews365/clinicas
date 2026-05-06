@@ -1,5 +1,5 @@
+import { resolveClinicForUser } from "@/lib/supabase/clinic-access-resolve";
 import { createClient } from "@/lib/supabase/server";
-import { isClinicMembersUnavailableError } from "@/lib/supabase/clinic-members-compat";
 
 export type AuthLanding = {
   user: { id: string } | null;
@@ -7,7 +7,7 @@ export type AuthLanding = {
 };
 
 /**
- * Resolve utilizador e se já tem clínica (dono ou clinic_members), para /login e /cadastro.
+ * Resolve utilizador e se já tem clínica (dono, clinic_members ou professionals.auth_user_id).
  */
 export async function getAuthLanding(): Promise<AuthLanding> {
   try {
@@ -18,25 +18,11 @@ export async function getAuthLanding(): Promise<AuthLanding> {
     if (!user) {
       return { user: null, hasClinic: false };
     }
-    const { data: owned } = await supabase
-      .from("clinics")
-      .select("id")
-      .eq("owner_id", user.id)
-      .limit(1)
-      .maybeSingle();
-    if (owned?.id) {
-      return { user: { id: user.id }, hasClinic: true };
-    }
-    const { data: member, error: memErr } = await supabase
-      .from("clinic_members")
-      .select("id")
-      .eq("user_id", user.id)
-      .limit(1)
-      .maybeSingle();
-    if (memErr && !isClinicMembersUnavailableError(memErr)) {
-      return { user: { id: user.id }, hasClinic: false };
-    }
-    return { user: { id: user.id }, hasClinic: !!member?.id };
+    const resolved = await resolveClinicForUser(supabase, user.id);
+    return {
+      user: { id: user.id },
+      hasClinic: resolved.ok === true,
+    };
   } catch {
     return { user: null, hasClinic: false };
   }
