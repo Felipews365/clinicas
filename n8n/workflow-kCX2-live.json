@@ -4439,7 +4439,7 @@
       "parameters": {
         "toolDescription": "Busca agendamentos ativos do cliente pelo telefone. Use SILENCIOSAMENTE no inicio da conversa quando nome_cliente nao estiver vazio e primeiro_contato=true. Retorna lista com id, profissional, data_iso (YYYY-MM-DD), horario (HH:MM), nome_procedimento.",
         "method": "POST",
-        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(//+$/, '') + '/rest/v1/rpc/n8n_cs_buscar_agendamentos' }}",
+        "url": "https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/rpc/n8n_cs_buscar_agendamentos",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendBody": true,

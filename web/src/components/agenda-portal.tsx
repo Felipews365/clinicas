@@ -318,6 +318,7 @@ export function AgendaPortal() {
   const [clinicSabadoAgendaHours, setClinicSabadoAgendaHours] = useState<
     number[] | null
   >(null);
+  const [clinicSlotDuration, setClinicSlotDuration] = useState<15 | 30 | 60>(60);
   const [clinicSlotsExpediente, setClinicSlotsExpediente] = useState<unknown>(
     null
   );
@@ -591,7 +592,7 @@ export function AgendaPortal() {
     const { data, error } = await supabase
       .from("clinics")
       .select(
-        "agenda_visible_hours, slots_expediente, sabado_aberto, sabado_agenda_hours"
+        "agenda_visible_hours, slots_expediente, sabado_aberto, sabado_agenda_hours, slot_duration_minutes"
       )
       .eq("id", access.clinicId)
       .maybeSingle();
@@ -601,6 +602,7 @@ export function AgendaPortal() {
       slots_expediente?: unknown;
       sabado_aberto?: unknown;
       sabado_agenda_hours?: unknown;
+      slot_duration_minutes?: unknown;
     } | null;
     if (row) {
       setClinicAgendaHours(normalizeAgendaVisibleHours(row.agenda_visible_hours));
@@ -611,6 +613,8 @@ export function AgendaPortal() {
       );
       setClinicSabadoAgendaHours(normalizeSabadoAgendaHours(row.sabado_agenda_hours));
       setClinicSlotsExpediente(row.slots_expediente ?? null);
+      const dur = row.slot_duration_minutes;
+      setClinicSlotDuration(dur === 15 || dur === 30 ? dur : 60);
     }
   }, [supabase, access]);
 
@@ -1985,6 +1989,7 @@ export function AgendaPortal() {
                 focusProfessionalName={professionalsOpenIntent?.focusName ?? null}
                 onFocusProfessionalConsumed={clearProfessionalsOpenIntent}
                 onChanged={() => void loadAppointments()}
+                defaultSlotDuration={clinicSlotDuration}
               />
             ) : null}
             {sidebarPage === "slots" ? (
@@ -2023,6 +2028,7 @@ export function AgendaPortal() {
                   setClinicAgendaHours(p.agenda_visible_hours);
                   setClinicSabadoAberto(p.sabado_aberto);
                   setClinicSabadoAgendaHours(p.sabado_agenda_hours);
+                  setClinicSlotDuration(p.slot_duration_minutes);
                 }}
               />
             ) : null}

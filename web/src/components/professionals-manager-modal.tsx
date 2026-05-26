@@ -49,6 +49,8 @@ type Row = {
   cs_profissional_id: string | null;
   /** M = Dr., F = Dra. em WhatsApp ao profissional; null = Dr. */
   gender?: string | null;
+  /** Intervalo da grade de slots: 15, 30 ou 60 min (default 60). */
+  slot_duration_minutes?: number | null;
 };
 
 function normWorksSaturday(raw: unknown): boolean {
@@ -249,6 +251,8 @@ type Props = {
   onFocusProfessionalConsumed?: () => void;
   /** `panel` = conteúdo na área principal do painel (sem overlay). */
   presentation?: "modal" | "panel";
+  /** Duração padrão da clínica — pré-preenche novos profissionais. */
+  defaultSlotDuration?: 15 | 30 | 60;
 };
 
 function mapAddProfHourError(code: string): string {
@@ -302,6 +306,7 @@ export function ProfessionalsManagerModal({
   focusProfessionalName,
   onFocusProfessionalConsumed,
   presentation = "modal",
+  defaultSlotDuration = 60,
 }: Props) {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
@@ -334,6 +339,10 @@ export function ProfessionalsManagerModal({
   /** "" = Dr. padrão; M = Dr. (homem); F = Dra. */
   const [newNotifyGender, setNewNotifyGender] = useState<"" | "M" | "F">("");
   const [editNotifyGender, setEditNotifyGender] = useState<"" | "M" | "F">("");
+  const [editSlotDuration, setEditSlotDuration] = useState<15 | 30 | 60>(60);
+  const [newSlotDuration, setNewSlotDuration] = useState<15 | 30 | 60>(() =>
+    defaultSlotDuration === 15 || defaultSlotDuration === 30 ? defaultSlotDuration : 60
+  );
   const [editPanelColor, setEditPanelColor] = useState(DEFAULT_PROFESSIONAL_PANEL_COLOR);
   const [extraHourYmd, setExtraHourYmd] = useState("");
   const [extraHourPick, setExtraHourPick] = useState<number | null>(null);
@@ -365,14 +374,14 @@ export function ProfessionalsManagerModal({
     setLoading(true);
     setError(null);
     try {
+      const selectFields = (g: boolean): string =>
+        g
+          ? "id, name, specialty, whatsapp, gender, is_active, sort_order, panel_color, avatar_path, avatar_emoji, agenda_hours, works_saturday, sabado_agenda_hours, cs_profissional_id, slot_duration_minutes"
+          : "id, name, specialty, whatsapp, is_active, sort_order, panel_color, avatar_path, avatar_emoji, agenda_hours, works_saturday, sabado_agenda_hours, cs_profissional_id, slot_duration_minutes";
       const { data, error: e } = await withProfessionalsGenderFallback(
         async (includeGender) => await supabase
             .from("professionals")
-            .select(
-              includeGender
-                ? "id, name, specialty, whatsapp, gender, is_active, sort_order, panel_color, avatar_path, avatar_emoji, agenda_hours, works_saturday, sabado_agenda_hours, cs_profissional_id"
-                : "id, name, specialty, whatsapp, is_active, sort_order, panel_color, avatar_path, avatar_emoji, agenda_hours, works_saturday, sabado_agenda_hours, cs_profissional_id"
-            )
+            .select(selectFields(includeGender))
             .eq("clinic_id", clinicId)
             .order("sort_order", { ascending: true })
             .order("name", { ascending: true })
@@ -574,6 +583,7 @@ export function ProfessionalsManagerModal({
       panel_color: newColor,
       avatar_emoji: newEmoji.trim() || null,
       avatar_path: null,
+      slot_duration_minutes: newSlotDuration,
       ...sabadoPayload,
     };
     const genderVal = newNotifyGender === "" ? null : newNotifyGender;
@@ -826,6 +836,10 @@ export function ProfessionalsManagerModal({
         r.gender === "F" || r.gender === "M" ? r.gender : ""
       );
       setEditPanelColor(rowPaletteValue(r));
+      const dur = r.slot_duration_minutes;
+      setEditSlotDuration(
+        dur === 15 || dur === 30 ? dur : 60
+      );
     },
     [agendaDayKey, clinicSaturdayHours]
   );
@@ -977,6 +991,7 @@ export function ProfessionalsManagerModal({
       agenda_hours: agendaHours,
       panel_color:
         editPanelColor.trim() || DEFAULT_PROFESSIONAL_PANEL_COLOR,
+      slot_duration_minutes: editSlotDuration,
       ...sabadoUpdate,
     };
     const genderVal = editNotifyGender === "" ? null : editNotifyGender;
@@ -1274,6 +1289,28 @@ export function ProfessionalsManagerModal({
           <ProceduresEmptyClinicHint className="mt-2" />
         )}
       </div>
+      {/* Duração de slot — novo profissional */}
+      <div className="rounded-xl border border-[#e6e1d8] bg-[#faf8f4] px-4 py-3">
+        <p className="text-xs font-semibold text-[#5c5348]">Duração de cada atendimento</p>
+        <p className="mt-0.5 text-[11px] text-[#8a8278]">Define de quanto em quanto tempo aparecem os horários disponíveis (ex.: 30 min → 8:00, 8:30, 9:00…)</p>
+        <div className="mt-2 flex gap-2">
+          {([15, 30, 60] as const).map((d) => (
+            <button
+              key={d}
+              type="button"
+              disabled={busy === "add"}
+              onClick={() => setNewSlotDuration(d)}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold tabular-nums transition-colors disabled:opacity-50 ${
+                newSlotDuration === d
+                  ? "border-teal-700/70 bg-teal-950/90 text-teal-100"
+                  : "border-[#d4cfc4] bg-white text-[#6b635a] hover:bg-[#f0ebe3]"
+              }`}
+            >
+              {d} min
+            </button>
+          ))}
+        </div>
+      </div>
       {clinicSabadoOpen ? (
         <div className="space-y-2 rounded-xl border border-[#e6e1d8] bg-[#faf8f4] px-4 py-3">
           <label className="flex cursor-pointer items-start gap-3">
@@ -1317,11 +1354,16 @@ export function ProfessionalsManagerModal({
                 {(clinicSaturdayHours.length > 0
                   ? clinicSaturdayHours
                   : [...FULL_CLINIC_AGENDA_HOURS]
-                ).map((h) => {
+                ).flatMap((h) => {
+                  const slots: {h:number;m:number}[] = [];
+                  for (let m = 0; m < 60; m += newSlotDuration) slots.push({ h, m });
+                  return slots;
+                }).map(({ h, m }) => {
                   const on = newSaturdayHours.has(h);
+                  const label = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
                   return (
                     <button
-                      key={h}
+                      key={`${h}-${m}`}
                       type="button"
                       disabled={busy === "add"}
                       onClick={() => {
@@ -1341,7 +1383,7 @@ export function ProfessionalsManagerModal({
                           : "border-dashed border-[#d4cfc4] bg-white text-[#9a9288] line-through"
                       }`}
                     >
-                      {formatAgendaHourLabel(h)}
+                      {label}
                     </button>
                   );
                 })}
@@ -1610,11 +1652,16 @@ export function ProfessionalsManagerModal({
                   {(clinicSaturdayHours.length > 0
                     ? clinicSaturdayHours
                     : [...FULL_CLINIC_AGENDA_HOURS]
-                  ).map((h) => {
+                  ).flatMap((h) => {
+                    const slots: {h:number;m:number}[] = [];
+                    for (let m = 0; m < 60; m += editSlotDuration) slots.push({ h, m });
+                    return slots;
+                  }).map(({ h, m }) => {
                     const on = editSaturdayHours.has(h);
+                    const label = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
                     return (
                       <button
-                        key={h}
+                        key={`${h}-${m}`}
                         type="button"
                         disabled={busy === editingRow.id}
                         onClick={() => {
@@ -1634,7 +1681,7 @@ export function ProfessionalsManagerModal({
                             : "border-dashed border-[#d4cfc4] bg-white text-[#9a9288] line-through"
                         }`}
                       >
-                        {formatAgendaHourLabel(h)}
+                        {label}
                       </button>
                     );
                   })}
@@ -1921,7 +1968,28 @@ export function ProfessionalsManagerModal({
                         }`}
                       >
                         <p className="text-xs font-semibold text-[#5c5348]">Horários de atendimento</p>
-                        <div className="mt-2 flex gap-2">
+                        {/* Duração de slot */}
+                        <div className="mt-2">
+                          <p className="mb-1 text-[11px] text-[#8a8278]">Duração de cada atendimento</p>
+                          <div className="flex gap-1.5">
+                            {([15, 30, 60] as const).map((d) => (
+                              <button
+                                key={d}
+                                type="button"
+                                disabled={busy === r.id}
+                                onClick={() => setEditSlotDuration(d)}
+                                className={`rounded-lg border px-2.5 py-1 text-xs font-semibold tabular-nums transition-colors disabled:opacity-50 ${
+                                  editSlotDuration === d
+                                    ? "border-teal-700/70 bg-teal-950/90 text-teal-100"
+                                    : "border-[#d4cfc4] bg-white text-[#6b635a] hover:bg-[#f0ebe3]"
+                                }`}
+                              >
+                                {d} min
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="mt-2.5 flex gap-2">
                           <button
                             type="button"
                             disabled={busy === r.id}
@@ -1954,11 +2022,14 @@ export function ProfessionalsManagerModal({
                         </div>
                         {editAgendaCustom && (
                           <div className="mt-2 grid gap-1 [grid-template-columns:repeat(auto-fit,minmax(4.5rem,1fr))]">
-                            {FULL_CLINIC_AGENDA_HOURS.map((h) => {
+                            {FULL_CLINIC_AGENDA_HOURS.flatMap((h) =>
+                              (() => { const s: {h:number;m:number}[] = []; for (let m = 0; m < 60; m += editSlotDuration) s.push({ h, m }); return s; })()
+                            ).map(({ h, m }) => {
                               const on = editAgendaHours.has(h);
+                              const label = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
                               return (
                                 <button
-                                  key={h}
+                                  key={`${h}-${m}`}
                                   type="button"
                                   disabled={busy === r.id}
                                   onClick={() => {
@@ -1978,7 +2049,7 @@ export function ProfessionalsManagerModal({
                                       : "border-dashed border-[#d4cfc4] bg-white text-[#9a9288] line-through"
                                   }`}
                                 >
-                                  {formatAgendaHourLabel(h)}
+                                  {label}
                                 </button>
                               );
                             })}
@@ -2034,11 +2105,16 @@ export function ProfessionalsManagerModal({
                                   {(clinicSaturdayHours.length > 0
                                     ? clinicSaturdayHours
                                     : [...FULL_CLINIC_AGENDA_HOURS]
-                                  ).map((h) => {
+                                  ).flatMap((h) => {
+                                    const slots: {h:number;m:number}[] = [];
+                                    for (let m = 0; m < 60; m += editSlotDuration) slots.push({ h, m });
+                                    return slots;
+                                  }).map(({ h, m }) => {
                                     const on = editSaturdayHours.has(h);
+                                    const label = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
                                     return (
                                       <button
-                                        key={h}
+                                        key={`${h}-${m}`}
                                         type="button"
                                         disabled={busy === r.id}
                                         onClick={() => {
@@ -2058,7 +2134,7 @@ export function ProfessionalsManagerModal({
                                             : "border-dashed border-[#d4cfc4] bg-white text-[#9a9288] line-through"
                                         }`}
                                       >
-                                        {formatAgendaHourLabel(h)}
+                                        {label}
                                       </button>
                                     );
                                   })}
@@ -2388,6 +2464,28 @@ export function ProfessionalsManagerModal({
                 <ProceduresEmptyClinicHint compact className="mt-1.5" />
               )}
             </div>
+            {/* Duração de slot — form modal novo */}
+            <div className="rounded-lg border border-[#e6e1d8] bg-[#faf8f4] p-3">
+              <p className="text-[11px] font-semibold text-[#5c5348]">Duração de cada atendimento</p>
+              <p className="mt-0.5 text-[10px] text-[#8a8278]">Intervalo da grade (ex.: 30 min → 8:00, 8:30…)</p>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {([15, 30, 60] as const).map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    disabled={busy === "add"}
+                    onClick={() => setNewSlotDuration(d)}
+                    className={`rounded border px-2 py-1 text-[10px] font-semibold tabular-nums disabled:opacity-50 ${
+                      newSlotDuration === d
+                        ? "border-teal-700/70 bg-teal-950/90 text-teal-100"
+                        : "border-[#d4cfc4] bg-white text-[#6b635a]"
+                    }`}
+                  >
+                    {d} min
+                  </button>
+                ))}
+              </div>
+            </div>
             {clinicSabadoOpen ? (
               <div className="space-y-2 rounded-lg border border-[#e6e1d8] bg-[#faf8f4] px-3 py-2">
                 <label className="flex cursor-pointer items-start gap-2">
@@ -2427,11 +2525,16 @@ export function ProfessionalsManagerModal({
                       {(clinicSaturdayHours.length > 0
                         ? clinicSaturdayHours
                         : [...FULL_CLINIC_AGENDA_HOURS]
-                      ).map((h) => {
+                      ).flatMap((h) => {
+                        const slots: {h:number;m:number}[] = [];
+                        for (let m = 0; m < 60; m += newSlotDuration) slots.push({ h, m });
+                        return slots;
+                      }).map(({ h, m }) => {
                         const on = newSaturdayHours.has(h);
+                        const label = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
                         return (
                           <button
-                            key={h}
+                            key={`${h}-${m}`}
                             type="button"
                             disabled={busy === "add"}
                             onClick={() => {
@@ -2451,7 +2554,7 @@ export function ProfessionalsManagerModal({
                                 : "border-dashed border-[#d4cfc4] bg-[#faf8f4] text-[#9a9288] line-through"
                             }`}
                           >
-                            {formatAgendaHourLabel(h)}
+                            {label}
                           </button>
                         );
                       })}
@@ -2607,6 +2710,27 @@ export function ProfessionalsManagerModal({
                               <p className="text-[11px] font-semibold text-[#5c5348]">
                                 Horários de atendimento (dias úteis)
                               </p>
+                              {/* Duração de slot */}
+                              <div className="mt-1.5">
+                                <p className="mb-1 text-[10px] text-[#8a8278]">Duração de cada atendimento</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {([15, 30, 60] as const).map((d) => (
+                                    <button
+                                      key={d}
+                                      type="button"
+                                      disabled={busy === r.id}
+                                      onClick={() => setEditSlotDuration(d)}
+                                      className={`rounded border px-2 py-1 text-[10px] font-semibold tabular-nums disabled:opacity-50 ${
+                                        editSlotDuration === d
+                                          ? "border-teal-700/70 bg-teal-950/90 text-teal-100"
+                                          : "border-[#d4cfc4] bg-white text-[#6b635a]"
+                                      }`}
+                                    >
+                                      {d} min
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
                               <div className="mt-1.5 flex flex-wrap gap-1">
                                 <button
                                   type="button"
@@ -2642,11 +2766,14 @@ export function ProfessionalsManagerModal({
                               </div>
                               {editAgendaCustom ? (
                                 <div className="mt-1.5 flex flex-wrap gap-1">
-                                  {FULL_CLINIC_AGENDA_HOURS.map((h) => {
+                                  {FULL_CLINIC_AGENDA_HOURS.flatMap((h) =>
+                                    (() => { const s: {h:number;m:number}[] = []; for (let m = 0; m < 60; m += editSlotDuration) s.push({ h, m }); return s; })()
+                                  ).map(({ h, m }) => {
                                     const on = editAgendaHours.has(h);
+                                    const label = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
                                     return (
                                       <button
-                                        key={h}
+                                        key={`${h}-${m}`}
                                         type="button"
                                         disabled={busy === r.id}
                                         onClick={() => {
@@ -2666,7 +2793,7 @@ export function ProfessionalsManagerModal({
                                             : "border-dashed border-[#d4cfc4] bg-white text-[#9a9288] line-through"
                                         }`}
                                       >
-                                        {formatAgendaHourLabel(h)}
+                                        {label}
                                       </button>
                                     );
                                   })}
@@ -2719,11 +2846,16 @@ export function ProfessionalsManagerModal({
                                     {(clinicSaturdayHours.length > 0
                                       ? clinicSaturdayHours
                                       : [...FULL_CLINIC_AGENDA_HOURS]
-                                    ).map((h) => {
+                                    ).flatMap((h) => {
+                                      const slots: {h:number;m:number}[] = [];
+                                      for (let m = 0; m < 60; m += editSlotDuration) slots.push({ h, m });
+                                      return slots;
+                                    }).map(({ h, m }) => {
                                       const on = editSaturdayHours.has(h);
+                                      const label = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
                                       return (
                                         <button
-                                          key={h}
+                                          key={`${h}-${m}`}
                                           type="button"
                                           disabled={busy === r.id}
                                           onClick={() => {
@@ -2743,7 +2875,7 @@ export function ProfessionalsManagerModal({
                                               : "border-dashed border-[#d4cfc4] bg-[#faf8f4] text-[#9a9288] line-through"
                                           }`}
                                         >
-                                          {formatAgendaHourLabel(h)}
+                                          {label}
                                         </button>
                                       );
                                     })}

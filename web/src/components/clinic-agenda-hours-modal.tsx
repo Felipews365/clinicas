@@ -19,6 +19,7 @@ export type ClinicAgendaHoursSaved = {
   agenda_visible_hours: number[];
   sabado_aberto: boolean;
   sabado_agenda_hours: number[] | null;
+  slot_duration_minutes: 15 | 30 | 60;
 };
 
 type Props = {
@@ -52,6 +53,7 @@ export function ClinicAgendaHoursModal({
   const [selectedSaturday, setSelectedSaturday] = useState<Set<number>>(
     () => new Set(COMMERCIAL_AGENDA_HOURS)
   );
+  const [slotDuration, setSlotDuration] = useState<15 | 30 | 60>(60);
   const [professionals, setProfessionals] = useState<Prof[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -77,7 +79,7 @@ export function ClinicAgendaHoursModal({
     const [cRes, pRes] = await Promise.all([
       supabase
         .from("clinics")
-        .select("agenda_visible_hours, sabado_aberto, sabado_agenda_hours")
+        .select("agenda_visible_hours, sabado_aberto, sabado_agenda_hours, slot_duration_minutes")
         .eq("id", clinicId)
         .maybeSingle(),
       supabase
@@ -104,6 +106,7 @@ export function ClinicAgendaHoursModal({
       agenda_visible_hours?: unknown;
       sabado_aberto?: unknown;
       sabado_agenda_hours?: unknown;
+      slot_duration_minutes?: unknown;
     } | null;
     const hrs = normalizeAgendaVisibleHours(row?.agenda_visible_hours);
     setSelected(new Set(hrs));
@@ -120,6 +123,8 @@ export function ClinicAgendaHoursModal({
       setSabadoHorarioProprio(false);
       setSelectedSaturday(new Set(hrs.length ? hrs : COMMERCIAL_AGENDA_HOURS));
     }
+    const dur = row?.slot_duration_minutes;
+    setSlotDuration(dur === 15 || dur === 30 ? dur : 60);
     setProfessionals((pRes.data ?? []) as Prof[]);
     if (pRes.error) {
       setProfessionals([]);
@@ -200,6 +205,7 @@ export function ClinicAgendaHoursModal({
         agenda_visible_hours: hours,
         sabado_aberto: sabadoAberto,
         sabado_agenda_hours: sabadoPayload,
+        slot_duration_minutes: slotDuration,
       })
       .eq("id", clinicId);
     setSaving(false);
@@ -217,6 +223,7 @@ export function ClinicAgendaHoursModal({
       agenda_visible_hours: hours,
       sabado_aberto: sabadoAberto,
       sabado_agenda_hours: sabadoPayload,
+      slot_duration_minutes: slotDuration,
     });
     setSaveSuccess(true);
     clearSuccessToastTimer();
@@ -250,50 +257,91 @@ export function ClinicAgendaHoursModal({
     </div>
   );
 
-  const hourGrid = (
-    <div
-      className="grid gap-1.5 [grid-template-columns:repeat(auto-fit,minmax(5.5rem,1fr))]"
-      role="group"
-      aria-label="Blocos de hora da clínica (dias úteis)"
-    >
-      {FULL_CLINIC_AGENDA_HOURS.map((h) => {
-        const on = selected.has(h);
-        return (
-          <button
-            key={h}
-            type="button"
-            onClick={() => toggleHour(h)}
-            aria-pressed={on}
-            className={on ? hourBtnOn : hourBtnOff}
-          >
-            {formatAgendaHourLabel(h)}
-          </button>
-        );
-      })}
-    </div>
+  function buildSlotButtons(
+    hours: readonly number[],
+    selSet: Set<number>,
+    onToggle: (h: number) => void,
+    ariaLabel: string
+  ) {
+    const slots: { h: number; m: number }[] = hours.flatMap((h) => {
+      const entries: { h: number; m: number }[] = [];
+      for (let m = 0; m < 60; m += slotDuration) entries.push({ h, m });
+      return entries;
+    });
+    return (
+      <div
+        className="grid gap-1.5 [grid-template-columns:repeat(auto-fit,minmax(5.5rem,1fr))]"
+        role="group"
+        aria-label={ariaLabel}
+      >
+        {slots.map(({ h, m }) => {
+          const on = selSet.has(h);
+          const label = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+          return (
+            <button
+              key={`${h}-${m}`}
+              type="button"
+              onClick={() => onToggle(h)}
+              aria-pressed={on}
+              className={on ? hourBtnOn : hourBtnOff}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const hourGrid = buildSlotButtons(
+    FULL_CLINIC_AGENDA_HOURS,
+    selected,
+    toggleHour,
+    "Blocos de hora da clínica (dias úteis)"
   );
 
-  const saturdayHourGrid = (
-    <div
-      className="grid gap-1.5 [grid-template-columns:repeat(auto-fit,minmax(5.5rem,1fr))]"
-      role="group"
-      aria-label="Blocos de hora aos sábados"
-    >
-      {FULL_CLINIC_AGENDA_HOURS.map((h) => {
-        const on = selectedSaturday.has(h);
-        return (
+  const saturdayHourGrid = buildSlotButtons(
+    FULL_CLINIC_AGENDA_HOURS,
+    selectedSaturday,
+    toggleSaturdayHour,
+    "Blocos de hora aos sábados"
+  );
+
+  const SLOT_DURATIONS: { value: 15 | 30 | 60; label: string }[] = [
+    { value: 15, label: "15 min" },
+    { value: 30, label: "30 min" },
+    { value: 60, label: "60 min" },
+  ];
+
+  const slotDurationBlock = (
+    <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
+      <h2 className="text-sm font-semibold text-[var(--text)]">Duração padrão dos slots</h2>
+      <p className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">
+        Intervalo entre horários na grade de agendamento. Profissionais com duração própria configurada ignoram este valor.
+      </p>
+      <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Duração padrão dos slots">
+        {SLOT_DURATIONS.map(({ value, label }) => (
           <button
-            key={h}
+            key={value}
             type="button"
-            onClick={() => toggleSaturdayHour(h)}
-            aria-pressed={on}
-            className={on ? hourBtnOn : hourBtnOff}
+            onClick={() => setSlotDuration(value)}
+            aria-pressed={slotDuration === value}
+            className={`rounded-xl border px-4 py-2 text-sm font-semibold tabular-nums transition-colors ${
+              slotDuration === value
+                ? "border-teal-700/70 bg-teal-950/90 text-teal-100 shadow-sm"
+                : "border-[var(--border)] bg-[var(--surface-soft)] text-[var(--text-muted)] hover:bg-[var(--surface)]"
+            }`}
           >
-            {formatAgendaHourLabel(h)}
+            {label}
           </button>
-        );
-      })}
-    </div>
+        ))}
+      </div>
+      <p className="mt-3 text-xs text-[var(--text-muted)]">
+        {slotDuration === 15 && "Grade: 08:00, 08:15, 08:30, 08:45, 09:00…"}
+        {slotDuration === 30 && "Grade: 08:00, 08:30, 09:00, 09:30…"}
+        {slotDuration === 60 && "Grade: 08:00, 09:00, 10:00, 11:00…"}
+      </p>
+    </section>
   );
 
   const weekendBlock = (
@@ -527,6 +575,8 @@ export function ClinicAgendaHoursModal({
               {legend}
             </section>
 
+            <div className="mb-6">{slotDurationBlock}</div>
+
             <div className="mb-6">{weekendBlock}</div>
 
             {doctorsBlock}
@@ -585,6 +635,7 @@ export function ClinicAgendaHoursModal({
             </p>
             {hourGrid}
             {legend}
+            <div className="mt-5">{slotDurationBlock}</div>
             <div className="mt-5 max-h-[40vh] overflow-y-auto pr-1">{weekendBlock}</div>
             <div className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-4 py-3">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
