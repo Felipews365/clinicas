@@ -345,14 +345,16 @@ export function ProfessionalsManagerModal({
   const listSettledRef = useRef(false);
   const isPanel = presentation === "panel";
 
-  type ClinicProcRow = { id: string; name: string; sort_order: number };
+  type ClinicProcRow = { id: string; name: string; sort_order: number; duration_minutes?: number | null };
   const [clinicProcedures, setClinicProcedures] = useState<ClinicProcRow[]>([]);
   const [editProcedureIds, setEditProcedureIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [editProcedureDurations, setEditProcedureDurations] = useState<Map<string, number>>(() => new Map());
   const [newProcedureIds, setNewProcedureIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [newProcedureDurations, setNewProcedureDurations] = useState<Map<string, number>>(() => new Map());
 
   const revokePreview = useCallback((url: string | null) => {
     if (url) URL.revokeObjectURL(url);
@@ -418,7 +420,7 @@ export function ProfessionalsManagerModal({
     let cancelled = false;
     void supabase
       .from("clinic_procedures")
-      .select("id, name, sort_order")
+      .select("id, name, sort_order, duration_minutes")
       .eq("clinic_id", clinicId)
       .eq("is_active", true)
       .order("sort_order", { ascending: true })
@@ -444,21 +446,25 @@ export function ProfessionalsManagerModal({
     let cancelled = false;
     void supabase
       .from("professional_procedures")
-      .select("clinic_procedure_id")
+      .select("clinic_procedure_id, duration_minutes")
       .eq("professional_id", editingId)
       .then(({ data, error: le }) => {
         if (cancelled) return;
         if (le) {
           if (isMissingProfessionalProceduresTableError(le.message)) {
             setEditProcedureIds(new Set());
+            setEditProcedureDurations(new Map());
           }
           return;
         }
         setEditProcedureIds(
-          new Set(
-            (data ?? []).map((x) => x.clinic_procedure_id as string),
-          ),
+          new Set((data ?? []).map((x) => x.clinic_procedure_id as string)),
         );
+        const durs = new Map<string, number>();
+        for (const x of (data ?? [])) {
+          if (x.duration_minutes) durs.set(x.clinic_procedure_id as string, x.duration_minutes as number);
+        }
+        setEditProcedureDurations(durs);
       });
     return () => {
       cancelled = true;
@@ -625,6 +631,7 @@ export function ProfessionalsManagerModal({
           newProcIds.map((clinic_procedure_id) => ({
             professional_id: inserted.id,
             clinic_procedure_id,
+            ...(newProcedureDurations.has(clinic_procedure_id) ? { duration_minutes: newProcedureDurations.get(clinic_procedure_id) } : {}),
           })),
         );
       if (insLinks) {
@@ -1015,6 +1022,7 @@ export function ProfessionalsManagerModal({
           procIds.map((clinic_procedure_id) => ({
             professional_id: r.id,
             clinic_procedure_id,
+            ...(editProcedureDurations.has(clinic_procedure_id) ? { duration_minutes: editProcedureDurations.get(clinic_procedure_id) } : {}),
           })),
         );
       if (insLinks) {
@@ -1235,7 +1243,29 @@ export function ProfessionalsManagerModal({
                     disabled={busy === "add"}
                     className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
                   />
-                  <span className="text-xs text-[#2c2825]">{cp.name}</span>
+                  <span className="flex-1 text-xs text-[#2c2825]">{cp.name}</span>
+                  {newProcedureIds.has(cp.id) && (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={5} max={480} step={5}
+                        value={newProcedureDurations.get(cp.id) ?? ""}
+                        placeholder={String(cp.duration_minutes ?? 60)}
+                        onClick={(e) => e.preventDefault()}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value);
+                          setNewProcedureDurations((prev) => {
+                            const next = new Map(prev);
+                            if (!v || v < 5) next.delete(cp.id);
+                            else next.set(cp.id, v);
+                            return next;
+                          });
+                        }}
+                        className="w-14 rounded border border-[#d4cfc4] bg-white px-1.5 py-0.5 text-right text-xs text-[#2c2825] focus:outline-none focus:ring-1 focus:ring-[#b5a898]"
+                      />
+                      <span className="text-[10px] text-[#8a8278]">min</span>
+                    </div>
+                  )}
                 </label>
               ))}
             </div>
@@ -1455,7 +1485,29 @@ export function ProfessionalsManagerModal({
                     disabled={busy === editingRow.id}
                     className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
                   />
-                  <span className="text-xs text-[#2c2825]">{cp.name}</span>
+                  <span className="flex-1 text-xs text-[#2c2825]">{cp.name}</span>
+                  {editProcedureIds.has(cp.id) && (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={5} max={480} step={5}
+                        value={editProcedureDurations.get(cp.id) ?? ""}
+                        placeholder={String(cp.duration_minutes ?? 60)}
+                        onClick={(e) => e.preventDefault()}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value);
+                          setEditProcedureDurations((prev) => {
+                            const next = new Map(prev);
+                            if (!v || v < 5) next.delete(cp.id);
+                            else next.set(cp.id, v);
+                            return next;
+                          });
+                        }}
+                        className="w-14 rounded border border-[#d4cfc4] bg-white px-1.5 py-0.5 text-right text-xs text-[#2c2825] focus:outline-none focus:ring-1 focus:ring-[#b5a898]"
+                      />
+                      <span className="text-[10px] text-[#8a8278]">min</span>
+                    </div>
+                  )}
                 </label>
               ))}
             </div>
@@ -1754,7 +1806,29 @@ export function ProfessionalsManagerModal({
                                     disabled={busy === r.id}
                                     className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#d4cfc4]"
                                   />
-                                  <span className="text-xs text-[#2c2825]">{cp.name}</span>
+                                  <span className="flex-1 text-xs text-[#2c2825]">{cp.name}</span>
+                                  {editProcedureIds.has(cp.id) && (
+                                    <div className="flex items-center gap-1">
+                                      <input
+                                        type="number"
+                                        min={5} max={480} step={5}
+                                        value={editProcedureDurations.get(cp.id) ?? ""}
+                                        placeholder={String(cp.duration_minutes ?? 60)}
+                                        onClick={(e) => e.preventDefault()}
+                                        onChange={(e) => {
+                                          const v = parseInt(e.target.value);
+                                          setEditProcedureDurations((prev) => {
+                                            const next = new Map(prev);
+                                            if (!v || v < 5) next.delete(cp.id);
+                                            else next.set(cp.id, v);
+                                            return next;
+                                          });
+                                        }}
+                                        className="w-14 rounded border border-[#d4cfc4] bg-white px-1.5 py-0.5 text-right text-xs text-[#2c2825] focus:outline-none focus:ring-1 focus:ring-[#b5a898]"
+                                      />
+                                      <span className="text-[10px] text-[#8a8278]">min</span>
+                                    </div>
+                                  )}
                                 </label>
                               ))}
                             </div>
