@@ -234,7 +234,7 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
     const phone = clientPhone(r.telefone);
     if (phone) {
       await supabase.from("whatsapp_sessions")
-        .update({ staff_handling: false, needs_human: false, pause_until: null })
+        .update({ staff_handling: false, needs_human: false, pause_until: null, pause_mode: null })
         .eq("clinic_id", clinicId)
         .eq("phone", phone);
     }
@@ -265,6 +265,7 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
           phone,
           needs_human: false,
           staff_handling: true,
+          pause_mode: pauseMinutes == null ? "manual" : "timed",
           pause_until: pauseUntil,
           updated_at: now.toISOString(),
         },
