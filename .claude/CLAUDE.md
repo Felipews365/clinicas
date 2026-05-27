@@ -134,6 +134,11 @@ web/
 5. `Get Cliente` busca cliente por `clinic_id` + `telefone`
 6. `Verificar se cliente está cadastrado`: se não existe → `Create Cliente` com `nome = ''`
 7. `Bot inativo` verifica se atendimento humano assumiu
+7.5. **Processamento de mídia** — `Verifica se é Image, Texto ou Áudio1` (Switch) roteia por `msgType`:
+   - `audioMessage` → `? realmente áudio?` → `HTTP Request1` (transcrição) → `Transcreve1` → `RegistraMsgFila`
+   - `imageMessage` → `? realmente imagem?` → `Pega o base64 da imagem1` → **`IF base64 válido`** → `Baixa a imagem1` → `Descreve o que está na imagem1` (GPT-4o) → `RegistraMsgFila`
+     - **⚠️ `IF base64 válido` (fix 2026-05-27):** Evolution API às vezes não inclui base64 na payload de imagem (imagens grandes ou falha de download) — `base64` chega `null`. Sem este guard, `Baixa a imagem1` (ConvertToFile) crash com "first argument must be string or Buffer". FALSE branch → `Edit Fields3` (trata como texto). Patch: `n8n/patch-imagem-base64-guard.mjs`
+   - texto → `No Op - IF mídia é texto` → `Edit Fields3` → `RegistraMsgFila`
 8. Fila Redis — fluxo linear: `RegistraMsgFila` → `BuscaMensagens` → `Aguarda 13 segundos` → `VerificaMensagens` (GET) → `OrganizaMensagem` → `ResetaFila`. `keyType: list` nos GETs. Push: `JSON.stringify(Object.assign({}, JSON.parse(JSON.stringify($json)), { wppKeyId }))` (não usar `...$json` no expression — n8n 2.x / Redis `lPush` exige string). `OrganizaMensagem` deduplica.
 9. `Monta Contexto` (Code node) monta payload para os agentes:
    - lê dados da clínica via `$('Buscar Config Cl?nica').first().json` (não via `$input`)
