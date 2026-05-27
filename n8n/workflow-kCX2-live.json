@@ -4495,6 +4495,39 @@
       "parameters": {
         "jsCode": "// Merge: combine context + prof data (from Relay, 2 hops back) with HTTP Svcs response.\nconst httpSvcsData = $input.first().json;\nconst relay = $('Enrich: Context Relay').first().json;\nconst { _httpProf, ...ctx } = relay;\nreturn [{ json: { ...ctx, _httpProf, _httpSvcs: httpSvcsData } }];"
       }
+    },
+    {
+      "id": "if-base64-valido",
+      "name": "IF base64 válido",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -808,
+        -704
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "base64-not-null-check",
+              "leftValue": "={{ $json.base64 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
     }
   ],
   "connections": {
@@ -4873,7 +4906,7 @@
       "main": [
         [
           {
-            "node": "Baixa a imagem1",
+            "node": "IF base64 válido",
             "type": "main",
             "index": 0
           }
@@ -5893,6 +5926,24 @@
         [
           {
             "node": "Enrich Agendador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF base64 válido": {
+      "main": [
+        [
+          {
+            "node": "Baixa a imagem1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields3",
             "type": "main",
             "index": 0
           }
@@ -10566,6 +10617,39 @@
         "parameters": {
           "jsCode": "// Merge: combine context + prof data (from Relay, 2 hops back) with HTTP Svcs response.\nconst httpSvcsData = $input.first().json;\nconst relay = $('Enrich: Context Relay').first().json;\nconst { _httpProf, ...ctx } = relay;\nreturn [{ json: { ...ctx, _httpProf, _httpSvcs: httpSvcsData } }];"
         }
+      },
+      {
+        "id": "if-base64-valido",
+        "name": "IF base64 válido",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          -808,
+          -704
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "base64-not-null-check",
+                "leftValue": "={{ $json.base64 }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "notEmpty",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        }
       }
     ],
     "connections": {
@@ -10944,7 +11028,7 @@
         "main": [
           [
             {
-              "node": "Baixa a imagem1",
+              "node": "IF base64 válido",
               "type": "main",
               "index": 0
             }
@@ -11953,6 +12037,24 @@
           [
             {
               "node": "Enrich Agendador",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF base64 válido": {
+        "main": [
+          [
+            {
+              "node": "Baixa a imagem1",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Edit Fields3",
               "type": "main",
               "index": 0
             }
