@@ -13,13 +13,39 @@ type CsClienteRow = {
   nome_confirmado: boolean | null;
 };
 
-type SessionInfo = { staff_handling: boolean | null; updated_at: string | null };
+type SessionInfo = {
+  staff_handling: boolean | null;
+  updated_at: string | null;
+  pause_until: string | null;
+};
 type SessionsMap = Record<string, SessionInfo>;
 
 type Tab = "conversas" | "todos";
 type Props = { supabase: SupabaseClient; clinicId: string };
 
-const REATIVACAO_MS = 10 * 60 * 1000; // 10 min
+const REATIVACAO_MS = 10 * 60 * 1000; // fallback legado (sem pause_until)
+const PAUSE_MANUAL_UNTIL = "9999-12-31T23:59:59.999Z";
+
+const PAUSE_DURATION_OPTIONS = [
+  { minutes: 10, label: "10 min" },
+  { minutes: 30, label: "30 min" },
+  { minutes: 60, label: "1 hora" },
+  { minutes: 120, label: "2 horas" },
+  { minutes: 240, label: "4 horas" },
+  { minutes: 480, label: "8 horas" },
+  { minutes: 1440, label: "24 horas" },
+  { minutes: null, label: "Manual" },
+] as const;
+
+function isManualPauseUntil(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  return new Date(iso).getTime() >= new Date("2100-01-01").getTime();
+}
+
+function pauseUntilMs(iso: string | null | undefined): number | null {
+  if (!iso || isManualPauseUntil(iso)) return null;
+  return new Date(iso).getTime();
+}
 
 function normPhone(p: string): string {
   const d = p.replace(/\D/g, "");
@@ -30,24 +56,46 @@ function clientPhone(telefone: string): string {
   return telefone.split("@")[0].replace(/\D/g, "");
 }
 
-// Retorna true se o bot está efetivamente ativo — considera a reativação automática por inatividade de 10 min
+// Retorna true se o bot está efetivamente ativo — considera reativação automática
 function botEffective(r: CsClienteRow, sessions: SessionsMap): boolean {
   if (r.bot_ativo !== false) return true;
   const sess = sessions[clientPhone(r.telefone)];
   if (!sess?.staff_handling) return false;
-  // staff_handling=true mas updated_at passou de 10 min → bot seria reativado na próxima mensagem
+
+  const untilMs = pauseUntilMs(sess.pause_until);
+  if (untilMs != null) return Date.now() >= untilMs;
+
+  if (isManualPauseUntil(sess.pause_until)) return false;
+
   const updatedMs = sess.updated_at ? new Date(sess.updated_at).getTime() : 0;
   return Date.now() - updatedMs >= REATIVACAO_MS;
 }
 
-// Retorna "reativa em X min" se o bot está pausado mas vai reativar automaticamente
+// Retorna texto de countdown se o bot está pausado mas vai reativar automaticamente
 function reativaEm(r: CsClienteRow, sessions: SessionsMap): string | null {
   if (r.bot_ativo !== false) return null;
   const sess = sessions[clientPhone(r.telefone)];
-  if (!sess?.staff_handling || !sess.updated_at) return null;
+  if (!sess?.staff_handling) return null;
+
+  if (isManualPauseUntil(sess.pause_until)) return "reativação manual";
+
+  const untilMs = pauseUntilMs(sess.pause_until);
+  if (untilMs != null) {
+    const leftMs = untilMs - Date.now();
+    if (leftMs <= 0) return null;
+    const leftMin = Math.ceil(leftMs / 60_000);
+    if (leftMin >= 60) {
+      const h = Math.floor(leftMin / 60);
+      const m = leftMin % 60;
+      return m > 0 ? `reativa em ${h}h ${m}min` : `reativa em ${h}h`;
+    }
+    return `reativa em ${leftMin} min`;
+  }
+
+  if (!sess.updated_at) return null;
   const elapsed = Date.now() - new Date(sess.updated_at).getTime();
   const leftMs = REATIVACAO_MS - elapsed;
-  if (leftMs <= 0) return null; // já passou — botEffective vai mostrar como ativo
+  if (leftMs <= 0) return null;
   const leftMin = Math.ceil(leftMs / 60_000);
   return `reativa em ${leftMin} min`;
 }
@@ -112,6 +160,8 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
   const [savingNomeId, setSavingNomeId] = useState<string | null>(null);
   const [nomeEditError, setNomeEditError] = useState<string | null>(null);
   const [togglingBotId, setTogglingBotId] = useState<string | null>(null);
+  const [pauseConfirm, setPauseConfirm] = useState<CsClienteRow | null>(null);
+  const [pauseMinutes, setPauseMinutes] = useState<number | null>(10);
 
   const loadRows = useCallback(async () => {
     setListError(null);
@@ -131,12 +181,16 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
     if (phones.length > 0) {
       const { data: sessData } = await supabase
         .from("whatsapp_sessions")
-        .select("phone, staff_handling, updated_at")
+        .select("phone, staff_handling, updated_at, pause_until")
         .eq("clinic_id", clinicId)
         .in("phone", phones);
       const map: SessionsMap = {};
       for (const s of sessData ?? []) {
-        map[s.phone as string] = { staff_handling: s.staff_handling as boolean | null, updated_at: s.updated_at as string | null };
+        map[s.phone as string] = {
+          staff_handling: s.staff_handling as boolean | null,
+          updated_at: s.updated_at as string | null,
+          pause_until: (s.pause_until as string | null) ?? null,
+        };
       }
       setSessions(map);
     }
@@ -160,26 +214,62 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
     return () => { void supabase.removeChannel(ch); };
   }, [supabase, clinicId, loadRows]);
 
+  const openPauseModal = (r: CsClienteRow) => {
+    setPauseMinutes(10);
+    setPauseConfirm(r);
+  };
+
   const handleToggleBot = async (r: CsClienteRow, botOn: boolean) => {
+    if (botOn) {
+      openPauseModal(r);
+      return;
+    }
+    await runActivateBot(r);
+  };
+
+  const runActivateBot = async (r: CsClienteRow) => {
     setTogglingBotId(r.id);
-    const next = !botOn;
-    await supabase.from("cs_clientes").update({ bot_ativo: next }).eq("id", r.id).eq("clinic_id", clinicId);
+    await supabase.from("cs_clientes").update({ bot_ativo: true }).eq("id", r.id).eq("clinic_id", clinicId);
 
     const phone = clientPhone(r.telefone);
     if (phone) {
-      if (!next) {
-        // Pausar: marca staff_handling=true com timestamp agora (reinicia timer)
-        await supabase.from("whatsapp_sessions").upsert(
-          { clinic_id: clinicId, phone, needs_human: false, staff_handling: true, updated_at: new Date().toISOString() },
-          { onConflict: "clinic_id,phone" }
-        );
-      } else {
-        // Reativar manualmente: limpa flags
-        await supabase.from("whatsapp_sessions")
-          .update({ staff_handling: false, needs_human: false })
-          .eq("clinic_id", clinicId)
-          .eq("phone", phone);
-      }
+      await supabase.from("whatsapp_sessions")
+        .update({ staff_handling: false, needs_human: false, pause_until: null })
+        .eq("clinic_id", clinicId)
+        .eq("phone", phone);
+    }
+
+    setTogglingBotId(null);
+    void loadRows();
+  };
+
+  const confirmPauseBot = async () => {
+    if (!pauseConfirm) return;
+    const r = pauseConfirm;
+    setPauseConfirm(null);
+    setTogglingBotId(r.id);
+
+    const now = new Date();
+    const pauseUntil =
+      pauseMinutes == null
+        ? PAUSE_MANUAL_UNTIL
+        : new Date(now.getTime() + pauseMinutes * 60_000).toISOString();
+
+    await supabase.from("cs_clientes").update({ bot_ativo: false }).eq("id", r.id).eq("clinic_id", clinicId);
+
+    const phone = clientPhone(r.telefone);
+    if (phone) {
+      await supabase.from("whatsapp_sessions").upsert(
+        {
+          clinic_id: clinicId,
+          phone,
+          needs_human: false,
+          staff_handling: true,
+          pause_until: pauseUntil,
+          updated_at: now.toISOString(),
+        },
+        { onConflict: "clinic_id,phone" }
+      );
     }
 
     setTogglingBotId(null);
@@ -459,6 +549,55 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
           {deleteError && <p className="text-sm text-red-600 dark:text-red-400">{deleteError}</p>}
         </>
       )}
+
+      {pauseConfirm ? (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center p-4" role="presentation">
+          <button type="button" className="absolute inset-0 bg-black/55 backdrop-blur-[1px]" aria-label="Fechar" onClick={() => setPauseConfirm(null)} />
+          <div role="alertdialog" aria-modal="true" className="relative z-10 w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/15">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-500"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            </div>
+            <h2 className="font-display text-lg font-semibold text-[var(--text)]">Pausar agente</h2>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
+              O agente IA deixa de responder{" "}
+              <span className="font-medium text-[var(--text)]">{pauseConfirm.nome?.trim() || pauseConfirm.telefone}</span>.
+              Escolha por quanto tempo:
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {PAUSE_DURATION_OPTIONS.map((opt) => {
+                const selected = pauseMinutes === opt.minutes;
+                return (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    onClick={() => setPauseMinutes(opt.minutes)}
+                    className={`rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                      selected
+                        ? "border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                        : "border-[var(--border)] text-[var(--text)] hover:bg-[var(--surface-soft)]"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-3 text-xs text-[var(--text-muted)]">
+              {pauseMinutes == null
+                ? "O agente só volta quando reativar manualmente."
+                : `Reativa automaticamente após ${PAUSE_DURATION_OPTIONS.find((o) => o.minutes === pauseMinutes)?.label ?? `${pauseMinutes} min`}.`}
+            </p>
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={() => setPauseConfirm(null)} className="rounded-xl border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-soft)]">
+                Cancelar
+              </button>
+              <button type="button" onClick={() => void confirmPauseBot()} disabled={togglingBotId != null} className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-50">
+                {togglingBotId != null ? "A pausar…" : "Pausar agente"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {deleteConfirm ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" role="presentation">

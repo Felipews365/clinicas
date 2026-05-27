@@ -1,30 +1,72 @@
-// Patch: rewrite Enrich Agendador jsCode fixing 3 bugs:
-// 1. extractSupabaseArray() handles {"fn_name": [...]} Supabase RPC response format
-// 2. profs declared OUTSIDE try block (was block-scoped, inaccessible to mapaBlock)
-// 3. svcsM and parseProfissionaisRpc use extractSupabaseArray()
+// Patch: fix Enrich Agendador architecture — resolve timing paradox
+//
+// Problem: two runs of Enrich, neither has both context AND HTTP data:
+//   Run 1 (IF → direct → Enrich): fires immediately, ctx has mensagem, but HTTP nodes not done
+//   Run 2 (IF → HTTP Prof → HTTP Svcs → Enrich): HTTP data ready, but ctx has no mensagem
+//   Guard 'if (!ctx.mensagem) return []' was blocking Run 2 (the useful one)
+//
+// Fix: insert two Code nodes in the HTTP chain to relay context through:
+//   IF → HTTP Prof → [Enrich: Context Relay] → HTTP Svcs → [Enrich: Merge All] → Enrich
+//
+// Result: Enrich has ONE input (Enrich: Merge All), ONE execution, full data in $input.first().json.
+// No more direct IF → Enrich connection, no more double-execution, no guard needed.
 
 import { readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
 const WF_PATH = resolve('n8n/workflow-kCX2-live.json');
+const wf = JSON.parse(readFileSync(WF_PATH, 'utf8'));
 
-const NEW_JSCODE = `// Formata profissionais e serviços pré-buscados pelos HTTP nodes anteriores.
-// HTTP Fetch Profissionais → POST rpc/n8n_cs_profissionais_para_agente (jsonb array) ou texto.
+// --- Node definitions ---
 
-// Context comes via direct connection from IF mensagem vÃƒÂ¡lida ($input item with clinic_id)
-// HTTP responses don't have clinic_id, so this reliably identifies the context item.
-const ctx = $input.all().find(i => !!i.json.clinic_id)?.json || $input.first().json;
+const RELAY_ID = 'enrich-relay-context';
+const MERGE_ID = 'enrich-merge-all';
+const RELAY_NAME = 'Enrich: Context Relay';
+const MERGE_NAME = 'Enrich: Merge All';
+
+const RELAY_CODE = `// Relay: capture context from IF mensagem válida (2 hops back, accessible)
+// and attach it alongside HTTP Prof data so it survives the HTTP chain.
+const ifCtx = $('IF mensagem v\xc3\xa3\xc2\xa1lida').first().json;
+const httpProfData = $input.first().json;
+return [{ json: { ...ifCtx, _httpProf: httpProfData } }];`;
+
+const MERGE_CODE = `// Merge: combine context + prof data (from Relay, 2 hops back) with HTTP Svcs response.
+const httpSvcsData = $input.first().json;
+const relay = $('${RELAY_NAME}').first().json;
+const { _httpProf, ...ctx } = relay;
+return [{ json: { ...ctx, _httpProf, _httpSvcs: httpSvcsData } }];`;
+
+const RELAY_NODE = {
+  id: RELAY_ID,
+  name: RELAY_NAME,
+  type: 'n8n-nodes-base.code',
+  typeVersion: 2,
+  position: [1575, -128],
+  parameters: { jsCode: RELAY_CODE },
+};
+
+const MERGE_NODE = {
+  id: MERGE_ID,
+  name: MERGE_NAME,
+  type: 'n8n-nodes-base.code',
+  typeVersion: 2,
+  position: [1930, -128],
+  parameters: { jsCode: MERGE_CODE },
+};
+
+// New Enrich jsCode: reads everything from $input.first().json (no $() calls, no guard)
+const NEW_ENRICH_CODE = `// Formata profissionais e serviços pré-buscados pelos HTTP nodes.
+// $input.first().json contém: contexto completo (mensagem, clinic_id, ...) + _httpProf + _httpSvcs
+// — injetados pelo Enrich: Context Relay + Enrich: Merge All.
+
+const ctx = $input.first().json;
 
 let profBlock = '';
 let servicosBlock = '';
 
-// Extrai array de dados de resposta Supabase RPC.
-// Handles: {"fn_name": [...]}, {body: "[{fn_name:[...]}]"} (text format), direct arrays.
 function extractSupabaseArray(raw) {
   if (Array.isArray(raw)) {
-    // Direct data array (elements have id or nome)
     if (raw.length > 0 && raw[0] && typeof raw[0] === 'object' && (raw[0].id || raw[0].nome)) return raw;
-    // Wrapper array [{fn_name: [...data...]}] — extract from first element
     if (raw.length > 0 && raw[0] && typeof raw[0] === 'object') {
       for (const v of Object.values(raw[0])) {
         if (Array.isArray(v) && v.length > 0) return v;
@@ -71,8 +113,7 @@ function _normMsg(t) {
 
 let svcsM = [];
 try {
-  const rawSvcM = $('HTTP Fetch Servicos').first().json;
-  svcsM = extractSupabaseArray(rawSvcM);
+  svcsM = extractSupabaseArray(ctx._httpSvcs);
   if (!Array.isArray(svcsM)) svcsM = [];
 } catch (_) {
   svcsM = [];
@@ -132,11 +173,10 @@ if (svcsM.length && um.length >= 3) {
   }
 }
 
-// IMPORTANTE: profs declarado FORA do try para ser acessível no mapaBlock abaixo
 let profs = [];
 try {
-  const allP = $('HTTP Fetch Profissionais').all();
-  const rawProf = allP[0] ? allP[0].json : {};
+  const rawProf = ctx._httpProf || {};
+  const allP = rawProf && Object.keys(rawProf).length ? [{ json: rawProf }] : [];
   profs = parseProfissionaisRpc(rawProf, allP);
   if (Array.isArray(profs) && profs.length > 0) {
     let list = profs;
@@ -228,8 +268,6 @@ const catalogBridge =
       'Depois, em **PROFISSIONAIS DISPONÍVEIS**, use só quem realiza esse serviço (ver regra abaixo na lista de profissionais).\\n'
     : '';
 
-
-// Mapa procedimento → profissionais aptos (calculado a partir dos dados já carregados)
 let mapaBlock = '';
 try {
   if (svcsM.length > 0 && Array.isArray(profs) && profs.length > 0) {
@@ -256,7 +294,8 @@ try {
         linhasMapa.join('\\n') + '\\n';
     }
   }
-} catch (_mapaErr) { /* sem mapa – agent usa regras do SM */ }
+} catch (_mapaErr) { /* sem mapa */ }
+
 return [
   {
     json: {
@@ -270,22 +309,87 @@ return [
   },
 ];`;
 
-const wf = JSON.parse(readFileSync(WF_PATH, 'utf8'));
+// --- Apply patch to a nodes array ---
+function patchNodes(nodes, connections) {
+  const httpProfNode = nodes.find(n => n.name === 'HTTP Fetch Profissionais');
+  const httpSvcsNode = nodes.find(n => n.name === 'HTTP Fetch Servicos');
+  const enrichNode = nodes.find(n => n.id === 'enrich-agendador-prefetch');
+  const ifNode = nodes.find(n => n.name.includes('mensagem v'));
 
-let patchedNodes = 0;
-for (const arr of [wf.nodes, wf.activeVersion?.nodes].filter(Boolean)) {
-  const node = arr.find((n) => n.id === 'enrich-agendador-prefetch');
-  if (node) {
-    node.parameters.jsCode = NEW_JSCODE;
-    patchedNodes++;
+  if (!httpProfNode || !httpSvcsNode || !enrichNode || !ifNode) {
+    console.error('Required nodes not found!');
+    return false;
   }
+
+  // 1. Modify HTTP Fetch Servicos jsonBody to use $input instead of $('IF...')
+  httpSvcsNode.parameters.jsonBody =
+    '={{ JSON.stringify({ p_clinic_id: $input.first().json.clinic_id }) }}';
+  console.log('Updated HTTP Fetch Servicos jsonBody');
+
+  // 2. Replace existing Relay/Merge nodes if they exist, or add them
+  const existingRelayIdx = nodes.findIndex(n => n.id === RELAY_ID);
+  const existingMergeIdx = nodes.findIndex(n => n.id === MERGE_ID);
+
+  if (existingRelayIdx >= 0) nodes.splice(existingRelayIdx, 1);
+  if (existingMergeIdx >= 0) nodes.splice(existingMergeIdx, 1);
+
+  nodes.push({ ...RELAY_NODE });
+  nodes.push({ ...MERGE_NODE });
+  console.log('Added Relay and Merge nodes');
+
+  // 3. Update Enrich jsCode
+  enrichNode.parameters.jsCode = NEW_ENRICH_CODE;
+  console.log('Updated Enrich jsCode');
+
+  // 4. Rewire connections
+  // Remove: HTTP Prof → HTTP Svcs (replace with HTTP Prof → Relay)
+  if (connections['HTTP Fetch Profissionais']) {
+    connections['HTTP Fetch Profissionais'].main[0] = [
+      { node: RELAY_NAME, type: 'main', index: 0 }
+    ];
+    console.log('Rewired HTTP Fetch Prof → Relay');
+  }
+
+  // Relay → HTTP Svcs
+  connections[RELAY_NAME] = { main: [[{ node: 'HTTP Fetch Servicos', type: 'main', index: 0 }]] };
+  console.log('Added Relay → HTTP Svcs');
+
+  // Remove: HTTP Svcs → Enrich, replace with HTTP Svcs → Merge
+  if (connections['HTTP Fetch Servicos']) {
+    connections['HTTP Fetch Servicos'].main[0] = [
+      { node: MERGE_NAME, type: 'main', index: 0 }
+    ];
+    console.log('Rewired HTTP Svcs → Merge');
+  }
+
+  // Merge → Enrich
+  connections[MERGE_NAME] = { main: [[{ node: enrichNode.name, type: 'main', index: 0 }]] };
+  console.log('Added Merge → Enrich');
+
+  // Remove: IF → Enrich (direct) — keep IF → HTTP Prof
+  const ifConns = connections[ifNode.name];
+  if (ifConns && ifConns.main && ifConns.main[0]) {
+    ifConns.main[0] = ifConns.main[0].filter(c => c.node !== enrichNode.name);
+    console.log('Removed direct IF → Enrich connection');
+  }
+
+  return true;
 }
 
-if (patchedNodes === 0) {
-  console.error('ERROR: node enrich-agendador-prefetch not found!');
-  process.exit(1);
+// Apply to top-level nodes + connections
+let ok = patchNodes(wf.nodes, wf.connections);
+console.log('Top-level patch:', ok ? 'OK' : 'FAILED');
+
+// Apply to activeVersion
+if (wf.activeVersion && wf.activeVersion.nodes) {
+  const avConns = wf.activeVersion.connections || wf.connections;
+  if (!wf.activeVersion.connections) {
+    // activeVersion shares connections with top-level — already patched
+    console.log('activeVersion shares connections — skipping connection patch');
+  }
+  ok = patchNodes(wf.activeVersion.nodes, wf.activeVersion.connections || wf.connections);
+  console.log('activeVersion patch:', ok ? 'OK' : 'FAILED');
 }
 
 writeFileSync(WF_PATH, JSON.stringify(wf, null, 2), 'utf8');
-console.log(`Patched ${patchedNodes} occurrence(s) of enrich-agendador-prefetch`);
-console.log('New jsCode length:', NEW_JSCODE.length);
+console.log('\nSaved', WF_PATH);

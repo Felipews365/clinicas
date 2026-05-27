@@ -99,6 +99,12 @@ web/
 - **Agente vê agendamentos do painel:** `agd_cs_buscar_agendamentos` encontra o mirror em `cs_agendamentos` quando paciente pergunta "qual é a minha consulta?" via WhatsApp
 - O mirror só é criado se o profissional tiver `cs_profissional_id` e o paciente tiver entrada em `cs_clientes` (garantido pelo sync de patients)
 
+### Limpeza periódica de chat memory
+- **Workflow n8n `OwC7Y54kWZTB4Y1P`** ("Cleanup Chat Memory (90 dias)") roda diariamente às **3:30 BRT** chamando `rpc/n8n_cleanup_chat_histories(p_days: 90)`. Migration: `20260527164500_n8n_cleanup_chat_histories.sql`.
+- A RPC apaga apenas sessões cuja **última msg seja anterior a 90 dias** (preserva sessões activas inteiramente). Não afecta `cs_clientes`/`cs_agendamentos`/`cs_clinic_directory` — apenas memória conversacional do LLM. Identidade do cliente e agendamentos persistem.
+- Justificativa: chat memory antiga pode conter listas de profissionais já obsoletas (ex.: cliente que conversou há 6 meses tem nomes de profs que já saíram). MAPA ao vivo do Enrich sobrepõe, mas há risco residual de o LLM regurgitar memória antiga. Limpeza periódica reduz esse risco.
+- Para mudar retenção: editar `jsonBody` do node `Call cleanup RPC` (alterar `p_days`). Para mudar horário: `cronExpression` no Schedule Trigger.
+
 ### Multi-tenant (SaaS)
 - Cada clínica é um **tenant** isolado identificado por `clinic_id` (UUID)
 - A clínica é resolvida a partir do `instance_name` da Evolution API → tabela `clinics`
@@ -113,6 +119,7 @@ web/
   - `orientacoes`: orientações ao paciente — salvo como lista `- item\n- item`
   - `transferir`: quando transferir para humano — salvo como lista `- item\n- item`
   - ~~`outros`~~: campo removido do painel (dados legados no banco podem ainda existir mas não são exibidos)
+- **`clinics.slot_duration_minutes smallint NOT NULL DEFAULT 60`** (migration `20260526240000`): duração padrão dos slots da clínica inteira (15/30/60 min). Usado no painel `clinic-agenda-hours-modal.tsx` para gerar a grade visual de sub-slots (ex: 30 min → 08:00, 08:30, 09:00…). Cada profissional pode ter o seu próprio `slot_duration_minutes` que sobrepõe o da clínica.
 - `cs_clientes`, `cs_agendamentos`, slots, serviços, profissionais — tudo filtrado por `clinic_id`
 - Ao criar RPCs novas, sempre receber `p_clinic_id uuid` como primeiro parâmetro
 
@@ -180,7 +187,22 @@ Todos os agentes compartilham a mesma **Postgres Chat Memory** (session: `clinic
   - **Sem vagas hoje → amanhã automático (2026-05-26):** se `agd_cs_consultar_vagas` retornar `[]` para o dia pedido, o agente chama automaticamente para o dia seguinte com os mesmos parâmetros e mostra os slots sem perguntar ao cliente.
 - **`Enrich Agendador`** injeta no contexto o bloco **`## PROFISSIONAIS APTOS — DADOS AO VIVO [HH:MM:SS]`**: mapa calculado em runtime (serviços + `professional_procedures` do banco) com timestamp de geração. O timestamp instrui o LLM a usar esta lista como fonte única de verdade, sobrepondo qualquer lista de profissionais do histórico de conversa — resolve o problema SaaS de profissional novo não aparecer em sessões em andamento. Profissionais sem nenhum vínculo em `professional_procedures` **não aparecem** neste mapa nem nos resultados da RPC quando um procedimento é especificado — precisam ter os procedimentos configurados no painel.
 - Script de patch do SM: `n8n/patch-agendador-sm-vagas-curtas.mjs`, `n8n/patch-agendador-sm-filtro-procedimento.mjs`
-- O ramo agendamento passa por `IF mensagem válida` → prefetch HTTP → **`Enrich Agendador`**, que faz spread do contexto; os `cal_*` vindos de `Monta Contexto` chegam ao `agente_agendador` via `Code Extrair Rota` (`...montaCtx`).
+- O ramo agendamento passa por `IF mensagem vÃƒÂ¡lida` → prefetch HTTP → **`Enrich Agendador`**, que faz spread do contexto; os `cal_*` vindos de `Monta Contexto` chegam ao `agente_agendador` via `Code Extrair Rota` (`...montaCtx`).
+
+#### `Enrich Agendador` (id: `enrich-agendador-prefetch`) — arquitectura e armadilhas
+- **Cadeia única (sem double-execution, 2026-05-27):** `IF mensagem vÃƒÂ¡lida` → `HTTP Fetch Profissionais` → **`Enrich: Context Relay`** → `HTTP Fetch Servicos` → **`Enrich: Merge All`** → `Enrich Agendador`. Não há mais conexão directa IF → Enrich, eliminando o double-execution. Patch: `n8n/patch-enrich-relay-architecture.mjs`.
+- **`Enrich: Context Relay`** (id: `enrich-relay-context`) — Code node entre HTTP Prof e HTTP Svcs: usa `$('IF mensagem vÃƒÂ¡lida').first().json` (2 hops atrás ✓) e **`$input.all().map(i => i.json)`** (HTTP Prof response — **n8n FRAGMENTA o JSONB array** do Supabase em múltiplos itens, um por profissional), emite `{ ...ctx, _httpProf: arrayDeObjectos }`. `HTTP Fetch Servicos` usa `$input.first().json.clinic_id` (não mais `$('IF...')`) porque `clinic_id` já vem no item.
+- **⚠️ ARMADILHA n8n HTTP Request + Supabase RPC array**: quando o body é uma resposta JSONB array, **n8n fragmenta em N itens** (um por elemento do array). `$input.first().json` captura **apenas o primeiro elemento** — perda silenciosa. **Sempre usar `$input.all().map(i => i.json)`** para reconstruir o array original. Bug histórico (2026-05-27): o Relay capturava só o Camilo (primeiro prof alfabético), MAPA vazio, agendador respondia com lista errada e dizia "Vou consultar as vagas" sem listar profissionais (causa raiz original do "só Dr. Herick" e do erro `The model produced invalid content` do OpenAI).
+- **Enrich não chama `parseProfissionaisRpc` para `_httpProf`**: o array já vem no formato correcto (objectos com `id`, `nome`, `especialidade`, `procedimento_ids`). Usar directamente: `profs = httpProfArr.filter(p => p && p.id && p.nome)`. **Não passar pelo `extractSupabaseArray`** — essa função recursa em `Object.values` e devolve o array `procedimento_ids` do primeiro prof como se fossem os profissionais, causando profBlock com `?`/`undefined` e sem MAPA.
+- **`Enrich: Merge All`** (id: `enrich-merge-all`) — Code node entre HTTP Svcs e Enrich: lê `$('Enrich: Context Relay').first().json` (2 hops ✓) + `$input.first().json` (HTTP Svcs response), emite `{ ...ctx, _httpProf, _httpSvcs }`.
+- **`Enrich Agendador` lê tudo de `$input.first().json`** — sem `$()` calls para HTTP nodes, sem guard. `ctx._httpSvcs` = dados de serviços; `ctx._httpProf` = dados de profissionais. `ctx.mensagem`, `clinic_id`, etc. estão todos no mesmo item.
+- **⚠️ n8n 2.10.x task runner — `$('nodeName')` só funciona para nós próximos:** falha para nós 3+ hops atrás. O Relay usa `$('IF mensagem vÃƒÂ¡lida')` (2 hops), o Merge usa `$('Enrich: Context Relay')` (2 hops) — ambos dentro do limite. **Nunca mover Enrich Agendador para chamar `$('IF...')` directamente** (seria 4+ hops).
+- **`extractSupabaseArray(raw)`** — helper que lida com os dois formatos de resposta Supabase:
+  - `HTTP Fetch Profissionais` (JSON format): resposta é `{"n8n_cs_profissionais_para_agente": [...]}` → extrai o array do valor do objecto
+  - `HTTP Fetch Servicos` (text format, `responseFormat: "text"`): resposta é `{body: "[{\"n8n_clinic_procedimentos\": [...]}]"}` → parse do `body` string + extrai array do wrapper
+  - Identifica array de dados (tem `id` ou `nome`) vs array wrapper (tem chave de função RPC) — extrai um nível mais fundo se necessário
+- **`procedimento_ids` em `n8n_cs_profissionais_para_agente`** (migration `20260527143800` — reverteu `20260526250000`): a RPC devolve `clinic_procedures.id` (via `pp.clinic_procedure_id`) — consistente com `n8n_clinic_procedimentos` e `n8n_cs_consultar_vagas`. O Enrich filtra com `p.procedimento_ids.some(x => String(x) === hid)` onde `hid` é o `s.id` de `n8n_clinic_procedimentos` (= `clinic_procedures.id`). **⚠️ Não voltar a usar `cs_servicos.id` aqui** — causa ID mismatch e o MAPA fica vazio (bug de 2026-05-27: só Dr. Herick aparecia para Limpeza mesmo com 3 profissionais vinculados)
+- **Contaminação da memória de chat:** se o bot enviar expressões literais `{{ $json.xxx }}` para o cliente (resultado de erro de execução anterior armazenado na memória Postgres), limpar: `DELETE FROM n8n_chat_histories WHERE session_id = 'clinic_id:telefone@s.whatsapp.net'`
 
 #### Regra do qualificador (`agente_atende_qualifica`)
 - O qualificador **NÃO deve dizer** "Vou verificar", "Um momento", "Aguarde" ou qualquer frase que implique que ele fará algo — essas ações são dos agentes especializados
