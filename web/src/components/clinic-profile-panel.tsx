@@ -562,12 +562,20 @@ export function ClinicProfilePanel({
                 </div>
 
                 <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-4">
-                  <p className="text-sm font-semibold text-[var(--text)]">💌 Lembrete de saudades</p>
+                  <p className="text-sm font-semibold text-[var(--text)]">💌 Lembrete de saudades <span className="ml-1 text-[10px] font-normal uppercase text-[var(--text-muted)]">(opcional, fallback)</span></p>
                   <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                    Se o paciente passou X meses sem voltar e nenhum procedimento específico activou lembrete, o agente
-                    envia uma mensagem perguntando se está precisando de algo. Configure por procedimento na aba{" "}
-                    <strong className="font-medium">Procedimentos</strong>.
+                    Rede de segurança para pacientes que nenhum lembrete por procedimento alcançou. A mensagem é genérica
+                    («já faz X meses desde sua última visita, está precisando de algo?») e <strong>só dispara se nenhuma regra
+                    acima activou</strong>.
                   </p>
+                  <div className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[11px] leading-relaxed text-[var(--text-muted)]">
+                    <p className="font-semibold text-[var(--text)]">Por que vale a pena deixar ligado:</p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                      <li>Cobre <strong>procedimentos novos</strong> que ainda não tens regra definida.</li>
+                      <li>Recupera pacientes que fizeram um <strong>procedimento único</strong> (extração, canal) que não precisa de lembrete específico — mas mesmo assim sumiram.</li>
+                      <li>Nunca duplica: se a regra por procedimento já activou, este não envia.</li>
+                    </ul>
+                  </div>
                   <label className="mt-3 block text-xs font-semibold text-[var(--text)]">
                     Lembrar após X meses sem visita
                     <input
@@ -582,40 +590,6 @@ export function ClinicProfilePanel({
                   </label>
                 </div>
 
-                <div>
-                  <p className="text-sm font-semibold text-[var(--text)]">Lembretes inteligentes</p>
-                  <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                    Instruções para o agente <strong className="font-medium">sugerir</strong> consultas de manutenção ou retorno
-                    com base no histórico do paciente.
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <span className="self-center text-xs text-[var(--text-muted)]">Modelo:</span>
-                    <button
-                      type="button"
-                      onClick={() => { setLembreteSugestoesInteligentes(LEMBRETES_INTELIGENTES_PADRAO); mark(); }}
-                      className="rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-2.5 py-1 text-xs font-medium text-[var(--text)] transition-colors hover:bg-[var(--surface)]"
-                    >
-                      Padrão
-                    </button>
-                    {lembreteSugestoesInteligentes.trim() ? (
-                      <button
-                        type="button"
-                        onClick={() => { setLembreteSugestoesInteligentes(""); mark(); }}
-                        className="rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-2.5 py-1 text-xs font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--surface)]"
-                      >
-                        Limpar
-                      </button>
-                    ) : null}
-                  </div>
-                  <textarea
-                    value={lembreteSugestoesInteligentes}
-                    onChange={(e) => { setLembreteSugestoesInteligentes(e.target.value); mark(); }}
-                    placeholder="Ex.: sugerir limpeza periódica a cada 6 meses, retorno pós-tratamento…"
-                    rows={4}
-                    className="mt-2 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none ring-[var(--primary)] focus:ring-2"
-                    spellCheck
-                  />
-                </div>
               </div>
             )}
           </>
