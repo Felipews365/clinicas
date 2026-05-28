@@ -1,0 +1,128 @@
+{
+  "name": "Lembretes de Consulta (15 min)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "*/15 * * * *" }
+          ]
+        }
+      },
+      "id": "lc-schedule",
+      "name": "A cada 15 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/rpc/n8n_cs_lembretes_consulta_pendentes",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {}
+      },
+      "id": "lc-rpc-pendentes",
+      "name": "RPC consulta pendentes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// A RPC devolve array directo. Pode chegar como string (raro) ou objecto.\nlet raw = $input.first().json;\nif (typeof raw === 'string') {\n  try { raw = JSON.parse(raw); } catch { raw = []; }\n}\nif (!Array.isArray(raw)) {\n  // n8n às vezes embrulha em { body: [...] }\n  if (raw && Array.isArray(raw.body)) raw = raw.body;\n  else raw = [];\n}\nif (raw.length === 0) {\n  return [{ json: { skip: true, reason: 'sem_pendentes' } }];\n}\nreturn raw.map((item) => {\n  const nome = String(item.nome_cliente || '').split(' ')[0] || 'tudo bem?';\n  const txt = String(item.mensagem_template || '')\n    .replace(/\\{\\{\\s*nome\\s*\\}\\}/gi, nome)\n    .replace(/\\{\\{\\s*data\\s*\\}\\}/gi, item.data_br || '')\n    .replace(/\\{\\{\\s*hora\\s*\\}\\}/gi, item.hora_br || '');\n  return { json: { ...item, mensagem: txt } };\n});"
+      },
+      "id": "lc-prepare",
+      "name": "Renderiza mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2, "leftValue": "", "caseSensitive": true, "typeValidation": "loose" },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "tem-telefone",
+              "leftValue": "={{ $json.telefone }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ]
+        }
+      },
+      "id": "lc-if-send",
+      "name": "Tem telefone?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [720, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://evolutionapi.vps7846.panel.icontainer.cloud/message/sendText/' + $json.instance_name }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "apikey", "value": "6PWyAsF3cip8QZ2JxNSRk4M5A5yEi4G8" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $json.telefone, text: $json.mensagem, delay: 1200 }) }}",
+        "options": {}
+      },
+      "id": "lc-evolution-send",
+      "name": "Evolution sendText",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [960, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/rpc/n8n_cs_lembretes_consulta_marcar_enviado",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Renderiza mensagem').item.json.clinic_id, p_cs_agendamento_id: $('Renderiza mensagem').item.json.cs_agendamento_id, p_cs_cliente_id: $('Renderiza mensagem').item.json.cs_cliente_id, p_mensagem: $('Renderiza mensagem').item.json.mensagem }) }}",
+        "options": {}
+      },
+      "id": "lc-marcar",
+      "name": "Marca enviado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 0]
+    }
+  ],
+  "connections": {
+    "A cada 15 min": { "main": [[{ "node": "RPC consulta pendentes", "type": "main", "index": 0 }]] },
+    "RPC consulta pendentes": { "main": [[{ "node": "Renderiza mensagem", "type": "main", "index": 0 }]] },
+    "Renderiza mensagem": { "main": [[{ "node": "Tem telefone?", "type": "main", "index": 0 }]] },
+    "Tem telefone?": { "main": [[{ "node": "Evolution sendText", "type": "main", "index": 0 }], []] },
+    "Evolution sendText": { "main": [[{ "node": "Marca enviado", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "timezone": "America/Sao_Paulo" },
+  "staticData": null
+}
