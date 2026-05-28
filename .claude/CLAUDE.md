@@ -5,6 +5,25 @@ Criar, manter e evoluir workflows n8n + banco de dados Supabase para o sistema d
 
 ---
 
+## ⚠️ SaaS multi-tenant — isolamento por clínica é OBRIGATÓRIO
+
+Este projeto é um **SaaS**: **cada clínica é um tenant isolado** identificado por `clinic_id` (UUID). O mesmo workflow n8n, o mesmo banco Supabase e o mesmo painel web servem **todas as clínicas em paralelo**. Hoje há poucas clínicas activas, mas o sistema é projetado para escalar — assumir sempre que **outras clínicas estão a operar ao mesmo tempo**.
+
+**Regras inegociáveis para qualquer alteração de schema, RPC, workflow ou painel:**
+
+1. **Toda query, RPC e trigger DEVE filtrar por `clinic_id`.** Nunca usar `SELECT … FROM cs_clientes WHERE telefone = X` sem `AND clinic_id = Y` — telefones repetem entre clínicas (mesmo paciente pode ser cliente de duas clínicas).
+2. **Nunca hardcodar `clinic_id` em código, RPC ou node n8n.** A clínica é resolvida em runtime pelo `instance_name` (Evolution → `clinics.instancia_evolution`) ou pelo `owner_id` (painel → `auth.users`). Hardcode quebra na hora em que outra clínica usa o mesmo path.
+3. **RPCs do agente recebem `p_clinic_id uuid` como primeiro parâmetro** e usam-no em todos os `WHERE`. Sem excepção.
+4. **Patches de workflow / SQL de fix nunca devem assumir só a Clínica Saúde.** Se o exemplo precisa de um `clinic_id` (ex.: limpar memória de chat contaminada), explicitar que é por clínica e que outras clínicas podem precisar do mesmo passo separadamente.
+5. **Triggers de sync (patients ↔ cs_clientes, professionals ↔ cs_profissionais, appointments ↔ cs_agendamentos, clinic_procedures ↔ cs_servicos) já são tenant-safe** — preservar essa propriedade ao mexer nelas. Qualquer match por telefone/nome tem de incluir `clinic_id` no `ON`.
+6. **Painel web filtra pelo `clinic_id` do owner autenticado.** Endpoints internos (`/api/whatsapp/*`, webhooks) têm de validar que o `clinic_id` recebido é o do utilizador autenticado, não confiar no body.
+7. **Realtime e listeners (`cs_agendamentos`, `whatsapp_sessions`, `cs_clientes`)** têm de aplicar filtro `clinic_id` no canal Supabase — caso contrário a clínica A recebe eventos da B.
+8. **Ao reproduzir um bug, validar em pelo menos duas clínicas mentalmente:** "Se eu tivesse a Clínica X e a Clínica Y a falar ao mesmo tempo, este código continua correcto?" Se a resposta envolver "depende de qual clínica chegar primeiro" ou "porque só há uma clínica activa", o fix está errado.
+
+Violar qualquer um destes pontos resulta em **vazamento de dados entre clínicas** (cliente da A vê agendamento da B, profissional da A é notificado de consulta da B, etc.) — risco crítico para o SaaS.
+
+---
+
 ## Instâncias e acesso
 
 | Serviço | URL |
