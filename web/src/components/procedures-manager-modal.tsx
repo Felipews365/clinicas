@@ -13,6 +13,7 @@ type Row = {
   tem_desconto: boolean;
   desconto_percentual: number | null;
   cartao_parcelas_max: number | null;
+  reminder_months: number | null;
   is_active: boolean;
   sort_order: number;
 };
@@ -29,7 +30,16 @@ type RowEditDraft = PayDraft & {
   name: string;
   description: string;
   duration_minutes: string;
+  reminder_months: string;
 };
+
+function parseReminderMonths(raw: string): number | null {
+  const t = raw.trim();
+  if (!t) return null;
+  const n = parseInt(t, 10);
+  if (!Number.isFinite(n) || n < 1 || n > 120) return null;
+  return n;
+}
 
 const brl = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -83,6 +93,7 @@ function rowToRowDraft(r: Row): RowEditDraft {
     name: r.name,
     description: r.description ?? "",
     duration_minutes: String(r.duration_minutes),
+    reminder_months: r.reminder_months != null ? String(r.reminder_months) : "",
     ...rowToPayDraft(r),
   };
 }
@@ -121,6 +132,7 @@ export function ProceduresManagerModal({
   const [temDesconto, setTemDesconto] = useState(false);
   const [descontoPercent, setDescontoPercent] = useState("");
   const [cartaoParcelasMax, setCartaoParcelasMax] = useState("");
+  const [reminderMonths, setReminderMonths] = useState("");
   const [rowDraftById, setRowDraftById] = useState<Record<string, RowEditDraft>>(
     {}
   );
@@ -136,7 +148,7 @@ export function ProceduresManagerModal({
     const { data, error: e } = await supabase
       .from("clinic_procedures")
       .select(
-        "id, name, description, duration_minutes, price_brl, preco_a_vista_brl, tem_desconto, desconto_percentual, cartao_parcelas_max, is_active, sort_order"
+        "id, name, description, duration_minutes, price_brl, preco_a_vista_brl, tem_desconto, desconto_percentual, cartao_parcelas_max, reminder_months, is_active, sort_order"
       )
       .eq("clinic_id", clinicId)
       .order("sort_order", { ascending: true })
@@ -165,6 +177,7 @@ export function ProceduresManagerModal({
     setTemDesconto(false);
     setDescontoPercent("");
     setCartaoParcelasMax("");
+    setReminderMonths("");
     setExpandedProcedureId(null);
     setError(null);
   }, [open, load]);
@@ -205,6 +218,9 @@ export function ProceduresManagerModal({
         return "Parcelas no cartão: escolha entre 1 e 24.";
       }
     }
+    if (d.reminder_months.trim() !== "" && parseReminderMonths(d.reminder_months) === null) {
+      return "Lembrar após: escolha entre 1 e 120 meses (deixe vazio para não lembrar).";
+    }
     return null;
   }
 
@@ -240,6 +256,7 @@ export function ProceduresManagerModal({
       name: n,
       description,
       duration_minutes: durationMinutes,
+      reminder_months: reminderMonths,
     });
     if (verr) {
       setError(verr);
@@ -256,6 +273,7 @@ export function ProceduresManagerModal({
       description: description.trim() || null,
       duration_minutes: dm,
       ...pay,
+      reminder_months: parseReminderMonths(reminderMonths),
       is_active: true,
       sort_order: maxSort + 1,
     });
@@ -276,6 +294,7 @@ export function ProceduresManagerModal({
     setTemDesconto(false);
     setDescontoPercent("");
     setCartaoParcelasMax("");
+    setReminderMonths("");
     await load();
     onChanged?.();
   }
@@ -297,6 +316,7 @@ export function ProceduresManagerModal({
         description: d.description.trim() || null,
         duration_minutes: dm,
         ...draftToPayload(d),
+        reminder_months: parseReminderMonths(d.reminder_months),
       })
       .eq("id", r.id)
       .eq("clinic_id", clinicId);
@@ -366,6 +386,7 @@ export function ProceduresManagerModal({
         tem_desconto: false,
         desconto_percentual: "",
         cartao_parcelas_max: "",
+        reminder_months: "",
       };
       const base = prev[id] ?? (row ? rowToRowDraft(row) : empty);
       return { ...prev, [id]: { ...base, ...patch } };
@@ -515,6 +536,25 @@ export function ProceduresManagerModal({
                   ))}
                 </select>
               </label>
+            </div>
+
+            <div className="rounded-lg border border-[#e8e4dc] bg-[#faf8f5] p-3">
+              <p className="mb-2 text-xs font-semibold text-[#4a453d]">⏰ Lembrete proactivo</p>
+              <label className="block text-[11px] font-medium text-[#5c5348]">
+                Lembrar paciente após X meses do último atendimento deste procedimento
+                <input
+                  type="number"
+                  min={1}
+                  max={120}
+                  placeholder="vazio = não lembra"
+                  value={reminderMonths}
+                  onChange={(e) => setReminderMonths(e.target.value)}
+                  className={inputClsSm()}
+                />
+              </label>
+              <p className="mt-1 text-[10px] text-[#8a8278]">
+                Ex.: 6 → manda lembrete a quem fez este procedimento há mais de 6 meses.
+              </p>
             </div>
 
             <button
@@ -711,6 +751,26 @@ export function ProceduresManagerModal({
                                     </option>
                                   ))}
                                 </select>
+                              </label>
+                            </div>
+
+                            <div className="space-y-2 border-t border-dashed border-[#e3ded6] pt-3">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#8a8278]">⏰ Lembrete proactivo</p>
+                              <label className="block text-[11px] font-medium text-[#5c5348]">
+                                Lembrar após X meses (vazio = não lembra)
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={120}
+                                  placeholder="ex.: 6"
+                                  value={d.reminder_months}
+                                  onChange={(e) =>
+                                    setRowDraft(r.id, {
+                                      reminder_months: e.target.value,
+                                    })
+                                  }
+                                  className={inputClsSm()}
+                                />
                               </label>
                             </div>
 

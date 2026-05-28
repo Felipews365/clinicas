@@ -44,6 +44,7 @@ export function ClinicProfilePanel({
   const [lembreteMinutos, setLembreteMinutos] = useState<number | null>(null);
   const [lembreteMensagem, setLembreteMensagem] = useState("");
   const [lembreteSugestoesInteligentes, setLembreteSugestoesInteligentes] = useState("");
+  const [lembreteSaudadesMeses, setLembreteSaudadesMeses] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -80,6 +81,11 @@ export function ClinicProfilePanel({
               ? parsed.lembrete_sugestoes_inteligentes
               : ""
           );
+          setLembreteSaudadesMeses(
+            parsed.lembrete_saudades_meses != null && parsed.lembrete_saudades_meses !== ""
+              ? String(parsed.lembrete_saudades_meses)
+              : ""
+          );
         } catch {
           setQuemSomos("");
           setEnderecoClinica("");
@@ -88,6 +94,7 @@ export function ClinicProfilePanel({
           setLembreteMinutos(null);
           setLembreteMensagem("");
           setLembreteSugestoesInteligentes("");
+          setLembreteSaudadesMeses("");
         }
         setDirty(false);
       });
@@ -116,6 +123,12 @@ export function ClinicProfilePanel({
       lembrete_antecedencia_minutos: lembreteMinutos,
       lembrete_mensagem: lembreteMensagem || null,
       lembrete_sugestoes_inteligentes: lembreteSugestoesInteligentes.trim() || null,
+      lembrete_saudades_meses: (() => {
+        const t = lembreteSaudadesMeses.trim();
+        if (!t) return null;
+        const n = parseInt(t, 10);
+        return Number.isFinite(n) && n >= 1 && n <= 120 ? n : null;
+      })(),
     };
     const updates: Record<string, unknown> = { agent_instructions: JSON.stringify(merged) };
     if (clinicName.trim() && clinicName.trim() !== (typeof current?.name === "string" ? current.name : "")) {
@@ -127,7 +140,7 @@ export function ClinicProfilePanel({
     setSaved(true);
     setDirty(false);
     setTimeout(() => setSaved(false), 2500);
-  }, [supabase, clinicId, clinicName, quemSomos, enderecoClinica, linkLocalizacao, aceitaConvenio, lembreteMinutos, lembreteMensagem, lembreteSugestoesInteligentes]);
+  }, [supabase, clinicId, clinicName, quemSomos, enderecoClinica, linkLocalizacao, aceitaConvenio, lembreteMinutos, lembreteMensagem, lembreteSugestoesInteligentes, lembreteSaudadesMeses]);
 
   function mark() { setDirty(true); setSaved(false); }
 
@@ -408,6 +421,27 @@ export function ClinicProfilePanel({
                     )}
                   </div>
                 )}
+
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-4">
+                  <p className="text-sm font-semibold text-[var(--text)]">💌 Lembrete de saudades</p>
+                  <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                    Se o paciente passou X meses sem voltar e nenhum procedimento específico activou lembrete, o agente
+                    envia uma mensagem perguntando se está precisando de algo. Configure por procedimento na aba{" "}
+                    <strong className="font-medium">Procedimentos</strong>.
+                  </p>
+                  <label className="mt-3 block text-xs font-semibold text-[var(--text)]">
+                    Lembrar após X meses sem visita
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      value={lembreteSaudadesMeses}
+                      placeholder="vazio = desligado"
+                      onChange={(e) => { setLembreteSaudadesMeses(e.target.value); mark(); }}
+                      className="mt-1 w-full max-w-[10rem] rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none ring-[var(--primary)] focus:ring-2"
+                    />
+                  </label>
+                </div>
 
                 <div>
                   <p className="text-sm font-semibold text-[var(--text)]">Lembretes inteligentes</p>

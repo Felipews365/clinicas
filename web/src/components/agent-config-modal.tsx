@@ -142,6 +142,7 @@ type ProcRow = {
   tem_desconto: boolean;
   desconto_percentual: number | null;
   cartao_parcelas_max: number | null;
+  reminder_months: number | null;
   is_active: boolean;
   sort_order: number;
 };
@@ -158,7 +159,16 @@ type RowEditDraft = PayDraft & {
   name: string;
   description: string;
   duration_minutes: string;
+  reminder_months: string;
 };
+
+function parseReminderMonths(raw: string): number | null {
+  const t = raw.trim();
+  if (!t) return null;
+  const n = parseInt(t, 10);
+  if (!Number.isFinite(n) || n < 1 || n > 120) return null;
+  return n;
+}
 
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const PARCELAS_OPTS = ["", ...Array.from({ length: 24 }, (_, i) => String(i + 1))];
@@ -202,6 +212,7 @@ function rowToRowDraft(r: ProcRow): RowEditDraft {
     name: r.name,
     description: r.description ?? "",
     duration_minutes: String(r.duration_minutes),
+    reminder_months: r.reminder_months != null ? String(r.reminder_months) : "",
     ...rowToPayDraft(r),
   };
 }
@@ -243,6 +254,7 @@ export function ProceduresSectionInline({
   const [temDesconto, setTemDesconto] = useState(false);
   const [descontoPercent, setDescontoPercent] = useState("");
   const [cartaoParcelasMax, setCartaoParcelasMax] = useState("");
+  const [reminderMonths, setReminderMonths] = useState("");
   const [rowDraftById, setRowDraftById] = useState<Record<string, RowEditDraft>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -253,7 +265,7 @@ export function ProceduresSectionInline({
     setError(null);
     const { data, error: e } = await supabase
       .from("clinic_procedures")
-      .select("id, name, description, duration_minutes, price_brl, preco_a_vista_brl, tem_desconto, desconto_percentual, cartao_parcelas_max, is_active, sort_order")
+      .select("id, name, description, duration_minutes, price_brl, preco_a_vista_brl, tem_desconto, desconto_percentual, cartao_parcelas_max, reminder_months, is_active, sort_order")
       .eq("clinic_id", clinicId)
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
@@ -270,6 +282,7 @@ export function ProceduresSectionInline({
     setName(""); setDescription(""); setDurationMinutes("60");
     setPriceBrl(""); setPrecoAvistaBrl("");
     setTemDesconto(false); setDescontoPercent(""); setCartaoParcelasMax("");
+    setReminderMonths("");
     setExpandedId(null); setError(null);
   }, [modalOpen, load]);
 
@@ -281,6 +294,7 @@ export function ProceduresSectionInline({
     if (d.preco_a_vista_brl.trim() && parsePriceBrlInput(d.preco_a_vista_brl) === null) return "Preço à vista inválido.";
     if (d.tem_desconto && d.desconto_percentual.trim() && parsePercentInput(d.desconto_percentual) === null) return "Percentual de desconto inválido (use 0–100).";
     if (d.cartao_parcelas_max.trim() && parseParcelasSelect(d.cartao_parcelas_max) === null) return "Parcelas no cartão: escolha entre 1 e 24.";
+    if (d.reminder_months.trim() && parseReminderMonths(d.reminder_months) === null) return "Lembrar após: escolha entre 1 e 120 meses (deixe vazio para não lembrar).";
     return null;
   }
 
@@ -299,7 +313,7 @@ export function ProceduresSectionInline({
     if (!supabase) return;
     const n = name.trim();
     if (!n) return;
-    const draft: RowEditDraft = { name: n, description, duration_minutes: durationMinutes, price_brl: priceBrl, preco_a_vista_brl: precoAvistaBrl, tem_desconto: temDesconto, desconto_percentual: descontoPercent, cartao_parcelas_max: cartaoParcelasMax };
+    const draft: RowEditDraft = { name: n, description, duration_minutes: durationMinutes, price_brl: priceBrl, preco_a_vista_brl: precoAvistaBrl, tem_desconto: temDesconto, desconto_percentual: descontoPercent, cartao_parcelas_max: cartaoParcelasMax, reminder_months: reminderMonths };
     const verr = validateDraft(draft);
     if (verr) { setError(verr); return; }
     setBusy("add"); setError(null);
@@ -307,12 +321,14 @@ export function ProceduresSectionInline({
     const { error: insE } = await supabase.from("clinic_procedures").insert({
       clinic_id: clinicId, name: n, description: description.trim() || null,
       duration_minutes: parseInt(durationMinutes, 10), ...draftToPayload(draft),
+      reminder_months: parseReminderMonths(reminderMonths),
       is_active: true, sort_order: maxSort + 1,
     });
     setBusy(null);
     if (insE) { setError(insE.code === "23505" ? "Já existe um procedimento com este nome." : insE.message); return; }
     setName(""); setDescription(""); setDurationMinutes("60");
     setPriceBrl(""); setPrecoAvistaBrl(""); setTemDesconto(false); setDescontoPercent(""); setCartaoParcelasMax("");
+    setReminderMonths("");
     await load();
   }
 
@@ -325,6 +341,7 @@ export function ProceduresSectionInline({
     const { error: u } = await supabase.from("clinic_procedures").update({
       name: d.name.trim(), description: d.description.trim() || null,
       duration_minutes: parseInt(d.duration_minutes, 10), ...draftToPayload(d),
+      reminder_months: parseReminderMonths(d.reminder_months),
     }).eq("id", r.id).eq("clinic_id", clinicId);
     setBusy(null);
     if (u) { setError(u.code === "23505" ? "Já existe outro procedimento com este nome." : u.message); return; }
@@ -347,7 +364,7 @@ export function ProceduresSectionInline({
   function setRowDraft(id: string, patch: Partial<RowEditDraft>) {
     setRowDraftById((prev) => {
       const row = rows.find((x) => x.id === id);
-      const base = prev[id] ?? (row ? rowToRowDraft(row) : { name: "", description: "", duration_minutes: "60", price_brl: "", preco_a_vista_brl: "", tem_desconto: false, desconto_percentual: "", cartao_parcelas_max: "" });
+      const base = prev[id] ?? (row ? rowToRowDraft(row) : { name: "", description: "", duration_minutes: "60", price_brl: "", preco_a_vista_brl: "", tem_desconto: false, desconto_percentual: "", cartao_parcelas_max: "", reminder_months: "" });
       return { ...prev, [id]: { ...base, ...patch } };
     });
   }
@@ -407,6 +424,25 @@ export function ProceduresSectionInline({
                 {PARCELAS_OPTS.slice(1).map((x) => (<option key={x} value={x}>{x}x</option>))}
               </select>
             </label>
+          </div>
+
+          <div className="rounded-lg border border-[#e8e4dc] bg-[#faf8f5] p-3">
+            <p className="mb-2 text-xs font-semibold text-[#4a453d]">⏰ Lembrete proactivo</p>
+            <label className="block text-[11px] font-medium text-[#5c5348]">
+              Lembrar paciente após X meses do último atendimento deste procedimento
+              <input
+                type="number"
+                min={1}
+                max={120}
+                placeholder="vazio = não lembra"
+                value={reminderMonths}
+                onChange={(e) => setReminderMonths(e.target.value)}
+                className={inputClsSm}
+              />
+            </label>
+            <p className="mt-1 text-[10px] text-[#8a8278]">
+              Ex.: 6 → manda lembrete a quem fez este procedimento há mais de 6 meses. Deixe vazio para não enviar lembrete deste procedimento.
+            </p>
           </div>
 
           <button type="submit" disabled={busy === "add"} className="w-full rounded-lg bg-[#4D6D66] py-2 text-sm font-semibold text-white hover:bg-[#3f5c56] disabled:opacity-50">
@@ -493,6 +529,22 @@ export function ProceduresSectionInline({
                                 <option value="">—</option>
                                 {PARCELAS_OPTS.slice(1).map((x) => (<option key={x} value={x}>{x}x</option>))}
                               </select>
+                            </label>
+                          </div>
+
+                          <div className="space-y-2 border-t border-dashed border-[#e3ded6] pt-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#8a8278]">⏰ Lembrete proactivo</p>
+                            <label className="block text-[11px] font-medium text-[#5c5348]">
+                              Lembrar após X meses (vazio = não lembra)
+                              <input
+                                type="number"
+                                min={1}
+                                max={120}
+                                placeholder="ex.: 6"
+                                value={d.reminder_months}
+                                onChange={(e) => setRowDraft(r.id, { reminder_months: e.target.value })}
+                                className={inputClsSm}
+                              />
                             </label>
                           </div>
 
