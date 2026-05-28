@@ -118,14 +118,44 @@ web/
 - **Agente vê agendamentos do painel:** `agd_cs_buscar_agendamentos` encontra o mirror em `cs_agendamentos` quando paciente pergunta "qual é a minha consulta?" via WhatsApp
 - O mirror só é criado se o profissional tiver `cs_profissional_id` e o paciente tiver entrada em `cs_clientes` (garantido pelo sync de patients)
 
-### Lembretes automáticos da clínica (migration `20260528180000`)
-- **UI:** `clinic-profile-panel.tsx` → aba **Lembretes**. Grava em `clinics.agent_instructions` os campos `lembrete_antecedencia_minutos` (30/60/120/180/360/720/1440/2880 min ou null), `lembrete_mensagem` (template com `{{nome}}`, `{{data}}`, `{{hora}}`), `lembrete_sugestoes_inteligentes` (regras em linguagem natural).
-- **Runtime:** dois workflows n8n agendados — JSONs em `n8n/workflow-lembretes-consulta.json` e `n8n/workflow-lembretes-inteligentes.json` (importar via UI ou subir via API).
-- **Workflow `Lembretes de Consulta`** (cron `*/15 * * * *`): chama `n8n_cs_lembretes_consulta_pendentes()`, substitui placeholders, envia via Evolution `sendText`, marca enviado com `n8n_cs_lembretes_consulta_marcar_enviado`.
-- **Workflow `Lembretes Inteligentes`** (cron `0 10 * * *`): chama `n8n_cs_lembretes_inteligentes_candidatos()` (1 item por clínica com array de pacientes + histórico), passa pelo LLM (gpt-4o-mini, `response_format: json_object`) que decide quais pacientes lembrar segundo as regras do textarea, reserva slot via `n8n_cs_lembretes_inteligentes_marcar` (throttle: 20/clínica/dia + 30 dias/cliente) e só envia se a reserva passar — evita race condition em re-execuções.
-- **Tabela `cs_lembretes_enviados`** — idempotência. Unique partial index `(clinic_id, cs_agendamento_id) where tipo='consulta'` impede duplo lembrete do mesmo agendamento.
-- **Helper `_clinic_aberta_agora(clinic_id)`** — usa `clinics.agenda_visible_hours`, `sabado_aberto`, `sabado_agenda_hours` em `America/Sao_Paulo`. Domingo sempre fechado. Ambas as RPCs principais filtram por este helper — em dia/hora fechada, nada sai.
-- **Tenant-safe:** RPCs varrem todas as `clinics` activas (sem `clinic_id` hardcoded). Cada linha de resultado leva `clinic_id` + `instance_name` (`clinics.instancia_evolution`) — workflow envia pela instância correcta. `bot_ativo = false` no cliente e `agente_ativo = false` na clínica suprimem o envio.
+### Lembretes automáticos da clínica
+Sistema de 2 fluxos agendados que disparam WhatsApp aos pacientes. Migrations principais: `20260528180000_lembretes_runtime.sql`, `20260528190000_lembretes_per_procedimento.sql`, `20260528200000_lembretes_limit_top_50.sql`.
+
+#### Lembrete de consulta (cron 15 min — workflow `n8n/workflow-lembretes-consulta.json`)
+- **UI** (`clinic-profile-panel.tsx` → aba Lembretes): dropdown «Enviar lembrete quanto tempo antes» (30/60/…/2880 min ou null) → grava `clinics.agent_instructions->>'lembrete_antecedencia_minutos'`. Textarea com template suporta `{{nome}}`, `{{data}}`, `{{hora}}` → `lembrete_mensagem`. **Pré-visualização ao vivo** estilo bolha WhatsApp (`#005c4b` sobre `#0b141a`) com `nome=João, data=15/06/2026, hora=14:30` — substitui as variáveis e renderiza `*negrito*`. Lê o mesmo `lembreteMensagem || LEMBRETE_MENSAGEM_PADRAO` do RPC, então o que se vê é literalmente o que sai.
+- **RPC `n8n_cs_lembretes_consulta_pendentes()`** (sem args): joga todas as clínicas activas que têm antecedência configurada + dentro do horário (`_clinic_aberta_agora`), calcula `(data+hora) AT TIME ZONE 'America/Sao_Paulo' - antecedencia` e devolve agendamentos cujo alvo caiu na janela `[now()-20min, now()]` e ainda não foram enviados (`NOT EXISTS` em `cs_lembretes_enviados`).
+- **RPC `n8n_cs_lembretes_consulta_marcar_enviado(...)`** — insere em `cs_lembretes_enviados` (tipo='consulta', `ON CONFLICT DO NOTHING`).
+
+#### Lembrete inteligente proactivo (cron diário 10h BRT — workflow id `X0fKnAX4moO1Zdhf`, ficheiro `n8n/workflow-lembretes-inteligentes.json`)
+- **UI aba Lembretes — 2 blocos estruturados** (textarea livre de «sugestões» foi removida do UI; campo continua na BD por compat):
+  - **⏰ Lembretes por procedimento**: lista das regras activas (`<Procedimento> → lembra após X meses` + botão Remover) + form de adicionar (dropdown só dos procedimentos sem regra + input meses + `+ Adicionar`). Cada add/remove é **gravação imediata** (`UPDATE clinic_procedures SET reminder_months = X|null WHERE id = ?`) — não usa o `Salvar` do footer.
+  - **💌 Lembrete de saudades (opcional, fallback)**: **switch ON/OFF** explícito no topo do bloco. OFF → grava `lembrete_saudades_meses: null`, mostra «Desligado». ON → revela bloco explicativo + input «Lembrar após X meses sem visita» (default 8).
+- **Coluna `clinic_procedures.reminder_months smallint NULL`** (migration `20260528190000`): meses após o último agendamento concluído desse procedimento para acionar lembrete. NULL = não envia.
+- **RPC `n8n_cs_lembretes_inteligentes_candidatos()`** reescrita:
+  - Para cada paciente da clínica activa, pega o **último agendamento concluído** (DISTINCT ON `clinic_id, cliente_id` ORDER BY `data DESC`).
+  - Procura `clinic_procedures.reminder_months` por `lower(btrim(name))` igual a `lower(btrim(nome_procedimento))`.
+  - Decide `tipo_lembrete`: `'procedimento'` se a regra do procedimento bateu (`meses_desde >= reminder_months`); `'saudades'` se nenhuma regra de procedimento bateu mas `lembrete_saudades_meses` está setado e bateu; senão `NULL` → paciente excluído.
+  - **Top 50 por clínica** ordenados por `meses_desde DESC` (mais antigos primeiro) — protege o prompt do LLM e o n8n contra clínicas com milhares de candidatos.
+  - Devolve por paciente: `cs_cliente_id, telefone, nome, tipo_lembrete, ultimo_procedimento, ultimo_profissional, ultima_data, meses_desde`. **NÃO devolve mais o array `historico[]`** — basta o último.
+- **LLM** (`gpt-4o-mini`, `response_format: json_object`, credencial `OpenAi clinicas` id `v4dQPWdlMtUeGSD3`): só formata. Dois MODELOS rígidos:
+  - **MODELO A** (`tipo_lembrete='procedimento'`): `Olá {PrimeiroNome}! Notamos que sua última {procedimento_minusculas} foi em {mês} de {ano}. Que tal agendar sua próxima manutenção? Estamos aqui para ajudar! 😊\n\nAtenciosamente, {nome_agente} da {clinic_name}.`
+  - **MODELO B** (`tipo_lembrete='saudades'`): `Olá {PrimeiroNome}! Já faz {meses_desde} meses desde sua última visita. Sentimos sua falta! Está precisando de algo? Conte com a gente. 😊\n\nAtenciosamente, {nome_agente} da {clinic_name}.`
+  - Tabela explícita de mês `01=janeiro…12=dezembro`. `{ano}` = `to_char(ultima_data, 'YYYY')`. Sem travessão antes do nome.
+- **RPC `n8n_cs_lembretes_inteligentes_marcar(...)`** — throttle 20/clínica/dia + 30 dias/cliente. Retorna `false` se algum limite atingido (n8n descarta).
+
+#### Defesas de escala (workflows n8n)
+- **Batching no Evolution sendText**: `options.batching = { batch: { batchSize: 1, batchInterval: 1500 } }` — 1 msg a cada 1.5s no mesmo workflow run; respeita rate-limit Evolution e protege a instância de ban WhatsApp.
+- **`onError: continueErrorOutput`** no Evolution: status≥400 sai pelo output `Error` (índice 1); só o branch `Success` (0) chega ao Marca enviado. Falhas (ex.: número não existe no WhatsApp → 400 com `exists:false`) **não marcam enviado** — próxima execução tenta de novo OU expira no throttle 30 dias.
+- **No workflow `inteligentes`**: ordem é `Evolution → Reserva slot`. Se Evolution falhar, throttle não é gasto.
+
+#### Tenant-safety
+- **Tabela `cs_lembretes_enviados`** (idempotência): unique partial index `(clinic_id, cs_agendamento_id) where tipo='consulta'`; index para throttle smart por `(clinic_id, cs_cliente_id, enviado_at)`.
+- **Helper `_clinic_aberta_agora(clinic_id)`** — usa `clinics.agenda_visible_hours`, `sabado_aberto`, `sabado_agenda_hours` em `America/Sao_Paulo`. Domingo sempre fechado.
+- RPCs varrem todas as `clinics` activas (sem `clinic_id` hardcoded). Cada linha leva `clinic_id` + `instance_name` (`clinics.instancia_evolution`). `bot_ativo=false` no cliente e `agente_ativo=false` na clínica suprimem.
+- Cada clínica tem o seu próprio `lembrete_mensagem` e `nome_agente`/`clinic_name`; mensagens são substituídas com os dados da clínica certa — sem cross-tenant.
+
+#### UI auxiliar (admin avançado)
+- **`web/src/components/agent-config-modal.tsx` (`ProceduresSectionInline`)** e **`web/src/components/procedures-manager-modal.tsx`**: ambos têm input `reminder_months` por procedimento (1-120 ou vazio). Mesma BD; só superfícies de edição alternativas. A aba Lembretes do `clinic-profile-panel.tsx` é a interface principal e recomendada para esta configuração.
 
 ### Limpeza periódica de chat memory
 - **Workflow n8n `OwC7Y54kWZTB4Y1P`** ("Cleanup Chat Memory (90 dias)") roda diariamente às **3:30 BRT** chamando `rpc/n8n_cleanup_chat_histories(p_days: 90)`. Migration: `20260527164500_n8n_cleanup_chat_histories.sql`.

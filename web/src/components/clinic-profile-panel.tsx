@@ -476,6 +476,37 @@ export function ClinicProfilePanel({
                         Restaurar mensagem padrão
                       </button>
                     )}
+
+                    {/* Pré-visualização estilo WhatsApp */}
+                    <div className="mt-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                        Pré-visualização (como chega ao paciente)
+                      </p>
+                      <div className="mt-2 rounded-2xl border border-[var(--border)] bg-[#0b141a] p-4">
+                        <div className="flex justify-end">
+                          <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-[#005c4b] px-3 py-2 text-sm text-white shadow-sm">
+                            <p className="whitespace-pre-wrap leading-snug">
+                              {(lembreteMensagem || LEMBRETE_MENSAGEM_PADRAO)
+                                .replace(/\{\{\s*nome\s*\}\}/gi, "João")
+                                .replace(/\{\{\s*data\s*\}\}/gi, "15/06/2026")
+                                .replace(/\{\{\s*hora\s*\}\}/gi, "14:30")
+                                .split(/(\*[^*]+\*)/g)
+                                .map((chunk, i) =>
+                                  /^\*[^*]+\*$/.test(chunk) ? (
+                                    <strong key={i} className="font-semibold">{chunk.slice(1, -1)}</strong>
+                                  ) : (
+                                    <span key={i}>{chunk}</span>
+                                  )
+                                )}
+                            </p>
+                            <p className="mt-1 text-right text-[10px] text-white/60">14:00 ✓✓</p>
+                          </div>
+                        </div>
+                        <p className="mt-2 text-[10px] text-white/40">
+                          Exemplo com nome=João, data=15/06/2026, hora=14:30
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -562,32 +593,65 @@ export function ClinicProfilePanel({
                 </div>
 
                 <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-4">
-                  <p className="text-sm font-semibold text-[var(--text)]">💌 Lembrete de saudades <span className="ml-1 text-[10px] font-normal uppercase text-[var(--text-muted)]">(opcional, fallback)</span></p>
-                  <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                    Rede de segurança para pacientes que nenhum lembrete por procedimento alcançou. A mensagem é genérica
-                    («já faz X meses desde sua última visita, está precisando de algo?») e <strong>só dispara se nenhuma regra
-                    acima activou</strong>.
-                  </p>
-                  <div className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[11px] leading-relaxed text-[var(--text-muted)]">
-                    <p className="font-semibold text-[var(--text)]">Por que vale a pena deixar ligado:</p>
-                    <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                      <li>Cobre <strong>procedimentos novos</strong> que ainda não tens regra definida.</li>
-                      <li>Recupera pacientes que fizeram um <strong>procedimento único</strong> (extração, canal) que não precisa de lembrete específico — mas mesmo assim sumiram.</li>
-                      <li>Nunca duplica: se a regra por procedimento já activou, este não envia.</li>
-                    </ul>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-[var(--text)]">💌 Lembrete de saudades <span className="ml-1 text-[10px] font-normal uppercase text-[var(--text-muted)]">(opcional, fallback)</span></p>
+                      <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                        Rede de segurança para pacientes que nenhum lembrete por procedimento alcançou. A mensagem é genérica
+                        («já faz X meses desde sua última visita, está precisando de algo?») e <strong>só dispara se nenhuma regra
+                        acima activou</strong>.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={lembreteSaudadesMeses.trim() !== ""}
+                      onClick={() => {
+                        if (lembreteSaudadesMeses.trim() !== "") {
+                          setLembreteSaudadesMeses("");
+                        } else {
+                          setLembreteSaudadesMeses("8");
+                        }
+                        mark();
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                        lembreteSaudadesMeses.trim() !== "" ? "bg-emerald-600" : "bg-zinc-400"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                          lembreteSaudadesMeses.trim() !== "" ? "translate-x-5" : "translate-x-0.5"
+                        }`}
+                      />
+                    </button>
                   </div>
-                  <label className="mt-3 block text-xs font-semibold text-[var(--text)]">
-                    Lembrar após X meses sem visita
-                    <input
-                      type="number"
-                      min={1}
-                      max={120}
-                      value={lembreteSaudadesMeses}
-                      placeholder="vazio = desligado"
-                      onChange={(e) => { setLembreteSaudadesMeses(e.target.value); mark(); }}
-                      className="mt-1 w-full max-w-[10rem] rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none ring-[var(--primary)] focus:ring-2"
-                    />
-                  </label>
+                  {lembreteSaudadesMeses.trim() === "" ? (
+                    <p className="mt-3 rounded-lg border border-dashed border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[11px] text-[var(--text-muted)]">
+                      Desligado. Active o toggle ↑ para usar este lembrete genérico como rede de segurança.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[11px] leading-relaxed text-[var(--text-muted)]">
+                        <p className="font-semibold text-[var(--text)]">Por que vale a pena deixar ligado:</p>
+                        <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                          <li>Cobre <strong>procedimentos novos</strong> que ainda não tens regra definida.</li>
+                          <li>Recupera pacientes que fizeram um <strong>procedimento único</strong> (extração, canal) que não precisa de lembrete específico — mas mesmo assim sumiram.</li>
+                          <li>Nunca duplica: se a regra por procedimento já activou, este não envia.</li>
+                        </ul>
+                      </div>
+                      <label className="mt-3 block text-xs font-semibold text-[var(--text)]">
+                        Lembrar após X meses sem visita
+                        <input
+                          type="number"
+                          min={1}
+                          max={120}
+                          value={lembreteSaudadesMeses}
+                          onChange={(e) => { setLembreteSaudadesMeses(e.target.value); mark(); }}
+                          className="mt-1 w-full max-w-[10rem] rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none ring-[var(--primary)] focus:ring-2"
+                        />
+                      </label>
+                    </>
+                  )}
                 </div>
 
               </div>
