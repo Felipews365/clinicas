@@ -83,13 +83,13 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ number: $json.telefone, text: $json.mensagem, delay: 1200 }) }}",
-        "options": {}
+        "options": { "batching": { "batch": { "batchSize": 1, "batchInterval": 1500 } } }
       },
       "id": "lc-evolution-send",
       "name": "Evolution sendText",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "onError": "continueRegularOutput",
+      "onError": "continueErrorOutput",
       "position": [960, 0]
     },
     {
@@ -121,7 +121,7 @@
     "RPC consulta pendentes": { "main": [[{ "node": "Renderiza mensagem", "type": "main", "index": 0 }]] },
     "Renderiza mensagem": { "main": [[{ "node": "Tem telefone?", "type": "main", "index": 0 }]] },
     "Tem telefone?": { "main": [[{ "node": "Evolution sendText", "type": "main", "index": 0 }], []] },
-    "Evolution sendText": { "main": [[{ "node": "Marca enviado", "type": "main", "index": 0 }]] }
+    "Evolution sendText": { "main": [[{ "node": "Marca enviado", "type": "main", "index": 0 }], []] }
   },
   "settings": { "executionOrder": "v1", "timezone": "America/Sao_Paulo" },
   "staticData": null

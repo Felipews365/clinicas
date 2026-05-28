@@ -144,7 +144,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_clinic_id: $json.clinic_id, p_cs_cliente_id: $json.cs_cliente_id, p_regra_hash: $json.regra_hash, p_mensagem: $json.mensagem }) }}",
+        "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Parse envios').item.json.clinic_id, p_cs_cliente_id: $('Parse envios').item.json.cs_cliente_id, p_regra_hash: $('Parse envios').item.json.regra_hash, p_mensagem: $('Parse envios').item.json.mensagem }) }}",
         "options": {}
       },
       "id": "li-marcar",
@@ -152,27 +152,6 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [1680, 0]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": { "version": 2, "leftValue": "", "caseSensitive": true, "typeValidation": "loose" },
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "ok",
-              "leftValue": "={{ String($json.body ?? $json).toLowerCase() }}",
-              "rightValue": "true",
-              "operator": { "type": "string", "operation": "contains" }
-            }
-          ]
-        }
-      },
-      "id": "li-if-reservado",
-      "name": "Reserva OK?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [1920, 0]
     },
     {
       "parameters": {
@@ -187,14 +166,14 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ number: '558196454656', text: $('Parse envios').item.json.mensagem, delay: 1500 }) }}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({ number: $('Parse envios').item.json.telefone, text: $('Parse envios').item.json.mensagem, delay: 1500 }) }}",
+        "options": { "batching": { "batch": { "batchSize": 1, "batchInterval": 1500 } } }
       },
       "id": "li-evolution",
       "name": "Evolution sendText",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "onError": "continueRegularOutput",
+      "onError": "continueErrorOutput",
       "position": [2160, 0]
     }
   ],
@@ -205,9 +184,8 @@
     "Tem pacientes?": { "main": [[{ "node": "LLM decide envios", "type": "main", "index": 0 }], []] },
     "LLM decide envios": { "main": [[{ "node": "Parse envios", "type": "main", "index": 0 }]] },
     "Parse envios": { "main": [[{ "node": "Tem envio?", "type": "main", "index": 0 }]] },
-    "Tem envio?": { "main": [[{ "node": "Reserva slot (throttle)", "type": "main", "index": 0 }], []] },
-    "Reserva slot (throttle)": { "main": [[{ "node": "Reserva OK?", "type": "main", "index": 0 }]] },
-    "Reserva OK?": { "main": [[{ "node": "Evolution sendText", "type": "main", "index": 0 }], []] }
+    "Tem envio?": { "main": [[{ "node": "Evolution sendText", "type": "main", "index": 0 }], []] },
+    "Evolution sendText": { "main": [[{ "node": "Reserva slot (throttle)", "type": "main", "index": 0 }], []] }
   },
   "settings": { "executionOrder": "v1", "timezone": "America/Sao_Paulo" },
   "staticData": null

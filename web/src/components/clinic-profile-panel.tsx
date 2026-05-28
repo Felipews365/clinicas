@@ -45,6 +45,12 @@ export function ClinicProfilePanel({
   const [lembreteMensagem, setLembreteMensagem] = useState("");
   const [lembreteSugestoesInteligentes, setLembreteSugestoesInteligentes] = useState("");
   const [lembreteSaudadesMeses, setLembreteSaudadesMeses] = useState<string>("");
+  const [procedures, setProcedures] = useState<Array<{ id: string; name: string; reminder_months: number | null }>>([]);
+  const [proceduresLoading, setProceduresLoading] = useState(false);
+  const [addProcId, setAddProcId] = useState<string>("");
+  const [addProcMonths, setAddProcMonths] = useState<string>("");
+  const [procBusy, setProcBusy] = useState<string | null>(null);
+  const [procError, setProcError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -99,6 +105,57 @@ export function ClinicProfilePanel({
         setDirty(false);
       });
   }, [open, supabase, clinicId]);
+
+  const loadProcedures = useCallback(async () => {
+    if (!supabase) return;
+    setProceduresLoading(true);
+    const { data, error: e } = await supabase
+      .from("clinic_procedures")
+      .select("id, name, reminder_months")
+      .eq("clinic_id", clinicId)
+      .eq("is_active", true)
+      .order("name", { ascending: true });
+    setProceduresLoading(false);
+    if (e) { setProcError(e.message); return; }
+    setProcedures((data ?? []) as Array<{ id: string; name: string; reminder_months: number | null }>);
+    setProcError(null);
+  }, [supabase, clinicId]);
+
+  useEffect(() => {
+    if (open && activeTab === "lembretes") void loadProcedures();
+  }, [open, activeTab, loadProcedures]);
+
+  const addProcedureRule = useCallback(async () => {
+    if (!supabase || !addProcId) return;
+    const n = parseInt(addProcMonths.trim(), 10);
+    if (!Number.isFinite(n) || n < 1 || n > 120) {
+      setProcError("Tempo em meses inválido (1–120).");
+      return;
+    }
+    setProcBusy(addProcId);
+    const { error: e } = await supabase
+      .from("clinic_procedures")
+      .update({ reminder_months: n })
+      .eq("id", addProcId)
+      .eq("clinic_id", clinicId);
+    setProcBusy(null);
+    if (e) { setProcError(e.message); return; }
+    setAddProcId(""); setAddProcMonths(""); setProcError(null);
+    await loadProcedures();
+  }, [supabase, clinicId, addProcId, addProcMonths, loadProcedures]);
+
+  const removeProcedureRule = useCallback(async (id: string) => {
+    if (!supabase) return;
+    setProcBusy(id);
+    const { error: e } = await supabase
+      .from("clinic_procedures")
+      .update({ reminder_months: null })
+      .eq("id", id)
+      .eq("clinic_id", clinicId);
+    setProcBusy(null);
+    if (e) { setProcError(e.message); return; }
+    await loadProcedures();
+  }, [supabase, clinicId, loadProcedures]);
 
   const handleSave = useCallback(async () => {
     if (!supabase) return;
@@ -421,6 +478,88 @@ export function ClinicProfilePanel({
                     )}
                   </div>
                 )}
+
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-4">
+                  <p className="text-sm font-semibold text-[var(--text)]">⏰ Lembretes por procedimento</p>
+                  <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                    Adicione procedimentos e o tempo após o qual o agente lembra o paciente. A mensagem cita o nome do procedimento
+                    (ex.: «sua última limpeza foi em outubro de 2025»).
+                  </p>
+
+                  {/* lista das regras já configuradas */}
+                  <div className="mt-3 space-y-1.5">
+                    {proceduresLoading ? (
+                      <p className="text-xs text-[var(--text-muted)]">A carregar…</p>
+                    ) : procedures.filter((p) => p.reminder_months != null).length === 0 ? (
+                      <p className="text-xs italic text-[var(--text-muted)]">Nenhuma regra por procedimento ainda.</p>
+                    ) : (
+                      procedures.filter((p) => p.reminder_months != null).map((p) => (
+                        <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm">
+                          <span className="flex-1 truncate text-[var(--text)]">
+                            <strong className="font-semibold">{p.name}</strong>
+                            <span className="ml-2 text-[var(--text-muted)]">→ lembra após</span>
+                            <span className="ml-1 font-semibold">{p.reminder_months} meses</span>
+                          </span>
+                          <button
+                            type="button"
+                            disabled={procBusy === p.id}
+                            onClick={() => void removeProcedureRule(p.id)}
+                            className="shrink-0 rounded-md border border-red-200 px-2 py-1 text-[11px] font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-50"
+                          >
+                            Remover
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* form: adicionar nova regra */}
+                  {procedures.filter((p) => p.reminder_months == null).length > 0 && (
+                    <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-[var(--border)] bg-[var(--surface)] p-3">
+                      <label className="flex-1 min-w-[10rem] text-xs font-medium text-[var(--text)]">
+                        Procedimento
+                        <select
+                          value={addProcId}
+                          onChange={(e) => setAddProcId(e.target.value)}
+                          className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none ring-[var(--primary)] focus:ring-2"
+                        >
+                          <option value="">— escolha um procedimento —</option>
+                          {procedures.filter((p) => p.reminder_months == null).map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="w-[8rem] text-xs font-medium text-[var(--text)]">
+                        Lembrar após (meses)
+                        <input
+                          type="number"
+                          min={1}
+                          max={120}
+                          placeholder="ex.: 6"
+                          value={addProcMonths}
+                          onChange={(e) => setAddProcMonths(e.target.value)}
+                          className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none ring-[var(--primary)] focus:ring-2"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={!addProcId || !addProcMonths || procBusy != null}
+                        onClick={() => void addProcedureRule()}
+                        className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
+                      >
+                        + Adicionar
+                      </button>
+                    </div>
+                  )}
+                  {procedures.length === 0 && !proceduresLoading && (
+                    <p className="mt-2 text-xs italic text-[var(--text-muted)]">
+                      Nenhum procedimento cadastrado nesta clínica. Vá à aba <strong>Procedimentos</strong> para criar.
+                    </p>
+                  )}
+                  {procError && (
+                    <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] text-red-800">{procError}</p>
+                  )}
+                </div>
 
                 <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-4">
                   <p className="text-sm font-semibold text-[var(--text)]">💌 Lembrete de saudades</p>
