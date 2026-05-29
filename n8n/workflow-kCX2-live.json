@@ -1388,7 +1388,7 @@
             {
               "id": "ea5e28bf-fc6b-410d-a4d5-177b7f96643a",
               "name": "answer",
-              "value": "={{ [$json.output.trim().replace(/\\s*\\[ROTA:[^\\]]+\\]\\s*/gi, '').trim()] }}",
+              "value": "={{ [$json.output.trim().replace(/\\s*\\[ROTA:[^\\]]+\\]\\s*/gi, '').replace(/\\s*\\[SEND_LOCATION\\]\\s*/gi, '').trim()] }}",
               "type": "array"
             },
             {
@@ -1396,6 +1396,12 @@
               "name": "conversation_id",
               "value": "={{ $('Edit Fields2').item.json.ConversationID }}",
               "type": "string"
+            },
+            {
+              "id": "f1a3b2c4-5d6e-7f80-9a1b-2c3d4e5f6a7b",
+              "name": "_send_location",
+              "value": "={{ /\\[SEND_LOCATION\\]/i.test($json.output || '') }}",
+              "type": "boolean"
             }
           ]
         },
@@ -2160,10 +2166,10 @@
             {
               "id": "c1861fc2-7c83-476d-9d32-a11ed739f786",
               "leftValue": "={{ $json.answer }}",
-              "rightValue": "https",
+              "rightValue": "https?:\\/\\/[^\\s]+?\\.(jpg|jpeg|png|gif|webp)(\\?[^\\s]*)?",
               "operator": {
                 "type": "string",
-                "operation": "contains"
+                "operation": "regex"
               }
             }
           ],
@@ -2649,7 +2655,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Dados da clÃƒÂ­nica vÃƒÂªm de \"Buscar Config Cl?nica\" (nome real do node Ã¢â‚¬â€ ? = ÃƒÂ­ corrompido)\nconst clinicRaw = (() => {\n  try {\n    const r = $('Buscar Config Cl?nica').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\nconst rawInstr = clinicRaw?.agent_instructions;\nconst clinic_name = clinicRaw?.name || '';\n\nlet agent_instructions = '';\nlet nome_agente = '';\nlet saudacao_novo = '';\nlet saudacao_retorno = '';\nlet instr_raw = {};\n\nif (rawInstr) {\n  try {\n    const cfg = typeof rawInstr === 'string' ? JSON.parse(rawInstr) : rawInstr;\n    nome_agente = cfg.nome_agente || '';\n    saudacao_novo = cfg.saudacao_novo || '';\n    saudacao_retorno = cfg.saudacao_retorno || '';\n    instr_raw = cfg;\n    const secoes = [\n      { key: 'identidade', label: 'IDENTIDADE DO AGENTE' },\n      { key: 'triagem',    label: 'TRIAGEM E URGENCIAS' },\n      { key: 'tom',        label: 'TOM E LINGUAGEM' },\n      { key: 'orientacoes',label: 'ORIENTACOES AO PACIENTE' },\n      { key: 'transferir', label: 'QUANDO TRANSFERIR PARA HUMANO' },\n      { key: 'outros',     label: 'OUTRAS INSTRUCOES' },\n    ];\n    agent_instructions = secoes\n      .filter(s => typeof cfg[s.key] === 'string' && cfg[s.key].trim())\n      .map(s => '### ' + s.label + '\\n' + cfg[s.key].trim())\n      .join('\\n\\n');\n  } catch(e) { agent_instructions = String(rawInstr); }\n}\n\nconst clientRow = (() => {\n  try {\n    const r = $('Get Cliente').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\n// SÃƒÂ³ usa nome do cadastro no agente apÃƒÂ³s confirmaÃƒÂ§ÃƒÂ£o no atendimento (coluna nome_confirmado; RPC n8n_cs_salvar_nome ou agendar com nome).\nlet nome_cliente = '';\nconst _nc = clientRow?.nome_confirmado;\nif (_nc === true || (_nc == null && (clientRow?.nome || '').trim() !== '')) {\n  nome_cliente = (clientRow?.nome || '').trim();\n}\nfunction _primeiroNomeDisplay(full) {\n  const s = String(full || '').trim();\n  if (!s) return '';\n  const w = (s.split(/\\s+/).filter(Boolean)[0] || '').trim();\n  if (!w) return '';\n  return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();\n}\n\nlet primeiro_contato = true;\ntry {\n  const histRow = $('Check First Contact').first().json;\n  const count = Number(histRow?.historico_count ?? 0);\n  primeiro_contato = count === 0;\n} catch { primeiro_contato = true; }\n\nconst nome_cliente_primeiro = nome_cliente ? _primeiroNomeDisplay(nome_cliente) : '';\n\n// [PATCH: normalize mensagem]\n// Pega mensagem e normaliza: nunca deixa null/undefined/JSON-string chegar ao agent.\nlet _rawMsg;\ntry { _rawMsg = $('Edit Fields2').first().json.mensagem; } catch { _rawMsg = null; }\n// Fallback 1: Edit Fields1.msg (texto extraÃƒÂ­do do webhook)\nif (_rawMsg == null || _rawMsg === '') {\n  try { _rawMsg = $('Edit Fields1').first().json.msg || ''; } catch { _rawMsg = ''; }\n}\n// Fallback 2: campo conversation direto do webhook\nif (!_rawMsg) {\n  try { _rawMsg = $('Webhook').first().json.body?.data?.message?.conversation || ''; } catch { _rawMsg = ''; }\n}\n// Se ainda for JSON-string, extrai o texto\nlet mensagem = '';\nif (typeof _rawMsg === 'string') {\n  const _trimmed = _rawMsg.trim();\n  if (_trimmed.startsWith('{') || _trimmed.startsWith('[')) {\n    try {\n      const _parsed = JSON.parse(_trimmed);\n      mensagem = String(_parsed.msg || _parsed.mensagem || _parsed.text || _parsed.message || _parsed.Mensagens || _trimmed);\n    } catch { mensagem = _trimmed; }\n  } else {\n    mensagem = _trimmed;\n  }\n} else if (_rawMsg != null) {\n  mensagem = String(_rawMsg);\n}\nconst clinic_id = $('Code merge webhook e resolucao').first().json.clinica_id;\nconst remoteJid = $('Webhook').first().json.body.data.key.remoteJid;\nconst instanceName = $('Edit Fields1').first().json.instanceName || '';\n\nconst _nowBR = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));\nconst _hr = _nowBR.getHours();\nconst saudacao_periodo = _hr >= 5 && _hr < 12 ? 'Bom dia' : _hr >= 12 && _hr < 18 ? 'Boa tarde' : 'Boa noite';\nif (saudacao_novo) {\n  saudacao_novo = saudacao_novo\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{name}}/g, nome_agente)\n    .replace(/{{clinica}}/g, clinic_name);\n}\nif (saudacao_retorno) {\n  saudacao_retorno = String(saudacao_retorno)\n    .replace(/{{nome_cliente}}/g, nome_cliente)\n    .replace(/{{primeiro_nome}}/g, nome_cliente_primeiro)\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{clinica}}/g, clinic_name)\n    .replace(/{{name}}/g, nome_agente || '')\n    .replace(/{{nome_agente}}/g, nome_agente || '');\n}\nif (agent_instructions) {\n  agent_instructions = agent_instructions\n    .replace(/{{name}}/g, nome_agente || '')\n    .replace(/{{nome_agente}}/g, nome_agente || '')\n    .replace(/{{agente}}/g, nome_agente || '')\n    .replace(/{{clinica}}/g, clinic_name || '')\n    .replace(/{{nome_clinica}}/g, clinic_name || '')\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{nome_cliente}}/g, nome_cliente || '')\n    .replace(/{{primeiro_nome}}/g, nome_cliente_primeiro || '');\n}\n\nfunction _normHoursArr(v) {\n  if (!Array.isArray(v)) return [];\n  const s = new Set();\n  for (const x of v) {\n    const n = typeof x === 'number' ? x : parseInt(String(x), 10);\n    if (Number.isFinite(n) && n >= 6 && n <= 22) s.add(n);\n  }\n  return [...s].sort((a,b)=>a-b);\n}\nfunction _fmtHourList(arr) {\n  if (!arr.length) return 'conforme configuraÃƒÂ§ÃƒÂ£o no painel';\n  return arr.map(h => String(h).padStart(2, '0') + ':00').join(', ');\n}\nconst _wdH = _normHoursArr(clinicRaw.agenda_visible_hours);\nconst _sabOn = clinicRaw.sabado_aberto === true || clinicRaw.sabado_aberto === 'true' || clinicRaw.sabado_aberto === 1;\nconst _sabH = _normHoursArr(clinicRaw.sabado_agenda_hours);\nlet _horCal = '### HORÃƒÂRIO DA CLÃƒÂNICA (AGENDAMENTOS Ã¢â‚¬â€ respeite estritamente)' + String.fromCharCode(10);\n_horCal += '- Domingo: sem atendimento.' + String.fromCharCode(10);\n_horCal += '- Dias ÃƒÂºteis (segunda a sexta): blocos ' + _fmtHourList(_wdH) + '.' + String.fromCharCode(10);\nif (!_sabOn) {\n  _horCal += '- SÃƒÂ¡bado: sem atendimento.' + String.fromCharCode(10);\n} else if (_sabH.length) {\n  _horCal += '- SÃƒÂ¡bado: aberto Ã¢â‚¬â€ blocos ' + _fmtHourList(_sabH) + '.' + String.fromCharCode(10);\n} else {\n  _horCal += '- SÃƒÂ¡bado: aberto Ã¢â‚¬â€ mesmos blocos dos dias ÃƒÂºteis.' + String.fromCharCode(10);\n}\n_horCal += 'NÃƒÂ£o ofereÃƒÂ§a horÃƒÂ¡rios em dias fechados nem fora dos blocos; use as tools para vagas reais.';\nagent_instructions = (agent_instructions ? agent_instructions + String.fromCharCode(10,10) : '') + _horCal;\n\nfunction _ymdSP(d) {\n  const y = d.getFullYear();\n  const m = String(d.getMonth() + 1).padStart(2, '0');\n  const day = String(d.getDate()).padStart(2, '0');\n  return y + '-' + m + '-' + day;\n}\nfunction _brSP(d) {\n  const day = String(d.getDate()).padStart(2, '0');\n  const m = String(d.getMonth() + 1).padStart(2, '0');\n  const y = d.getFullYear();\n  return day + '/' + m + '/' + y;\n}\nconst _diasSem = ['domingo', 'segunda-feira', 'terÃƒÂ§a-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sÃƒÂ¡bado'];\nconst cal_hoje_ymd = _ymdSP(_nowBR);\nconst cal_hoje_br = _brSP(_nowBR);\nconst cal_hoje_weekday = _diasSem[_nowBR.getDay()];\nconst _amanhaSP = new Date(_nowBR);\n_amanhaSP.setDate(_amanhaSP.getDate() + 1);\nconst cal_amanha_ymd = _ymdSP(_amanhaSP);\nconst cal_amanha_br = _brSP(_amanhaSP);\nconst cal_amanha_weekday = _diasSem[_amanhaSP.getDay()];\nconst _calBlock =\n  String.fromCharCode(10, 10) +\n  '### CALENDÃƒÂRIO OBRIGATÃƒâ€œRIO (America/Sao_Paulo)' +\n  String.fromCharCode(10) +\n  '- Hoje: ' +\n  cal_hoje_weekday +\n  ', ' +\n  cal_hoje_br +\n  ' Ã¢â‚¬â€ YYYY-MM-DD: ' +\n  cal_hoje_ymd +\n  String.fromCharCode(10) +\n  '- AmanhÃƒÂ£: ' +\n  cal_amanha_weekday +\n  ', ' +\n  cal_amanha_br +\n  ' Ã¢â‚¬â€ YYYY-MM-DD: ' +\n  cal_amanha_ymd +\n  String.fromCharCode(10) +\n  'Se o cliente disser AMANHÃƒÆ’ Ã¢â€ â€™ data_solicitada na tool agd_cs_consultar_vagas DEVE ser ' +\n  cal_amanha_ymd +\n  '. Proibido usar outra data. Ao escrever ao cliente use esta data: ' +\n  cal_amanha_br +\n  '.' +\n  String.fromCharCode(10) +\n  'Se o cliente disser HOJE Ã¢â€ â€™ data_solicitada = ' +\n  cal_hoje_ymd +\n  '.';\nagent_instructions = agent_instructions + _calBlock;\n\nreturn [{ json: {\n  mensagem,\n  agent_instructions,\n  nome_agente,\n  clinic_name,\n  nome_cliente,\n  nome_cliente_primeiro,\n  saudacao_novo,\n  saudacao_retorno,\n  saudacao_periodo,\n  primeiro_contato,\n  clinic_id,\n  remoteJid,\n  instanceName,\n  instr_triagem:    instr_raw.triagem     || '',\n  instr_faq:        instr_raw.orientacoes || '',\n  instr_transferir: instr_raw.transferir  || '',\n  instr_outros:     instr_raw.outros      || '',\n  cal_hoje_ymd,\n  cal_hoje_br,\n  cal_hoje_weekday,\n  cal_amanha_ymd,\n  cal_amanha_br,\n  cal_amanha_weekday,\n} }];"
+        "jsCode": "// Dados da clÃƒÂ­nica vÃƒÂªm de \"Buscar Config Cl?nica\" (nome real do node Ã¢â‚¬â€ ? = ÃƒÂ­ corrompido)\nconst clinicRaw = (() => {\n  try {\n    const r = $('Buscar Config Cl?nica').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\nconst rawInstr = clinicRaw?.agent_instructions;\nconst clinic_name = clinicRaw?.name || '';\n\nlet agent_instructions = '';\nlet nome_agente = '';\nlet saudacao_novo = '';\nlet saudacao_retorno = '';\nlet instr_raw = {};\n\nif (rawInstr) {\n  try {\n    const cfg = typeof rawInstr === 'string' ? JSON.parse(rawInstr) : rawInstr;\n    nome_agente = cfg.nome_agente || '';\n    saudacao_novo = cfg.saudacao_novo || '';\n    saudacao_retorno = cfg.saudacao_retorno || '';\n    instr_raw = cfg;\n    const secoes = [\n      { key: 'identidade', label: 'IDENTIDADE DO AGENTE' },\n      { key: 'triagem',    label: 'TRIAGEM E URGENCIAS' },\n      { key: 'tom',        label: 'TOM E LINGUAGEM' },\n      { key: 'orientacoes',label: 'ORIENTACOES AO PACIENTE' },\n      { key: 'transferir', label: 'QUANDO TRANSFERIR PARA HUMANO' },\n      { key: 'outros',     label: 'OUTRAS INSTRUCOES' },\n    ];\n    agent_instructions = secoes\n      .filter(s => typeof cfg[s.key] === 'string' && cfg[s.key].trim())\n      .map(s => '### ' + s.label + '\\n' + cfg[s.key].trim())\n      .join('\\n\\n');\n  } catch(e) { agent_instructions = String(rawInstr); }\n}\n\nconst clientRow = (() => {\n  try {\n    const r = $('Get Cliente').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\n// SÃƒÂ³ usa nome do cadastro no agente apÃƒÂ³s confirmaÃƒÂ§ÃƒÂ£o no atendimento (coluna nome_confirmado; RPC n8n_cs_salvar_nome ou agendar com nome).\nlet nome_cliente = '';\nconst _nc = clientRow?.nome_confirmado;\nif (_nc === true || (_nc == null && (clientRow?.nome || '').trim() !== '')) {\n  nome_cliente = (clientRow?.nome || '').trim();\n}\nfunction _primeiroNomeDisplay(full) {\n  const s = String(full || '').trim();\n  if (!s) return '';\n  const w = (s.split(/\\s+/).filter(Boolean)[0] || '').trim();\n  if (!w) return '';\n  return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();\n}\n\nlet primeiro_contato = true;\ntry {\n  const histRow = $('Check First Contact').first().json;\n  const count = Number(histRow?.historico_count ?? 0);\n  primeiro_contato = count === 0;\n} catch { primeiro_contato = true; }\n\nconst nome_cliente_primeiro = nome_cliente ? _primeiroNomeDisplay(nome_cliente) : '';\n\n// [PATCH: normalize mensagem]\n// Pega mensagem e normaliza: nunca deixa null/undefined/JSON-string chegar ao agent.\nlet _rawMsg;\ntry { _rawMsg = $('Edit Fields2').first().json.mensagem; } catch { _rawMsg = null; }\n// Fallback 1: Edit Fields1.msg (texto extraÃƒÂ­do do webhook)\nif (_rawMsg == null || _rawMsg === '') {\n  try { _rawMsg = $('Edit Fields1').first().json.msg || ''; } catch { _rawMsg = ''; }\n}\n// Fallback 2: campo conversation direto do webhook\nif (!_rawMsg) {\n  try { _rawMsg = $('Webhook').first().json.body?.data?.message?.conversation || ''; } catch { _rawMsg = ''; }\n}\n// Se ainda for JSON-string, extrai o texto\nlet mensagem = '';\nif (typeof _rawMsg === 'string') {\n  const _trimmed = _rawMsg.trim();\n  if (_trimmed.startsWith('{') || _trimmed.startsWith('[')) {\n    try {\n      const _parsed = JSON.parse(_trimmed);\n      mensagem = String(_parsed.msg || _parsed.mensagem || _parsed.text || _parsed.message || _parsed.Mensagens || _trimmed);\n    } catch { mensagem = _trimmed; }\n  } else {\n    mensagem = _trimmed;\n  }\n} else if (_rawMsg != null) {\n  mensagem = String(_rawMsg);\n}\nconst clinic_id = $('Code merge webhook e resolucao').first().json.clinica_id;\nconst remoteJid = $('Webhook').first().json.body.data.key.remoteJid;\nconst instanceName = $('Edit Fields1').first().json.instanceName || '';\n\nconst _nowBR = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));\nconst _hr = _nowBR.getHours();\nconst saudacao_periodo = _hr >= 5 && _hr < 12 ? 'Bom dia' : _hr >= 12 && _hr < 18 ? 'Boa tarde' : 'Boa noite';\nif (saudacao_novo) {\n  saudacao_novo = saudacao_novo\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{name}}/g, nome_agente)\n    .replace(/{{clinica}}/g, clinic_name);\n}\nif (saudacao_retorno) {\n  saudacao_retorno = String(saudacao_retorno)\n    .replace(/{{nome_cliente}}/g, nome_cliente)\n    .replace(/{{primeiro_nome}}/g, nome_cliente_primeiro)\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{clinica}}/g, clinic_name)\n    .replace(/{{name}}/g, nome_agente || '')\n    .replace(/{{nome_agente}}/g, nome_agente || '');\n}\nif (agent_instructions) {\n  agent_instructions = agent_instructions\n    .replace(/{{name}}/g, nome_agente || '')\n    .replace(/{{nome_agente}}/g, nome_agente || '')\n    .replace(/{{agente}}/g, nome_agente || '')\n    .replace(/{{clinica}}/g, clinic_name || '')\n    .replace(/{{nome_clinica}}/g, clinic_name || '')\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{nome_cliente}}/g, nome_cliente || '')\n    .replace(/{{primeiro_nome}}/g, nome_cliente_primeiro || '');\n}\n\nfunction _normHoursArr(v) {\n  if (!Array.isArray(v)) return [];\n  const s = new Set();\n  for (const x of v) {\n    const n = typeof x === 'number' ? x : parseInt(String(x), 10);\n    if (Number.isFinite(n) && n >= 6 && n <= 22) s.add(n);\n  }\n  return [...s].sort((a,b)=>a-b);\n}\nfunction _fmtHourList(arr) {\n  if (!arr.length) return 'conforme configuraÃƒÂ§ÃƒÂ£o no painel';\n  return arr.map(h => String(h).padStart(2, '0') + ':00').join(', ');\n}\nconst _wdH = _normHoursArr(clinicRaw.agenda_visible_hours);\nconst _sabOn = clinicRaw.sabado_aberto === true || clinicRaw.sabado_aberto === 'true' || clinicRaw.sabado_aberto === 1;\nconst _sabH = _normHoursArr(clinicRaw.sabado_agenda_hours);\nlet _horCal = '### HORÃƒÂRIO DA CLÃƒÂNICA (AGENDAMENTOS Ã¢â‚¬â€ respeite estritamente)' + String.fromCharCode(10);\n_horCal += '- Domingo: sem atendimento.' + String.fromCharCode(10);\n_horCal += '- Dias ÃƒÂºteis (segunda a sexta): blocos ' + _fmtHourList(_wdH) + '.' + String.fromCharCode(10);\nif (!_sabOn) {\n  _horCal += '- SÃƒÂ¡bado: sem atendimento.' + String.fromCharCode(10);\n} else if (_sabH.length) {\n  _horCal += '- SÃƒÂ¡bado: aberto Ã¢â‚¬â€ blocos ' + _fmtHourList(_sabH) + '.' + String.fromCharCode(10);\n} else {\n  _horCal += '- SÃƒÂ¡bado: aberto Ã¢â‚¬â€ mesmos blocos dos dias ÃƒÂºteis.' + String.fromCharCode(10);\n}\n_horCal += 'NÃƒÂ£o ofereÃƒÂ§a horÃƒÂ¡rios em dias fechados nem fora dos blocos; use as tools para vagas reais.';\nagent_instructions = (agent_instructions ? agent_instructions + String.fromCharCode(10,10) : '') + _horCal;\n\nfunction _ymdSP(d) {\n  const y = d.getFullYear();\n  const m = String(d.getMonth() + 1).padStart(2, '0');\n  const day = String(d.getDate()).padStart(2, '0');\n  return y + '-' + m + '-' + day;\n}\nfunction _brSP(d) {\n  const day = String(d.getDate()).padStart(2, '0');\n  const m = String(d.getMonth() + 1).padStart(2, '0');\n  const y = d.getFullYear();\n  return day + '/' + m + '/' + y;\n}\nconst _diasSem = ['domingo', 'segunda-feira', 'terÃƒÂ§a-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sÃƒÂ¡bado'];\nconst cal_hoje_ymd = _ymdSP(_nowBR);\nconst cal_hoje_br = _brSP(_nowBR);\nconst cal_hoje_weekday = _diasSem[_nowBR.getDay()];\nconst _amanhaSP = new Date(_nowBR);\n_amanhaSP.setDate(_amanhaSP.getDate() + 1);\nconst cal_amanha_ymd = _ymdSP(_amanhaSP);\nconst cal_amanha_br = _brSP(_amanhaSP);\nconst cal_amanha_weekday = _diasSem[_amanhaSP.getDay()];\nconst _calBlock =\n  String.fromCharCode(10, 10) +\n  '### CALENDÃƒÂRIO OBRIGATÃƒâ€œRIO (America/Sao_Paulo)' +\n  String.fromCharCode(10) +\n  '- Hoje: ' +\n  cal_hoje_weekday +\n  ', ' +\n  cal_hoje_br +\n  ' Ã¢â‚¬â€ YYYY-MM-DD: ' +\n  cal_hoje_ymd +\n  String.fromCharCode(10) +\n  '- AmanhÃƒÂ£: ' +\n  cal_amanha_weekday +\n  ', ' +\n  cal_amanha_br +\n  ' Ã¢â‚¬â€ YYYY-MM-DD: ' +\n  cal_amanha_ymd +\n  String.fromCharCode(10) +\n  'Se o cliente disser AMANHÃƒÆ’ Ã¢â€ â€™ data_solicitada na tool agd_cs_consultar_vagas DEVE ser ' +\n  cal_amanha_ymd +\n  '. Proibido usar outra data. Ao escrever ao cliente use esta data: ' +\n  cal_amanha_br +\n  '.' +\n  String.fromCharCode(10) +\n  'Se o cliente disser HOJE Ã¢â€ â€™ data_solicitada = ' +\n  cal_hoje_ymd +\n  '.';\nagent_instructions = agent_instructions + _calBlock;\n\n// [PATCH: endereco/localizacao v2]\nconst _endereco = (instr_raw && typeof instr_raw.endereco === 'string') ? instr_raw.endereco.trim() : '';\nconst _mapsLink = (instr_raw && typeof instr_raw.link_localizacao === 'string') ? instr_raw.link_localizacao.trim() : '';\nconst _latRaw = instr_raw && instr_raw.latitude;\nconst _lngRaw = instr_raw && instr_raw.longitude;\nconst _lat = (typeof _latRaw === 'number' && Number.isFinite(_latRaw)) ? _latRaw : (typeof _latRaw === 'string' && _latRaw.trim() !== '' && Number.isFinite(parseFloat(_latRaw))) ? parseFloat(_latRaw) : null;\nconst _lng = (typeof _lngRaw === 'number' && Number.isFinite(_lngRaw)) ? _lngRaw : (typeof _lngRaw === 'string' && _lngRaw.trim() !== '' && Number.isFinite(parseFloat(_lngRaw))) ? parseFloat(_lngRaw) : null;\nconst _hasNativeLocation = _lat !== null && _lng !== null;\nlet _enderecoFaqBlock = '';\nif (_endereco || _mapsLink || _hasNativeLocation) {\n  _enderecoFaqBlock = '\\n\\n### ENDERECO DA CLINICA';\n  if (_endereco) _enderecoFaqBlock += '\\nEndereco: ' + _endereco;\n  if (_mapsLink && !_hasNativeLocation) _enderecoFaqBlock += '\\nLink Google Maps: ' + _mapsLink;\n  if (_hasNativeLocation) {\n    _enderecoFaqBlock += '\\n\\nREGRA OBRIGATORIA: quando o cliente pedir endereco, localizacao, \"onde fica\" ou \"como chegar\":';\n    _enderecoFaqBlock += '\\n1. Responda em UMA frase curta confirmando o endereco (ex.: \"A clinica fica em ' + (_endereco || 'nosso endereco') + '.\").';\n    _enderecoFaqBlock += '\\n2. NA ULTIMA LINHA, escreva EXACTAMENTE o marcador: [SEND_LOCATION]';\n    _enderecoFaqBlock += '\\n3. NAO mande o link do Google Maps no texto, NAO use markdown. O sistema vai enviar o card de localizacao nativo do WhatsApp automaticamente.';\n  } else {\n    _enderecoFaqBlock += '\\n\\nREGRA OBRIGATORIA: quando o cliente pedir endereco, localizacao, \"onde fica\", \"como chegar\" ou similar, responda SEMPRE com as linhas acima (endereco + link do Maps, se houver). Nao invente endereco, nao parafraseie, nao omita o link.';\n  }\n}\n\nreturn [{ json: {\n  mensagem,\n  agent_instructions,\n  nome_agente,\n  clinic_name,\n  nome_cliente,\n  nome_cliente_primeiro,\n  saudacao_novo,\n  saudacao_retorno,\n  saudacao_periodo,\n  primeiro_contato,\n  clinic_id,\n  remoteJid,\n  instanceName,\n  instr_triagem:    instr_raw.triagem     || '',\n  instr_faq:        ((instr_raw.orientacoes || '') + (_enderecoFaqBlock || '')) || '',\n  instr_transferir: instr_raw.transferir  || '',\n  instr_outros:     instr_raw.outros      || '',\n  instr_faq_endereco: _enderecoFaqBlock || '',\n  loc_latitude: _lat,\n  loc_longitude: _lng,\n  loc_name: clinic_name || '',\n  loc_address: _endereco || '',\n  loc_has_native: _hasNativeLocation,\n  cal_hoje_ymd,\n  cal_hoje_br,\n  cal_hoje_weekday,\n  cal_amanha_ymd,\n  cal_amanha_br,\n  cal_amanha_weekday,\n} }];"
       },
       "id": "ddcdcb0e-e998-4c40-8f6c-064b3e852df9",
       "name": "Monta Contexto",
@@ -4528,6 +4534,75 @@
           "combinator": "and"
         }
       }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "send-loc-cond-1",
+              "leftValue": "={{ $json._send_location }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "send-loc-if-v1",
+      "name": "If Send Location",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3104,
+        -748
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://evolutionapi.vps7846.panel.icontainer.cloud/message/sendLocation/' + ($('Monta Contexto').first().json.instanceName || $('Edit Fields1').first().json.instanceName || '') }}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "6PWyAsF3cip8QZ2JxNSRk4M5A5yEi4G8"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $('Edit Fields1').first().json.numCliente, latitude: $('Monta Contexto').first().json.loc_latitude, longitude: $('Monta Contexto').first().json.loc_longitude, name: $('Monta Contexto').first().json.loc_name, address: $('Monta Contexto').first().json.loc_address }) }}",
+        "options": {}
+      },
+      "id": "send-loc-evolution-v1",
+      "name": "Evolution sendLocation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3344,
+        -748
+      ],
+      "onError": "continueErrorOutput"
     }
   ],
   "connections": {
@@ -4973,6 +5048,11 @@
         [
           {
             "node": "Quebra a mensagem em v?rias mensagens",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Send Location",
             "type": "main",
             "index": 0
           }
@@ -5948,6 +6028,18 @@
             "index": 0
           }
         ]
+      ]
+    },
+    "If Send Location": {
+      "main": [
+        [
+          {
+            "node": "Evolution sendLocation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     }
   },
@@ -7555,7 +7647,7 @@
               {
                 "id": "ea5e28bf-fc6b-410d-a4d5-177b7f96643a",
                 "name": "answer",
-                "value": "={{ [$json.output.trim().replace(/\\s*\\[ROTA:[^\\]]+\\]\\s*/gi, '').trim()] }}",
+                "value": "={{ [$json.output.trim().replace(/\\s*\\[ROTA:[^\\]]+\\]\\s*/gi, '').replace(/\\s*\\[SEND_LOCATION\\]\\s*/gi, '').trim()] }}",
                 "type": "array"
               },
               {
@@ -7563,6 +7655,12 @@
                 "name": "conversation_id",
                 "value": "={{ $('Edit Fields2').item.json.ConversationID }}",
                 "type": "string"
+              },
+              {
+                "id": "f1a3b2c4-5d6e-7f80-9a1b-2c3d4e5f6a7b",
+                "name": "_send_location",
+                "value": "={{ /\\[SEND_LOCATION\\]/i.test($json.output || '') }}",
+                "type": "boolean"
               }
             ]
           },
@@ -8327,10 +8425,10 @@
               {
                 "id": "c1861fc2-7c83-476d-9d32-a11ed739f786",
                 "leftValue": "={{ $json.answer }}",
-                "rightValue": "https",
+                "rightValue": "https?:\\/\\/[^\\s]+?\\.(jpg|jpeg|png|gif|webp)(\\?[^\\s]*)?",
                 "operator": {
                   "type": "string",
-                  "operation": "contains"
+                  "operation": "regex"
                 }
               }
             ],
@@ -8816,7 +8914,7 @@
       },
       {
         "parameters": {
-          "jsCode": "// Dados da clÃƒÂ­nica vÃƒÂªm de \"Buscar Config Cl?nica\" (nome real do node Ã¢â‚¬â€ ? = ÃƒÂ­ corrompido)\nconst clinicRaw = (() => {\n  try {\n    const r = $('Buscar Config Cl?nica').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\nconst rawInstr = clinicRaw?.agent_instructions;\nconst clinic_name = clinicRaw?.name || '';\n\nlet agent_instructions = '';\nlet nome_agente = '';\nlet saudacao_novo = '';\nlet saudacao_retorno = '';\nlet instr_raw = {};\n\nif (rawInstr) {\n  try {\n    const cfg = typeof rawInstr === 'string' ? JSON.parse(rawInstr) : rawInstr;\n    nome_agente = cfg.nome_agente || '';\n    saudacao_novo = cfg.saudacao_novo || '';\n    saudacao_retorno = cfg.saudacao_retorno || '';\n    instr_raw = cfg;\n    const secoes = [\n      { key: 'identidade', label: 'IDENTIDADE DO AGENTE' },\n      { key: 'triagem',    label: 'TRIAGEM E URGENCIAS' },\n      { key: 'tom',        label: 'TOM E LINGUAGEM' },\n      { key: 'orientacoes',label: 'ORIENTACOES AO PACIENTE' },\n      { key: 'transferir', label: 'QUANDO TRANSFERIR PARA HUMANO' },\n      { key: 'outros',     label: 'OUTRAS INSTRUCOES' },\n    ];\n    agent_instructions = secoes\n      .filter(s => typeof cfg[s.key] === 'string' && cfg[s.key].trim())\n      .map(s => '### ' + s.label + '\\n' + cfg[s.key].trim())\n      .join('\\n\\n');\n  } catch(e) { agent_instructions = String(rawInstr); }\n}\n\nconst clientRow = (() => {\n  try {\n    const r = $('Get Cliente').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\n// SÃƒÂ³ usa nome do cadastro no agente apÃƒÂ³s confirmaÃƒÂ§ÃƒÂ£o no atendimento (coluna nome_confirmado; RPC n8n_cs_salvar_nome ou agendar com nome).\nlet nome_cliente = '';\nconst _nc = clientRow?.nome_confirmado;\nif (_nc === true || (_nc == null && (clientRow?.nome || '').trim() !== '')) {\n  nome_cliente = (clientRow?.nome || '').trim();\n}\nfunction _primeiroNomeDisplay(full) {\n  const s = String(full || '').trim();\n  if (!s) return '';\n  const w = (s.split(/\\s+/).filter(Boolean)[0] || '').trim();\n  if (!w) return '';\n  return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();\n}\n\nlet primeiro_contato = true;\ntry {\n  const histRow = $('Check First Contact').first().json;\n  const count = Number(histRow?.historico_count ?? 0);\n  primeiro_contato = count === 0;\n} catch { primeiro_contato = true; }\n\nconst nome_cliente_primeiro = nome_cliente ? _primeiroNomeDisplay(nome_cliente) : '';\n\n// [PATCH: normalize mensagem]\n// Pega mensagem e normaliza: nunca deixa null/undefined/JSON-string chegar ao agent.\nlet _rawMsg;\ntry { _rawMsg = $('Edit Fields2').first().json.mensagem; } catch { _rawMsg = null; }\n// Fallback 1: Edit Fields1.msg (texto extraÃƒÂ­do do webhook)\nif (_rawMsg == null || _rawMsg === '') {\n  try { _rawMsg = $('Edit Fields1').first().json.msg || ''; } catch { _rawMsg = ''; }\n}\n// Fallback 2: campo conversation direto do webhook\nif (!_rawMsg) {\n  try { _rawMsg = $('Webhook').first().json.body?.data?.message?.conversation || ''; } catch { _rawMsg = ''; }\n}\n// Se ainda for JSON-string, extrai o texto\nlet mensagem = '';\nif (typeof _rawMsg === 'string') {\n  const _trimmed = _rawMsg.trim();\n  if (_trimmed.startsWith('{') || _trimmed.startsWith('[')) {\n    try {\n      const _parsed = JSON.parse(_trimmed);\n      mensagem = String(_parsed.msg || _parsed.mensagem || _parsed.text || _parsed.message || _parsed.Mensagens || _trimmed);\n    } catch { mensagem = _trimmed; }\n  } else {\n    mensagem = _trimmed;\n  }\n} else if (_rawMsg != null) {\n  mensagem = String(_rawMsg);\n}\nconst clinic_id = $('Code merge webhook e resolucao').first().json.clinica_id;\nconst remoteJid = $('Webhook').first().json.body.data.key.remoteJid;\nconst instanceName = $('Edit Fields1').first().json.instanceName || '';\n\nconst _nowBR = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));\nconst _hr = _nowBR.getHours();\nconst saudacao_periodo = _hr >= 5 && _hr < 12 ? 'Bom dia' : _hr >= 12 && _hr < 18 ? 'Boa tarde' : 'Boa noite';\nif (saudacao_novo) {\n  saudacao_novo = saudacao_novo\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{name}}/g, nome_agente)\n    .replace(/{{clinica}}/g, clinic_name);\n}\nif (saudacao_retorno) {\n  saudacao_retorno = String(saudacao_retorno)\n    .replace(/{{nome_cliente}}/g, nome_cliente)\n    .replace(/{{primeiro_nome}}/g, nome_cliente_primeiro)\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{clinica}}/g, clinic_name)\n    .replace(/{{name}}/g, nome_agente || '')\n    .replace(/{{nome_agente}}/g, nome_agente || '');\n}\nif (agent_instructions) {\n  agent_instructions = agent_instructions\n    .replace(/{{name}}/g, nome_agente || '')\n    .replace(/{{nome_agente}}/g, nome_agente || '')\n    .replace(/{{agente}}/g, nome_agente || '')\n    .replace(/{{clinica}}/g, clinic_name || '')\n    .replace(/{{nome_clinica}}/g, clinic_name || '')\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{nome_cliente}}/g, nome_cliente || '')\n    .replace(/{{primeiro_nome}}/g, nome_cliente_primeiro || '');\n}\n\nfunction _normHoursArr(v) {\n  if (!Array.isArray(v)) return [];\n  const s = new Set();\n  for (const x of v) {\n    const n = typeof x === 'number' ? x : parseInt(String(x), 10);\n    if (Number.isFinite(n) && n >= 6 && n <= 22) s.add(n);\n  }\n  return [...s].sort((a,b)=>a-b);\n}\nfunction _fmtHourList(arr) {\n  if (!arr.length) return 'conforme configuraÃƒÂ§ÃƒÂ£o no painel';\n  return arr.map(h => String(h).padStart(2, '0') + ':00').join(', ');\n}\nconst _wdH = _normHoursArr(clinicRaw.agenda_visible_hours);\nconst _sabOn = clinicRaw.sabado_aberto === true || clinicRaw.sabado_aberto === 'true' || clinicRaw.sabado_aberto === 1;\nconst _sabH = _normHoursArr(clinicRaw.sabado_agenda_hours);\nlet _horCal = '### HORÃƒÂRIO DA CLÃƒÂNICA (AGENDAMENTOS Ã¢â‚¬â€ respeite estritamente)' + String.fromCharCode(10);\n_horCal += '- Domingo: sem atendimento.' + String.fromCharCode(10);\n_horCal += '- Dias ÃƒÂºteis (segunda a sexta): blocos ' + _fmtHourList(_wdH) + '.' + String.fromCharCode(10);\nif (!_sabOn) {\n  _horCal += '- SÃƒÂ¡bado: sem atendimento.' + String.fromCharCode(10);\n} else if (_sabH.length) {\n  _horCal += '- SÃƒÂ¡bado: aberto Ã¢â‚¬â€ blocos ' + _fmtHourList(_sabH) + '.' + String.fromCharCode(10);\n} else {\n  _horCal += '- SÃƒÂ¡bado: aberto Ã¢â‚¬â€ mesmos blocos dos dias ÃƒÂºteis.' + String.fromCharCode(10);\n}\n_horCal += 'NÃƒÂ£o ofereÃƒÂ§a horÃƒÂ¡rios em dias fechados nem fora dos blocos; use as tools para vagas reais.';\nagent_instructions = (agent_instructions ? agent_instructions + String.fromCharCode(10,10) : '') + _horCal;\n\nfunction _ymdSP(d) {\n  const y = d.getFullYear();\n  const m = String(d.getMonth() + 1).padStart(2, '0');\n  const day = String(d.getDate()).padStart(2, '0');\n  return y + '-' + m + '-' + day;\n}\nfunction _brSP(d) {\n  const day = String(d.getDate()).padStart(2, '0');\n  const m = String(d.getMonth() + 1).padStart(2, '0');\n  const y = d.getFullYear();\n  return day + '/' + m + '/' + y;\n}\nconst _diasSem = ['domingo', 'segunda-feira', 'terÃƒÂ§a-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sÃƒÂ¡bado'];\nconst cal_hoje_ymd = _ymdSP(_nowBR);\nconst cal_hoje_br = _brSP(_nowBR);\nconst cal_hoje_weekday = _diasSem[_nowBR.getDay()];\nconst _amanhaSP = new Date(_nowBR);\n_amanhaSP.setDate(_amanhaSP.getDate() + 1);\nconst cal_amanha_ymd = _ymdSP(_amanhaSP);\nconst cal_amanha_br = _brSP(_amanhaSP);\nconst cal_amanha_weekday = _diasSem[_amanhaSP.getDay()];\nconst _calBlock =\n  String.fromCharCode(10, 10) +\n  '### CALENDÃƒÂRIO OBRIGATÃƒâ€œRIO (America/Sao_Paulo)' +\n  String.fromCharCode(10) +\n  '- Hoje: ' +\n  cal_hoje_weekday +\n  ', ' +\n  cal_hoje_br +\n  ' Ã¢â‚¬â€ YYYY-MM-DD: ' +\n  cal_hoje_ymd +\n  String.fromCharCode(10) +\n  '- AmanhÃƒÂ£: ' +\n  cal_amanha_weekday +\n  ', ' +\n  cal_amanha_br +\n  ' Ã¢â‚¬â€ YYYY-MM-DD: ' +\n  cal_amanha_ymd +\n  String.fromCharCode(10) +\n  'Se o cliente disser AMANHÃƒÆ’ Ã¢â€ â€™ data_solicitada na tool agd_cs_consultar_vagas DEVE ser ' +\n  cal_amanha_ymd +\n  '. Proibido usar outra data. Ao escrever ao cliente use esta data: ' +\n  cal_amanha_br +\n  '.' +\n  String.fromCharCode(10) +\n  'Se o cliente disser HOJE Ã¢â€ â€™ data_solicitada = ' +\n  cal_hoje_ymd +\n  '.';\nagent_instructions = agent_instructions + _calBlock;\n\nreturn [{ json: {\n  mensagem,\n  agent_instructions,\n  nome_agente,\n  clinic_name,\n  nome_cliente,\n  nome_cliente_primeiro,\n  saudacao_novo,\n  saudacao_retorno,\n  saudacao_periodo,\n  primeiro_contato,\n  clinic_id,\n  remoteJid,\n  instanceName,\n  instr_triagem:    instr_raw.triagem     || '',\n  instr_faq:        instr_raw.orientacoes || '',\n  instr_transferir: instr_raw.transferir  || '',\n  instr_outros:     instr_raw.outros      || '',\n  cal_hoje_ymd,\n  cal_hoje_br,\n  cal_hoje_weekday,\n  cal_amanha_ymd,\n  cal_amanha_br,\n  cal_amanha_weekday,\n} }];"
+          "jsCode": "// Dados da clÃƒÂ­nica vÃƒÂªm de \"Buscar Config Cl?nica\" (nome real do node Ã¢â‚¬â€ ? = ÃƒÂ­ corrompido)\nconst clinicRaw = (() => {\n  try {\n    const r = $('Buscar Config Cl?nica').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\nconst rawInstr = clinicRaw?.agent_instructions;\nconst clinic_name = clinicRaw?.name || '';\n\nlet agent_instructions = '';\nlet nome_agente = '';\nlet saudacao_novo = '';\nlet saudacao_retorno = '';\nlet instr_raw = {};\n\nif (rawInstr) {\n  try {\n    const cfg = typeof rawInstr === 'string' ? JSON.parse(rawInstr) : rawInstr;\n    nome_agente = cfg.nome_agente || '';\n    saudacao_novo = cfg.saudacao_novo || '';\n    saudacao_retorno = cfg.saudacao_retorno || '';\n    instr_raw = cfg;\n    const secoes = [\n      { key: 'identidade', label: 'IDENTIDADE DO AGENTE' },\n      { key: 'triagem',    label: 'TRIAGEM E URGENCIAS' },\n      { key: 'tom',        label: 'TOM E LINGUAGEM' },\n      { key: 'orientacoes',label: 'ORIENTACOES AO PACIENTE' },\n      { key: 'transferir', label: 'QUANDO TRANSFERIR PARA HUMANO' },\n      { key: 'outros',     label: 'OUTRAS INSTRUCOES' },\n    ];\n    agent_instructions = secoes\n      .filter(s => typeof cfg[s.key] === 'string' && cfg[s.key].trim())\n      .map(s => '### ' + s.label + '\\n' + cfg[s.key].trim())\n      .join('\\n\\n');\n  } catch(e) { agent_instructions = String(rawInstr); }\n}\n\nconst clientRow = (() => {\n  try {\n    const r = $('Get Cliente').first().json;\n    return Array.isArray(r) ? (r[0] || {}) : r;\n  } catch { return {}; }\n})();\n// SÃƒÂ³ usa nome do cadastro no agente apÃƒÂ³s confirmaÃƒÂ§ÃƒÂ£o no atendimento (coluna nome_confirmado; RPC n8n_cs_salvar_nome ou agendar com nome).\nlet nome_cliente = '';\nconst _nc = clientRow?.nome_confirmado;\nif (_nc === true || (_nc == null && (clientRow?.nome || '').trim() !== '')) {\n  nome_cliente = (clientRow?.nome || '').trim();\n}\nfunction _primeiroNomeDisplay(full) {\n  const s = String(full || '').trim();\n  if (!s) return '';\n  const w = (s.split(/\\s+/).filter(Boolean)[0] || '').trim();\n  if (!w) return '';\n  return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();\n}\n\nlet primeiro_contato = true;\ntry {\n  const histRow = $('Check First Contact').first().json;\n  const count = Number(histRow?.historico_count ?? 0);\n  primeiro_contato = count === 0;\n} catch { primeiro_contato = true; }\n\nconst nome_cliente_primeiro = nome_cliente ? _primeiroNomeDisplay(nome_cliente) : '';\n\n// [PATCH: normalize mensagem]\n// Pega mensagem e normaliza: nunca deixa null/undefined/JSON-string chegar ao agent.\nlet _rawMsg;\ntry { _rawMsg = $('Edit Fields2').first().json.mensagem; } catch { _rawMsg = null; }\n// Fallback 1: Edit Fields1.msg (texto extraÃƒÂ­do do webhook)\nif (_rawMsg == null || _rawMsg === '') {\n  try { _rawMsg = $('Edit Fields1').first().json.msg || ''; } catch { _rawMsg = ''; }\n}\n// Fallback 2: campo conversation direto do webhook\nif (!_rawMsg) {\n  try { _rawMsg = $('Webhook').first().json.body?.data?.message?.conversation || ''; } catch { _rawMsg = ''; }\n}\n// Se ainda for JSON-string, extrai o texto\nlet mensagem = '';\nif (typeof _rawMsg === 'string') {\n  const _trimmed = _rawMsg.trim();\n  if (_trimmed.startsWith('{') || _trimmed.startsWith('[')) {\n    try {\n      const _parsed = JSON.parse(_trimmed);\n      mensagem = String(_parsed.msg || _parsed.mensagem || _parsed.text || _parsed.message || _parsed.Mensagens || _trimmed);\n    } catch { mensagem = _trimmed; }\n  } else {\n    mensagem = _trimmed;\n  }\n} else if (_rawMsg != null) {\n  mensagem = String(_rawMsg);\n}\nconst clinic_id = $('Code merge webhook e resolucao').first().json.clinica_id;\nconst remoteJid = $('Webhook').first().json.body.data.key.remoteJid;\nconst instanceName = $('Edit Fields1').first().json.instanceName || '';\n\nconst _nowBR = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));\nconst _hr = _nowBR.getHours();\nconst saudacao_periodo = _hr >= 5 && _hr < 12 ? 'Bom dia' : _hr >= 12 && _hr < 18 ? 'Boa tarde' : 'Boa noite';\nif (saudacao_novo) {\n  saudacao_novo = saudacao_novo\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{name}}/g, nome_agente)\n    .replace(/{{clinica}}/g, clinic_name);\n}\nif (saudacao_retorno) {\n  saudacao_retorno = String(saudacao_retorno)\n    .replace(/{{nome_cliente}}/g, nome_cliente)\n    .replace(/{{primeiro_nome}}/g, nome_cliente_primeiro)\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{clinica}}/g, clinic_name)\n    .replace(/{{name}}/g, nome_agente || '')\n    .replace(/{{nome_agente}}/g, nome_agente || '');\n}\nif (agent_instructions) {\n  agent_instructions = agent_instructions\n    .replace(/{{name}}/g, nome_agente || '')\n    .replace(/{{nome_agente}}/g, nome_agente || '')\n    .replace(/{{agente}}/g, nome_agente || '')\n    .replace(/{{clinica}}/g, clinic_name || '')\n    .replace(/{{nome_clinica}}/g, clinic_name || '')\n    .replace(/{{periodo}}/g, saudacao_periodo)\n    .replace(/{{nome_cliente}}/g, nome_cliente || '')\n    .replace(/{{primeiro_nome}}/g, nome_cliente_primeiro || '');\n}\n\nfunction _normHoursArr(v) {\n  if (!Array.isArray(v)) return [];\n  const s = new Set();\n  for (const x of v) {\n    const n = typeof x === 'number' ? x : parseInt(String(x), 10);\n    if (Number.isFinite(n) && n >= 6 && n <= 22) s.add(n);\n  }\n  return [...s].sort((a,b)=>a-b);\n}\nfunction _fmtHourList(arr) {\n  if (!arr.length) return 'conforme configuraÃƒÂ§ÃƒÂ£o no painel';\n  return arr.map(h => String(h).padStart(2, '0') + ':00').join(', ');\n}\nconst _wdH = _normHoursArr(clinicRaw.agenda_visible_hours);\nconst _sabOn = clinicRaw.sabado_aberto === true || clinicRaw.sabado_aberto === 'true' || clinicRaw.sabado_aberto === 1;\nconst _sabH = _normHoursArr(clinicRaw.sabado_agenda_hours);\nlet _horCal = '### HORÃƒÂRIO DA CLÃƒÂNICA (AGENDAMENTOS Ã¢â‚¬â€ respeite estritamente)' + String.fromCharCode(10);\n_horCal += '- Domingo: sem atendimento.' + String.fromCharCode(10);\n_horCal += '- Dias ÃƒÂºteis (segunda a sexta): blocos ' + _fmtHourList(_wdH) + '.' + String.fromCharCode(10);\nif (!_sabOn) {\n  _horCal += '- SÃƒÂ¡bado: sem atendimento.' + String.fromCharCode(10);\n} else if (_sabH.length) {\n  _horCal += '- SÃƒÂ¡bado: aberto Ã¢â‚¬â€ blocos ' + _fmtHourList(_sabH) + '.' + String.fromCharCode(10);\n} else {\n  _horCal += '- SÃƒÂ¡bado: aberto Ã¢â‚¬â€ mesmos blocos dos dias ÃƒÂºteis.' + String.fromCharCode(10);\n}\n_horCal += 'NÃƒÂ£o ofereÃƒÂ§a horÃƒÂ¡rios em dias fechados nem fora dos blocos; use as tools para vagas reais.';\nagent_instructions = (agent_instructions ? agent_instructions + String.fromCharCode(10,10) : '') + _horCal;\n\nfunction _ymdSP(d) {\n  const y = d.getFullYear();\n  const m = String(d.getMonth() + 1).padStart(2, '0');\n  const day = String(d.getDate()).padStart(2, '0');\n  return y + '-' + m + '-' + day;\n}\nfunction _brSP(d) {\n  const day = String(d.getDate()).padStart(2, '0');\n  const m = String(d.getMonth() + 1).padStart(2, '0');\n  const y = d.getFullYear();\n  return day + '/' + m + '/' + y;\n}\nconst _diasSem = ['domingo', 'segunda-feira', 'terÃƒÂ§a-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sÃƒÂ¡bado'];\nconst cal_hoje_ymd = _ymdSP(_nowBR);\nconst cal_hoje_br = _brSP(_nowBR);\nconst cal_hoje_weekday = _diasSem[_nowBR.getDay()];\nconst _amanhaSP = new Date(_nowBR);\n_amanhaSP.setDate(_amanhaSP.getDate() + 1);\nconst cal_amanha_ymd = _ymdSP(_amanhaSP);\nconst cal_amanha_br = _brSP(_amanhaSP);\nconst cal_amanha_weekday = _diasSem[_amanhaSP.getDay()];\nconst _calBlock =\n  String.fromCharCode(10, 10) +\n  '### CALENDÃƒÂRIO OBRIGATÃƒâ€œRIO (America/Sao_Paulo)' +\n  String.fromCharCode(10) +\n  '- Hoje: ' +\n  cal_hoje_weekday +\n  ', ' +\n  cal_hoje_br +\n  ' Ã¢â‚¬â€ YYYY-MM-DD: ' +\n  cal_hoje_ymd +\n  String.fromCharCode(10) +\n  '- AmanhÃƒÂ£: ' +\n  cal_amanha_weekday +\n  ', ' +\n  cal_amanha_br +\n  ' Ã¢â‚¬â€ YYYY-MM-DD: ' +\n  cal_amanha_ymd +\n  String.fromCharCode(10) +\n  'Se o cliente disser AMANHÃƒÆ’ Ã¢â€ â€™ data_solicitada na tool agd_cs_consultar_vagas DEVE ser ' +\n  cal_amanha_ymd +\n  '. Proibido usar outra data. Ao escrever ao cliente use esta data: ' +\n  cal_amanha_br +\n  '.' +\n  String.fromCharCode(10) +\n  'Se o cliente disser HOJE Ã¢â€ â€™ data_solicitada = ' +\n  cal_hoje_ymd +\n  '.';\nagent_instructions = agent_instructions + _calBlock;\n\n// [PATCH: endereco/localizacao v2]\nconst _endereco = (instr_raw && typeof instr_raw.endereco === 'string') ? instr_raw.endereco.trim() : '';\nconst _mapsLink = (instr_raw && typeof instr_raw.link_localizacao === 'string') ? instr_raw.link_localizacao.trim() : '';\nconst _latRaw = instr_raw && instr_raw.latitude;\nconst _lngRaw = instr_raw && instr_raw.longitude;\nconst _lat = (typeof _latRaw === 'number' && Number.isFinite(_latRaw)) ? _latRaw : (typeof _latRaw === 'string' && _latRaw.trim() !== '' && Number.isFinite(parseFloat(_latRaw))) ? parseFloat(_latRaw) : null;\nconst _lng = (typeof _lngRaw === 'number' && Number.isFinite(_lngRaw)) ? _lngRaw : (typeof _lngRaw === 'string' && _lngRaw.trim() !== '' && Number.isFinite(parseFloat(_lngRaw))) ? parseFloat(_lngRaw) : null;\nconst _hasNativeLocation = _lat !== null && _lng !== null;\nlet _enderecoFaqBlock = '';\nif (_endereco || _mapsLink || _hasNativeLocation) {\n  _enderecoFaqBlock = '\\n\\n### ENDERECO DA CLINICA';\n  if (_endereco) _enderecoFaqBlock += '\\nEndereco: ' + _endereco;\n  if (_mapsLink && !_hasNativeLocation) _enderecoFaqBlock += '\\nLink Google Maps: ' + _mapsLink;\n  if (_hasNativeLocation) {\n    _enderecoFaqBlock += '\\n\\nREGRA OBRIGATORIA: quando o cliente pedir endereco, localizacao, \"onde fica\" ou \"como chegar\":';\n    _enderecoFaqBlock += '\\n1. Responda em UMA frase curta confirmando o endereco (ex.: \"A clinica fica em ' + (_endereco || 'nosso endereco') + '.\").';\n    _enderecoFaqBlock += '\\n2. NA ULTIMA LINHA, escreva EXACTAMENTE o marcador: [SEND_LOCATION]';\n    _enderecoFaqBlock += '\\n3. NAO mande o link do Google Maps no texto, NAO use markdown. O sistema vai enviar o card de localizacao nativo do WhatsApp automaticamente.';\n  } else {\n    _enderecoFaqBlock += '\\n\\nREGRA OBRIGATORIA: quando o cliente pedir endereco, localizacao, \"onde fica\", \"como chegar\" ou similar, responda SEMPRE com as linhas acima (endereco + link do Maps, se houver). Nao invente endereco, nao parafraseie, nao omita o link.';\n  }\n}\n\nreturn [{ json: {\n  mensagem,\n  agent_instructions,\n  nome_agente,\n  clinic_name,\n  nome_cliente,\n  nome_cliente_primeiro,\n  saudacao_novo,\n  saudacao_retorno,\n  saudacao_periodo,\n  primeiro_contato,\n  clinic_id,\n  remoteJid,\n  instanceName,\n  instr_triagem:    instr_raw.triagem     || '',\n  instr_faq:        ((instr_raw.orientacoes || '') + (_enderecoFaqBlock || '')) || '',\n  instr_transferir: instr_raw.transferir  || '',\n  instr_outros:     instr_raw.outros      || '',\n  instr_faq_endereco: _enderecoFaqBlock || '',\n  loc_latitude: _lat,\n  loc_longitude: _lng,\n  loc_name: clinic_name || '',\n  loc_address: _endereco || '',\n  loc_has_native: _hasNativeLocation,\n  cal_hoje_ymd,\n  cal_hoje_br,\n  cal_hoje_weekday,\n  cal_amanha_ymd,\n  cal_amanha_br,\n  cal_amanha_weekday,\n} }];"
         },
         "id": "ddcdcb0e-e998-4c40-8f6c-064b3e852df9",
         "name": "Monta Contexto",
@@ -10650,6 +10748,75 @@
             "combinator": "and"
           }
         }
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "send-loc-cond-1",
+                "leftValue": "={{ $json._send_location }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "send-loc-if-v1",
+        "name": "If Send Location",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          3104,
+          -748
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ 'https://evolutionapi.vps7846.panel.icontainer.cloud/message/sendLocation/' + ($('Monta Contexto').first().json.instanceName || $('Edit Fields1').first().json.instanceName || '') }}",
+          "authentication": "none",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "apikey",
+                "value": "6PWyAsF3cip8QZ2JxNSRk4M5A5yEi4G8"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "json",
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ number: $('Edit Fields1').first().json.numCliente, latitude: $('Monta Contexto').first().json.loc_latitude, longitude: $('Monta Contexto').first().json.loc_longitude, name: $('Monta Contexto').first().json.loc_name, address: $('Monta Contexto').first().json.loc_address }) }}",
+          "options": {}
+        },
+        "id": "send-loc-evolution-v1",
+        "name": "Evolution sendLocation",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          3344,
+          -748
+        ],
+        "onError": "continueErrorOutput"
       }
     ],
     "connections": {
@@ -11095,6 +11262,11 @@
           [
             {
               "node": "Quebra a mensagem em v?rias mensagens",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "If Send Location",
               "type": "main",
               "index": 0
             }
@@ -12059,6 +12231,18 @@
               "index": 0
             }
           ]
+        ]
+      },
+      "If Send Location": {
+        "main": [
+          [
+            {
+              "node": "Evolution sendLocation",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          []
         ]
       }
     },

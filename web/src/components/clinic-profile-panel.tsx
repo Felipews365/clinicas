@@ -39,7 +39,8 @@ export function ClinicProfilePanel({
   const [clinicName, setClinicName] = useState("");
   const [quemSomos, setQuemSomos] = useState("");
   const [enderecoClinica, setEnderecoClinica] = useState("");
-  const [linkLocalizacao, setLinkLocalizacao] = useState("");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
   const [aceitaConvenio, setAceitaConvenio] = useState<boolean | null>(null);
   const [lembreteMinutos, setLembreteMinutos] = useState<number | null>(null);
   const [lembreteMensagem, setLembreteMensagem] = useState("");
@@ -79,7 +80,8 @@ export function ClinicProfilePanel({
           const parsed = data?.agent_instructions ? JSON.parse(data.agent_instructions as string) : {};
           setQuemSomos(typeof parsed.quem_somos === "string" ? parsed.quem_somos : "");
           setEnderecoClinica(typeof parsed.endereco === "string" ? parsed.endereco : "");
-          setLinkLocalizacao(typeof parsed.link_localizacao === "string" ? parsed.link_localizacao : "");
+          setLatitude(parsed.latitude != null ? String(parsed.latitude) : "");
+          setLongitude(parsed.longitude != null ? String(parsed.longitude) : "");
           setAceitaConvenio(typeof parsed.aceita_convenio === "boolean" ? parsed.aceita_convenio : null);
           setLembreteMinutos(parsed.lembrete_antecedencia_minutos ?? null);
           setLembreteMensagem(parsed.lembrete_mensagem ?? "");
@@ -96,7 +98,8 @@ export function ClinicProfilePanel({
         } catch {
           setQuemSomos("");
           setEnderecoClinica("");
-          setLinkLocalizacao("");
+          setLatitude("");
+          setLongitude("");
           setAceitaConvenio(null);
           setLembreteMinutos(null);
           setLembreteMensagem("");
@@ -164,7 +167,9 @@ export function ClinicProfilePanel({
       ...existing,
       quem_somos: quemSomos.trim() || null,
       endereco: enderecoClinica.trim() || null,
-      link_localizacao: linkLocalizacao.trim() || null,
+      link_localizacao: null,
+      latitude: (() => { const n = parseFloat(latitude.trim().replace(",", ".")); return Number.isFinite(n) ? n : null; })(),
+      longitude: (() => { const n = parseFloat(longitude.trim().replace(",", ".")); return Number.isFinite(n) ? n : null; })(),
       aceita_convenio: aceitaConvenio,
       lembrete_antecedencia_minutos: lembreteMinutos,
       lembrete_mensagem: lembreteMensagem || null,
@@ -196,7 +201,7 @@ export function ClinicProfilePanel({
     setSaved(true);
     setDirty(false);
     setTimeout(() => setSaved(false), 2500);
-  }, [supabase, clinicId, clinicName, quemSomos, enderecoClinica, linkLocalizacao, aceitaConvenio, lembreteMinutos, lembreteMensagem, lembreteSugestoesInteligentes, lembreteSaudadesMeses, pendingProcChanges]);
+  }, [supabase, clinicId, clinicName, quemSomos, enderecoClinica, latitude, longitude, aceitaConvenio, lembreteMinutos, lembreteMensagem, lembreteSugestoesInteligentes, lembreteSaudadesMeses, pendingProcChanges]);
 
   function mark() { setDirty(true); setSaved(false); }
 
@@ -327,32 +332,50 @@ export function ClinicProfilePanel({
                   />
                 </div>
                 <div>
-                  <label htmlFor="cp-link-maps" className="text-sm font-semibold text-[var(--text)]">
-                    Link do Google Maps
+                  <label className="text-sm font-semibold text-[var(--text)]">
+                    Coordenadas da clínica
                   </label>
                   <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                    Quando o paciente pedir o endereço, o agente enviará este link.
+                    Quando preenchidas, o agente envia um <strong>card de localização</strong> nativo do WhatsApp (em vez de só o link) sempre que o cliente perguntar pelo endereço.
                   </p>
                   <div className="mt-3 rounded-lg bg-[var(--surface-soft)] border border-[var(--border)] px-3 py-2.5">
-                    <p className="text-xs font-semibold text-[var(--text)] mb-1.5">Como obter o link</p>
+                    <p className="text-xs font-semibold text-[var(--text)] mb-1.5">Como obter as coordenadas</p>
                     <ol className="space-y-1 text-[11px] text-[var(--text-muted)] list-none">
-                      <li className="flex gap-1.5"><span className="font-bold shrink-0">1.</span><span>Abra o <strong>Google Maps</strong>.</span></li>
-                      <li className="flex gap-1.5"><span className="font-bold shrink-0">2.</span><span>Pesquise o nome ou endereço da sua clínica.</span></li>
-                      <li className="flex gap-1.5"><span className="font-bold shrink-0">3.</span><span>Clique em <strong>Compartilhar</strong> → <strong>Copiar link</strong>.</span></li>
-                      <li className="flex gap-1.5"><span className="font-bold shrink-0">4.</span><span>Cole abaixo (começa com <code className="rounded bg-[var(--border)] px-1">maps.app.goo.gl</code>).</span></li>
+                      <li className="flex gap-1.5"><span className="font-bold shrink-0">1.</span><span>Abra o <a href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" className="font-semibold text-[var(--primary)] underline hover:opacity-80">Google Maps</a> no computador.</span></li>
+                      <li className="flex gap-1.5"><span className="font-bold shrink-0">2.</span><span>Clique com o <strong>botão direito</strong> no ponto exacto da clínica.</span></li>
+                      <li className="flex gap-1.5"><span className="font-bold shrink-0">3.</span><span>Clique nas coordenadas que aparecem no topo (ex.: <code className="rounded bg-[var(--border)] px-1">-8.0476, -34.8770</code>) — são copiadas.</span></li>
+                      <li className="flex gap-1.5"><span className="font-bold shrink-0">4.</span><span>Cole abaixo: o 1º número é latitude, o 2º é longitude.</span></li>
                     </ol>
                   </div>
-                  <input
-                    id="cp-link-maps"
-                    type="url"
-                    value={linkLocalizacao}
-                    onChange={(e) => { setLinkLocalizacao(e.target.value); mark(); }}
-                    placeholder="https://maps.app.goo.gl/..."
-                    className="mt-2 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] placeholder-[var(--text-muted)] outline-none ring-[var(--primary)] focus:ring-2"
-                  />
-                  {linkLocalizacao.trim() && (
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="cp-lat" className="text-xs font-medium text-[var(--text-muted)]">Latitude</label>
+                      <input
+                        id="cp-lat"
+                        type="text"
+                        inputMode="decimal"
+                        value={latitude}
+                        onChange={(e) => { setLatitude(e.target.value); mark(); }}
+                        placeholder="-8.0476"
+                        className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] placeholder-[var(--text-muted)] outline-none ring-[var(--primary)] focus:ring-2"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="cp-lng" className="text-xs font-medium text-[var(--text-muted)]">Longitude</label>
+                      <input
+                        id="cp-lng"
+                        type="text"
+                        inputMode="decimal"
+                        value={longitude}
+                        onChange={(e) => { setLongitude(e.target.value); mark(); }}
+                        placeholder="-34.8770"
+                        className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] placeholder-[var(--text-muted)] outline-none ring-[var(--primary)] focus:ring-2"
+                      />
+                    </div>
+                  </div>
+                  {latitude.trim() && longitude.trim() && (
                     <a
-                      href={linkLocalizacao.trim()}
+                      href={`https://www.google.com/maps?q=${encodeURIComponent(latitude.trim())},${encodeURIComponent(longitude.trim())}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-1.5 text-xs font-medium text-[var(--primary)] transition-colors hover:bg-[var(--surface)]"
@@ -360,7 +383,7 @@ export function ClinicProfilePanel({
                       <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 shrink-0">
                         <path fillRule="evenodd" d="M4.25 5.5a.75.75 0 0 0-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 0 0 .75-.75v-4a.75.75 0 0 1 1.5 0v4A2.25 2.25 0 0 1 12.75 17h-8.5A2.25 2.25 0 0 1 2 14.75v-8.5A2.25 2.25 0 0 1 4.25 4h5a.75.75 0 0 1 0 1.5h-5Zm6.75-3a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0V3.81l-6.22 6.22a.75.75 0 1 1-1.06-1.06L14.69 2.75H11a.75.75 0 0 1-.75-.75Z" clipRule="evenodd" />
                       </svg>
-                      Verificar no Google Maps
+                      Conferir ponto exacto no Maps
                     </a>
                   )}
                 </div>
