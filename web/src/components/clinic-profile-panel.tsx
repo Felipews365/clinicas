@@ -42,6 +42,7 @@ export function ClinicProfilePanel({
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
   const [aceitaConvenio, setAceitaConvenio] = useState<boolean | null>(null);
+  const [antecedenciaMinutos, setAntecedenciaMinutos] = useState<number>(30);
   const [lembreteMinutos, setLembreteMinutos] = useState<number | null>(null);
   const [lembreteMensagem, setLembreteMensagem] = useState("");
   const [lembreteSugestoesInteligentes, setLembreteSugestoesInteligentes] = useState("");
@@ -83,6 +84,11 @@ export function ClinicProfilePanel({
           setLatitude(parsed.latitude != null ? String(parsed.latitude) : "");
           setLongitude(parsed.longitude != null ? String(parsed.longitude) : "");
           setAceitaConvenio(typeof parsed.aceita_convenio === "boolean" ? parsed.aceita_convenio : null);
+          setAntecedenciaMinutos(
+            typeof parsed.antecedencia_minima_minutos === "number" && parsed.antecedencia_minima_minutos > 0
+              ? parsed.antecedencia_minima_minutos
+              : 30
+          );
           setLembreteMinutos(parsed.lembrete_antecedencia_minutos ?? null);
           setLembreteMensagem(parsed.lembrete_mensagem ?? "");
           setLembreteSugestoesInteligentes(
@@ -101,6 +107,7 @@ export function ClinicProfilePanel({
           setLatitude("");
           setLongitude("");
           setAceitaConvenio(null);
+          setAntecedenciaMinutos(30);
           setLembreteMinutos(null);
           setLembreteMensagem("");
           setLembreteSugestoesInteligentes("");
@@ -171,6 +178,7 @@ export function ClinicProfilePanel({
       latitude: (() => { const n = parseFloat(latitude.trim().replace(",", ".")); return Number.isFinite(n) ? n : null; })(),
       longitude: (() => { const n = parseFloat(longitude.trim().replace(",", ".")); return Number.isFinite(n) ? n : null; })(),
       aceita_convenio: aceitaConvenio,
+      antecedencia_minima_minutos: antecedenciaMinutos,
       lembrete_antecedencia_minutos: lembreteMinutos,
       lembrete_mensagem: lembreteMensagem || null,
       lembrete_sugestoes_inteligentes: lembreteSugestoesInteligentes.trim() || null,
@@ -201,7 +209,7 @@ export function ClinicProfilePanel({
     setSaved(true);
     setDirty(false);
     setTimeout(() => setSaved(false), 2500);
-  }, [supabase, clinicId, clinicName, quemSomos, enderecoClinica, latitude, longitude, aceitaConvenio, lembreteMinutos, lembreteMensagem, lembreteSugestoesInteligentes, lembreteSaudadesMeses, pendingProcChanges]);
+  }, [supabase, clinicId, clinicName, quemSomos, enderecoClinica, latitude, longitude, aceitaConvenio, antecedenciaMinutos, lembreteMinutos, lembreteMensagem, lembreteSugestoesInteligentes, lembreteSaudadesMeses, pendingProcChanges]);
 
   function mark() { setDirty(true); setSaved(false); }
 
@@ -306,6 +314,28 @@ export function ClinicProfilePanel({
                     className="mt-1.5 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none ring-[var(--primary)] focus:ring-2"
                     spellCheck
                   />
+                </div>
+                <div>
+                  <label htmlFor="cp-antecedencia" className="text-sm font-semibold text-[var(--text)]">
+                    Antecedência mínima de agendamento
+                  </label>
+                  <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                    Define quanto tempo antes o cliente pode marcar, reagendar ou cancelar via WhatsApp. Aplica-se também à listagem de horários disponíveis — o agente nunca oferece slots dentro desta janela.
+                  </p>
+                  <select
+                    id="cp-antecedencia"
+                    value={antecedenciaMinutos}
+                    onChange={(e) => { setAntecedenciaMinutos(Number(e.target.value)); mark(); }}
+                    className="mt-1.5 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none ring-[var(--primary)] focus:ring-2"
+                  >
+                    <option value={15}>15 minutos</option>
+                    <option value={30}>30 minutos</option>
+                    <option value={60}>1 hora</option>
+                    <option value={120}>2 horas</option>
+                    <option value={240}>4 horas</option>
+                    <option value={720}>12 horas</option>
+                    <option value={1440}>24 horas</option>
+                  </select>
                 </div>
               </div>
             )}

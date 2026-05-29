@@ -295,6 +295,14 @@ Todos os agentes compartilham a mesma **Postgres Chat Memory** (session: `clinic
 - **Saudação 1º contato (actualizado 2026-05-04):** SM instrui a incluir SEMPRE `"Sou {nome_agente}, da {clinic_name}."` na primeira mensagem, mesmo que o template `saudacao_novo` da clínica não inclua o nome do agente.
 - **BLOQUEIO NOME (actualizado 2026-05-04):** se `nome_cliente` estiver vazio E não for o 1º contato (`primeiro_contato=false`) → o qualificador é obrigado a pedir "Qual é o seu nome e sobrenome?" e usar `[ROTA: concluido]`. SÓ após `cs_salvar_nome` confirmar pode encaminhar para outro agente. Sem esta regra o bot encaminhava directamente para o agendador sem coletar o nome.
 
+### Antecedência mínima de agendamento (migration `20260530120000`)
+- **`clinics.agent_instructions->>'antecedencia_minima_minutos'`** (default `30`) define a janela mínima entre `now()` e o horário do agendamento que o **agente WhatsApp** pode marcar / reagendar / cancelar. Configurado no painel: **Clínica/Perfil → aba Dados → Antecedência mínima de agendamento** (`<select>` 15/30/60/120/240/720/1440 min).
+- **Helper `public._clinic_antecedencia_minutos(p_clinic_id uuid)`** — STABLE, lê o JSON, devolve `int`. Reutilizado pelas 4 RPCs.
+- **`n8n_cs_consultar_vagas`** — para `p_data = CURRENT_DATE`, `v_cutoff_time := (NOW() + antec)::time` (em `America/Sao_Paulo`). Não mostra slots dentro da janela. Para outras datas o cutoff fica `00:00`.
+- **`n8n_cs_agendar` / `n8n_cs_reagendar` (`p_mutacao_origem='agente'`) / `n8n_cs_cancelar`** — devolvem `{ ok: false, error: 'antecedencia_minima', antecedencia_minutos: X, message: ... }` se o alvo estiver dentro da janela. Reagendamentos pelo **painel** (`p_mutacao_origem='painel'`) ignoram a regra — staff pode sempre reagendar. Cancelamentos pelo painel não passam por `n8n_cs_cancelar` (usam `painel_cancel_cs_agendamento`), portanto também não são afectados.
+- **Agente WhatsApp (system message do `agente_agendador`, secção `## ANTECEDÊNCIA MÍNIMA`)** — quando recebe `error: 'antecedencia_minima'`, responde com o número de minutos devolvido e orienta o cliente a contactar a clínica directamente. Não tenta outra vez nem inventa horário. Patch: `n8n/patch-agendador-sm-antecedencia.mjs`.
+- **Tenant-safe:** cada chamada usa o `clinic_id` que já recebe (consultar_vagas/agendar/reagendar via primeiro arg ou lookup pelo profissional/agendamento). Sem hardcode.
+
 ### Agendar vs reagendar (duplicados na grade)
 - Se o cliente **já** tem consulta activa com o **mesmo** profissional na **mesma** data, `n8n_cs_agendar` responde `ok: false`, `error: ja_existe_agendamento_mesmo_dia` e devolve `agendamento_id` — usar **`n8n_cs_reagendar`** com esse id. Chamar `cs_agendar` de novo cria um **segundo** `cs_agendamentos` e o painel mostra dois horários «AGEND.».
 - `n8n_cs_reagendar` liberta o slot antigo com `date_trunc('minute', horario)` e cancela duplicados órfãos no slot antigo após mover o registo principal.
@@ -382,7 +390,7 @@ Todos os agentes compartilham a mesma **Postgres Chat Memory** (session: `clinic
   - **Status efectivo no painel (`botEffective`)**: o toggle mostra ATIVO mesmo com `bot_ativo = false` no banco se a pausa já venceu (`pause_until` no passado, modo não-manual). Tick de 60 s força re-render sem evento do banco.
   - **Countdown "reativação manual" / "reativa em Xh Ymin"**: lê `pause_until` directamente. Pausa manual mostra "reativação manual"; pausa temporizada mostra contagem decrescente. Realtime de `whatsapp_sessions` + `cs_clientes` (publicação adicionada em `20260527180000`) actualiza tudo em tempo real.
   - **⚠️ Duplicados por JID no telefone**: `cs_clientes.telefone` deve conter só dígitos — nunca `558196454656@s.whatsapp.net`. Diagnóstico: `SELECT id, telefone FROM cs_clientes WHERE telefone LIKE '%@%'`
-- **`Filter1`** (webhook → fluxo principal): única condição `fromMe === false` — condição de teste com número fixo `558196454656` foi removida (estava em AND e bloqueava todos os outros clientes)
+- **`Filter1`** (webhook → fluxo principal): condições em AND — `event === 'messages.upsert'` (só no bloco top-level), `fromMe === false` E **`remoteJid notEndsWith '@g.us'`** (skip grupos, adicionado 2026-05-29 — agente nunca responde em grupos, independente de `clinics.agente_ativo`). Condição de teste com número fixo `558196454656` foi removida. ⚠️ aplicar nos **dois** blocos `nodes[]` e `activeVersion.nodes[]` ao mexer.
 
 ### Identificação de cliente novo vs retorno
 - `cs_clientes.nome` = vazio (`''`) → nunca confirmou o nome → **cliente novo**
