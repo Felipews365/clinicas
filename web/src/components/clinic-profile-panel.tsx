@@ -687,6 +687,22 @@ export function ClinicProfilePanel({
           </div>
         </div>
       )}
+
+      {/* Toast de confirmação */}
+      {saved && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none absolute left-1/2 top-4 z-50 -translate-x-1/2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg ring-1 ring-emerald-500/30"
+        >
+          <span className="inline-flex items-center gap-2">
+            <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+              <path fillRule="evenodd" d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.5 7.55a1 1 0 0 1-1.42.003l-3.5-3.5a1 1 0 1 1 1.414-1.414l2.79 2.79 6.795-6.838a1 1 0 0 1 1.415-.006Z" clipRule="evenodd" />
+            </svg>
+            Alterações salvas com sucesso
+          </span>
+        </div>
+      )}
     </div>
   );
 
