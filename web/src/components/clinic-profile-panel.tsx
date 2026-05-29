@@ -51,6 +51,7 @@ export function ClinicProfilePanel({
   const [addProcMonths, setAddProcMonths] = useState<string>("");
   const [procBusy, setProcBusy] = useState<string | null>(null);
   const [procError, setProcError] = useState<string | null>(null);
+  const [pendingProcChanges, setPendingProcChanges] = useState<Record<string, number | null>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -58,7 +59,7 @@ export function ClinicProfilePanel({
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
-    if (open) { setActiveTab("dados"); setDirty(false); }
+    if (open) { setActiveTab("dados"); setDirty(false); setPendingProcChanges({}); }
   }, [open]);
 
   useEffect(() => {
@@ -125,41 +126,25 @@ export function ClinicProfilePanel({
     if (open && activeTab === "lembretes") void loadProcedures();
   }, [open, activeTab, loadProcedures]);
 
-  const addProcedureRule = useCallback(async () => {
-    if (!supabase || !addProcId) return;
+  const addProcedureRule = useCallback(() => {
+    if (!addProcId) return;
     const n = parseInt(addProcMonths.trim(), 10);
     if (!Number.isFinite(n) || n < 1 || n > 120) {
       setProcError("Tempo em meses inválido (1–120).");
       return;
     }
-    setProcBusy(addProcId);
-    const { error: e } = await supabase
-      .from("clinic_procedures")
-      .update({ reminder_months: n })
-      .eq("id", addProcId)
-      .eq("clinic_id", clinicId);
-    setProcBusy(null);
-    if (e) { setProcError(e.message); return; }
+    setProcedures((prev) => prev.map((p) => (p.id === addProcId ? { ...p, reminder_months: n } : p)));
+    setPendingProcChanges((prev) => ({ ...prev, [addProcId]: n }));
     setAddProcId(""); setAddProcMonths(""); setProcError(null);
-    await loadProcedures();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  }, [supabase, clinicId, addProcId, addProcMonths, loadProcedures]);
+    setDirty(true); setSaved(false);
+  }, [addProcId, addProcMonths]);
 
-  const removeProcedureRule = useCallback(async (id: string) => {
-    if (!supabase) return;
-    setProcBusy(id);
-    const { error: e } = await supabase
-      .from("clinic_procedures")
-      .update({ reminder_months: null })
-      .eq("id", id)
-      .eq("clinic_id", clinicId);
-    setProcBusy(null);
-    if (e) { setProcError(e.message); return; }
-    await loadProcedures();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  }, [supabase, clinicId, loadProcedures]);
+  const removeProcedureRule = useCallback((id: string) => {
+    setProcedures((prev) => prev.map((p) => (p.id === id ? { ...p, reminder_months: null } : p)));
+    setPendingProcChanges((prev) => ({ ...prev, [id]: null }));
+    setProcError(null);
+    setDirty(true); setSaved(false);
+  }, []);
 
   const handleSave = useCallback(async () => {
     if (!supabase) return;
@@ -196,12 +181,22 @@ export function ClinicProfilePanel({
       updates.name = clinicName.trim();
     }
     const { error: e } = await supabase.from("clinics").update(updates).eq("id", clinicId);
+    if (e) { setSaving(false); setError(e.message); return; }
+    const procEntries = Object.entries(pendingProcChanges);
+    for (const [id, months] of procEntries) {
+      const { error: pe } = await supabase
+        .from("clinic_procedures")
+        .update({ reminder_months: months })
+        .eq("id", id)
+        .eq("clinic_id", clinicId);
+      if (pe) { setSaving(false); setError(pe.message); return; }
+    }
+    setPendingProcChanges({});
     setSaving(false);
-    if (e) { setError(e.message); return; }
     setSaved(true);
     setDirty(false);
     setTimeout(() => setSaved(false), 2500);
-  }, [supabase, clinicId, clinicName, quemSomos, enderecoClinica, linkLocalizacao, aceitaConvenio, lembreteMinutos, lembreteMensagem, lembreteSugestoesInteligentes, lembreteSaudadesMeses]);
+  }, [supabase, clinicId, clinicName, quemSomos, enderecoClinica, linkLocalizacao, aceitaConvenio, lembreteMinutos, lembreteMensagem, lembreteSugestoesInteligentes, lembreteSaudadesMeses, pendingProcChanges]);
 
   function mark() { setDirty(true); setSaved(false); }
 
