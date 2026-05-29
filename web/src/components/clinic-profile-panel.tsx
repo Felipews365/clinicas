@@ -675,10 +675,10 @@ export function ClinicProfilePanel({
               type="button"
               onClick={() => void handleSave()}
               disabled={saving || loading || !dirty}
-              className={`flex shrink-0 items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold shadow-sm transition-all disabled:opacity-60 ${
+              className={`flex shrink-0 items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold shadow-sm transition-all disabled:opacity-60 disabled:hover:bg-[var(--primary)] ${
                 saved
-                  ? "bg-emerald-700 text-white"
-                  : "bg-[var(--primary)] text-white hover:-translate-y-px hover:shadow-md"
+                  ? "bg-emerald-700 text-white hover:bg-emerald-800"
+                  : "bg-[var(--primary)] text-white hover:-translate-y-px hover:bg-emerald-600 hover:shadow-md"
               }`}
             >
               {saving ? "A salvar…" : saved ? "✓ Salvo" : "Salvar"}
