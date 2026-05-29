@@ -142,6 +142,8 @@ export function ClinicProfilePanel({
     if (e) { setProcError(e.message); return; }
     setAddProcId(""); setAddProcMonths(""); setProcError(null);
     await loadProcedures();
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
   }, [supabase, clinicId, addProcId, addProcMonths, loadProcedures]);
 
   const removeProcedureRule = useCallback(async (id: string) => {
@@ -155,6 +157,8 @@ export function ClinicProfilePanel({
     setProcBusy(null);
     if (e) { setProcError(e.message); return; }
     await loadProcedures();
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
   }, [supabase, clinicId, loadProcedures]);
 
   const handleSave = useCallback(async () => {
