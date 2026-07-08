@@ -19,6 +19,7 @@ import { ExpiryWarningModal } from "@/components/expiry-warning-modal";
 import { ConectarWhatsapp } from "@/components/conectar-whatsapp";
 import { WhatsappInbox } from "@/components/whatsapp-inbox";
 import { PainelClientesCs } from "@/components/painel-clientes-cs";
+import { ProntuarioPanel } from "@/components/prontuario/prontuario-panel";
 import {
   addDaysToYmd,
   formatLocalYmd,
@@ -291,6 +292,7 @@ export function AgendaPortal() {
     | "dashboard"
     | "professionals"
     | "slots"
+    | "prontuario"
     | "clinic-profile"
     | "clinic-hours"
     | "whatsapp-human"
@@ -1524,6 +1526,15 @@ export function AgendaPortal() {
               Agendamentos
             </span>
           </button>
+          <button
+            type="button"
+            onClick={() => setSidebarPage("prontuario")}
+            className={sidebarNavClass("prontuario")}
+            aria-label="Prontuário"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+            Prontuário
+          </button>
           {/* Grupo Atendimento — WhatsApp humano, Inbox WhatsApp, Clientes, Agente IA */}
           <button
             type="button"
@@ -1829,6 +1840,17 @@ export function AgendaPortal() {
                     Agendamentos
                   </span>
                 </button>
+                <button
+                  type="button"
+                  className={mobileNavRowClass("prontuario")}
+                  aria-label="Prontuário"
+                  onClick={() => goToSidebarPageAfterMobileMenuClose("prontuario")}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></span>
+                  <span className="min-w-0 flex-1 whitespace-nowrap text-left">
+                    Prontuário
+                  </span>
+                </button>
                 {/* Grupo Atendimento — WhatsApp humano, Inbox WhatsApp, Clientes, Agente IA */}
                 <button
                   type="button"
@@ -2054,6 +2076,11 @@ export function AgendaPortal() {
                 onGoToProfessionalsExtraHour={goToProfessionalsForExtraHour}
                 onGoToClinicAgendaSettings={() => setSidebarPage("clinic-hours")}
               />
+            ) : null}
+            {sidebarPage === "prontuario" ? (
+              <div className="flex h-[calc(100vh-120px)] min-h-0 w-full overflow-hidden p-4">
+                <ProntuarioPanel supabase={supabase} clinicId={access.clinicId} />
+              </div>
             ) : null}
             {sidebarPage === "clinic-profile" ? (
               <ClinicProfilePanel
