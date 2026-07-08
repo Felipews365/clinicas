@@ -195,6 +195,17 @@ Sistema de 2 fluxos agendados que disparam WhatsApp aos pacientes. Migrations pr
 - `cs_clientes`, `cs_agendamentos`, slots, serviços, profissionais — tudo filtrado por `clinic_id`
 - Ao criar RPCs novas, sempre receber `p_clinic_id uuid` como primeiro parâmetro
 
+### ⚠️ Caminho de resolução da clínica (resolve path) — campos e nós mortos (fix 2026-07-08)
+O fluxo ao vivo **não** usa mais `Buscar Config Cl?nica` no caminho principal. A clínica é resolvida por um **resolve path**:
+
+`Webhook → Filter1 → Edit Fields1 → Code Normalizar Evolution Clinica → IF evento e mensagem → HTTP RPC n8n_resolve_clinic → Code merge webhook e resolucao → Switch assinatura e acesso → IF Agente Ativo → Check First Contact → Monta Contexto → agentes → Edit Fields → dispatch Evolution`
+
+- **A RPC `n8n_resolve_clinic` / `Code merge webhook e resolucao` devolve os campos com prefixo `clinica_`:** `clinica_id`, `clinica_ativa`, `clinica_nome`, `agent_instructions`, `tipo_plano`, `data_expiracao`, `inadimplente` — **NÃO** `id`/`ativo`/`name`. Qualquer nó no caminho principal que ler `$json.id`/`$json.ativo`/`$json.name` recebe `undefined`.
+- **`Switch assinatura e acesso`** por isso lê com fallback: `clinica_nao_encontrada` = `{{ ($json.clinica_id ?? $json.id) ?? '' }}` vazio; `cond-pe-ativo-false` = `{{ $json.clinica_ativa ?? $json.ativo }}`. **Bug histórico (resolvido 2026-07-08):** lia só `$json.id`/`$json.ativo` → como o merge entrega `clinica_id`, o `id` ficava vazio e **TODAS** as mensagens caíam em `clinica_nao_encontrada → NoOp` (bot mudo para todas as clínicas). Sintoma: execuções «success» com só ~10 nós, morrendo no Switch.
+- **Nós MORTOS (não executam no caminho principal): `Buscar Config Cl?nica` (alimentado só por `Edit Fields2 ← ResetaFila`, ramo da fila Redis que não roda) e `Edit Fields2`.** Nunca referenciar `$('Buscar Config Cl?nica')` nem `$('Edit Fields2')` a partir de nós do caminho principal — dá erro «Node '…' hasn't been executed» (ex.: `Edit Fields` final travava em `$('Edit Fields2').item.json.ConversationID`; corrigido para `$('Webhook').first().json.body?.data?.key?.remoteJid`).
+- **`Monta Contexto`** lê a config da clínica com fallback: tenta `$('Buscar Config Cl?nica')` (morto → catch) e cai em **`$('IF Agente Ativo').first().json`** (2 hops atrás, dentro do limite do task-runner; o item carrega `clinica_nome`/`agent_instructions` do merge). `clinic_name = clinicRaw.name || clinicRaw.clinica_nome`. **⚠️ Não usar `$('Code merge webhook e resolucao')` a partir de Monta Contexto** — são 4 hops e o task-runner n8n 2.10.x falha em `$('node')` 3+ hops atrás → config viria vazia (respostas sem nome da clínica).
+- Fixes aplicados via API (activeVersion é read-only no PUT público — só o bloco `nodes[]` top-level é enviado; o n8n regenera `activeVersion` no activate). Manter `workflow-kCX2-live.json` em sync com ambos os blocos.
+
 ### Agente WhatsApp (fluxo resumido)
 1. Webhook recebe mensagem → `Campos iniciais` extrai dados
 2. `Code merge webhook e resolucao` resolve `clinica_id` pelo `instance_name`
