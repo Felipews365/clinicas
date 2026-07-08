@@ -20,11 +20,49 @@ type SessionInfo = {
 };
 type SessionsMap = Record<string, SessionInfo>;
 
+// Quem falou por último em cada conversa (por telefone só-dígitos)
+type LastMsg = { type: "human" | "ai"; preview: string };
+type LastMsgMap = Record<string, LastMsg>;
+
 type Tab = "conversas" | "todos";
 type Props = { supabase: SupabaseClient; clinicId: string };
 
 const REATIVACAO_MS = 10 * 60 * 1000; // fallback legado (sem pause_until)
 const PAUSE_MANUAL_UNTIL = "9999-12-31T23:59:59.999Z";
+
+// Opções para "quando a clínica assume pelo WhatsApp, pausar a IA por…"
+// Valor guardado em clinics.agent_instructions->>'handoff_pausa_minutos' (0 = manual)
+const HANDOFF_DURATION_OPTIONS = [
+  { minutes: 15, label: "15 min" },
+  { minutes: 30, label: "30 min" },
+  { minutes: 60, label: "1 hora" },
+  { minutes: 120, label: "2 horas" },
+  { minutes: 240, label: "4 horas" },
+  { minutes: 480, label: "8 horas" },
+  { minutes: 1440, label: "24 horas" },
+  { minutes: 0, label: "Até eu reativar" },
+] as const;
+const HANDOFF_DEFAULT_MINUTES = 60;
+
+function handoffLabel(minutes: number): string {
+  return HANDOFF_DURATION_OPTIONS.find((o) => o.minutes === minutes)?.label ?? `${minutes} min`;
+}
+
+// Extrai o texto legível da última mensagem (mesma lógica do inbox)
+function lastMsgPreview(msg: { type: "human" | "ai"; content: string }): string {
+  if (msg.type !== "human") return msg.content;
+  const lines = msg.content.split("\n").filter(Boolean);
+  const parts: string[] = [];
+  for (const line of lines) {
+    try {
+      const obj = JSON.parse(line) as Record<string, unknown>;
+      const m = obj.msg ?? obj.text ?? obj.message;
+      if (typeof m === "string") { parts.push(m); continue; }
+    } catch { /* não é JSON */ }
+    parts.push(line);
+  }
+  return parts.join(" ") || msg.content;
+}
 
 const PAUSE_DURATION_OPTIONS = [
   { minutes: 10, label: "10 min" },
@@ -145,6 +183,9 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
   const [tab, setTab] = useState<Tab>("conversas");
   const [rows, setRows] = useState<CsClienteRow[]>([]);
   const [sessions, setSessions] = useState<SessionsMap>({});
+  const [lastMsgs, setLastMsgs] = useState<LastMsgMap>({});
+  const [handoffMinutes, setHandoffMinutes] = useState<number>(HANDOFF_DEFAULT_MINUTES);
+  const [savingHandoff, setSavingHandoff] = useState(false);
   const [, setTick] = useState(0); // força re-render a cada 60s para recalcular 10 min
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
@@ -194,9 +235,68 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
       }
       setSessions(map);
     }
+
+    // Carrega a última mensagem de cada conversa (quem falou por último)
+    const { data: histRows } = await supabase
+      .from("n8n_chat_histories")
+      .select("id, session_id, message")
+      .like("session_id", `${clinicId}:%`)
+      .order("id", { ascending: false })
+      .limit(2000);
+    const lm: LastMsgMap = {};
+    for (const row of histRows ?? []) {
+      const sid = row.session_id as string;
+      const phone = sid.slice(clinicId.length + 1).split("@")[0].replace(/\D/g, "");
+      if (!phone || lm[phone]) continue; // já temos a mais recente (order id desc)
+      const msg = row.message as { type: "human" | "ai"; content: string };
+      if (msg?.type !== "human" && msg?.type !== "ai") continue;
+      lm[phone] = { type: msg.type, preview: lastMsgPreview(msg).replace(/\s+/g, " ").trim() };
+    }
+    setLastMsgs(lm);
   }, [supabase, clinicId]);
 
+  // Carrega a configuração de pausa do handoff (clinics.agent_instructions)
+  const loadHandoffConfig = useCallback(async () => {
+    const { data } = await supabase
+      .from("clinics")
+      .select("agent_instructions")
+      .eq("id", clinicId)
+      .maybeSingle();
+    const raw = (data?.agent_instructions as string | null) ?? null;
+    if (!raw) return;
+    try {
+      const obj = JSON.parse(raw) as Record<string, unknown>;
+      const v = obj.handoff_pausa_minutos;
+      if (typeof v === "number") setHandoffMinutes(v);
+      else if (typeof v === "string" && v.trim() !== "") setHandoffMinutes(Number(v));
+    } catch { /* agent_instructions inválido — mantém default */ }
+  }, [supabase, clinicId]);
+
+  const saveHandoffMinutes = useCallback(async (minutes: number) => {
+    const prev = handoffMinutes;
+    setHandoffMinutes(minutes);
+    setSavingHandoff(true);
+    const { data } = await supabase
+      .from("clinics")
+      .select("agent_instructions")
+      .eq("id", clinicId)
+      .maybeSingle();
+    let obj: Record<string, unknown> = {};
+    try {
+      const raw = (data?.agent_instructions as string | null) ?? "";
+      if (raw.trim() !== "") obj = JSON.parse(raw) as Record<string, unknown>;
+    } catch { obj = {}; }
+    obj.handoff_pausa_minutos = minutes;
+    const { error } = await supabase
+      .from("clinics")
+      .update({ agent_instructions: JSON.stringify(obj) })
+      .eq("id", clinicId);
+    setSavingHandoff(false);
+    if (error) setHandoffMinutes(prev); // reverte em caso de erro
+  }, [supabase, clinicId, handoffMinutes]);
+
   useEffect(() => { void loadRows(); }, [loadRows]);
+  useEffect(() => { void loadHandoffConfig(); }, [loadHandoffConfig]);
 
   // Tick a cada 60 s para re-avaliar o limiar de 10 min sem precisar de evento do banco
   useEffect(() => {
@@ -331,6 +431,33 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
         </p>
       </div>
 
+      {/* Config: quando a clínica assume pelo WhatsApp, quando a IA volta */}
+      <div className="shrink-0 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-[var(--text)]">
+              Quando eu respondo pelo WhatsApp, pausar a IA por
+            </p>
+            <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+              Assim que você assume a conversa pelo celular, a IA para de responder.
+              {handoffMinutes > 0
+                ? ` Ela volta sozinha após ${handoffLabel(handoffMinutes)} sem você escrever.`
+                : " Ela só volta quando você reativar o agente aqui no painel."}
+            </p>
+          </div>
+          <select
+            value={handoffMinutes}
+            disabled={savingHandoff}
+            onChange={(e) => void saveHandoffMinutes(Number(e.target.value))}
+            className="shrink-0 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm font-medium text-[var(--text)] outline-none focus:border-[var(--primary)] disabled:opacity-60 sm:w-44"
+          >
+            {HANDOFF_DURATION_OPTIONS.map((opt) => (
+              <option key={opt.minutes} value={opt.minutes}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {/* Tabs */}
       <div className="flex gap-0 border-b border-[var(--border)]">
         <button type="button" className={tabClass("conversas")} onClick={() => setTab("conversas")}>
@@ -372,6 +499,9 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
                 const botOn = botEffective(r, sessions);
                 const countdown = !botOn ? reativaEm(r, sessions) : null;
                 const isToggling = togglingBotId === r.id;
+                const last = lastMsgs[clientPhone(r.telefone)];
+                const waiting = last?.type === "human"; // cliente falou por último → aguarda resposta
+                const speaker = last ? (waiting ? "Cliente" : "Agente") : null;
                 return (
                   <li key={r.id} className="flex items-center gap-4 px-4 py-3">
                     {/* Avatar */}
@@ -381,6 +511,11 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
                     {/* Info */}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
+                        {speaker && (
+                          <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${waiting ? "bg-amber-500/15 text-amber-600 dark:text-amber-400" : "bg-sky-500/15 text-sky-600 dark:text-sky-400"}`}>
+                            {speaker}
+                          </span>
+                        )}
                         <p className="truncate font-semibold text-[var(--text)]">{nomeShow}</p>
                         {r.nome_confirmado && nome ? (
                           <span className="shrink-0 rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-600 dark:text-emerald-400">
@@ -388,9 +523,17 @@ export function PainelClientesCs({ supabase, clinicId }: Props) {
                           </span>
                         ) : null}
                       </div>
+                      {last && (
+                        <p className="mt-0.5 truncate text-xs text-[var(--text-muted)]">
+                          <span className={`font-semibold ${waiting ? "text-amber-600 dark:text-amber-400" : "text-[var(--text)]"}`}>
+                            {speaker}:
+                          </span>{" "}
+                          {last.preview || "—"}
+                        </p>
+                      )}
                       <p className="mt-0.5 truncate text-xs text-[var(--text-muted)]">
                         {nome ? r.telefone : ""}
-                        <span className="ml-2 text-[var(--text-muted)]">· {formatTs(r.updated_at)}</span>
+                        <span className={nome ? "ml-2 text-[var(--text-muted)]" : "text-[var(--text-muted)]"}>· {formatTs(r.updated_at)}</span>
                       </p>
                     </div>
                     {/* Bot toggle */}
