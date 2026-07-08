@@ -418,7 +418,7 @@ export function ConectarWhatsapp({ clinicId, supabase, onStatusChange }: Props) 
               </p>
               <ul className="list-disc space-y-1 pl-5 text-left">
                 <li>A sessão na Evolution será terminada nesta clínica.</li>
-                <li>Pode reconectar quando quiser com um novo QR Code.</li>
+                <li>Pode reconectar quando quiser com um novo QR Code — inclusive com um número diferente.</li>
               </ul>
             </div>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

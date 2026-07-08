@@ -63,6 +63,40 @@ async function logoutInstance(evoUrl: string, apiKey: string, instanceName: stri
   }
 }
 
+/** Estado da conexão: "open" = já conectado; "close"/"connecting"/"" = não emparelhado. */
+async function getConnectionState(
+  evoUrl: string,
+  apiKey: string,
+  instanceName: string
+): Promise<string> {
+  try {
+    const res = await fetch(`${evoUrl}/instance/connectionState/${encodeURIComponent(instanceName)}`, {
+      headers: { apikey: apiKey },
+      cache: "no-store",
+    });
+    if (!res.ok) return "";
+    const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const inst = (raw.instance as Record<string, unknown> | undefined) ?? raw;
+    return String(inst?.state ?? inst?.status ?? raw.state ?? "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+/** Apaga a instância por completo (limpa credenciais em cache). Best-effort. */
+async function deleteInstance(evoUrl: string, apiKey: string, instanceName: string): Promise<void> {
+  try {
+    await fetch(`${evoUrl}/instance/delete/${encodeURIComponent(instanceName)}`, {
+      method: "DELETE",
+      headers: evoHeaders(apiKey),
+      cache: "no-store",
+    });
+    await new Promise((r) => setTimeout(r, 1500));
+  } catch {
+    /* ignora — connect recria a instância */
+  }
+}
+
 async function fetchQR(
   evoUrl: string,
   apiKey: string,
@@ -141,6 +175,19 @@ export async function POST(req: Request) {
   const webhookUrl = N8N_WEBHOOK;
 
   let instanciaJaExistente = await evolutionInstanciaJaExiste(evoUrl, evoKey, instanceName);
+
+  // Se a instância existe mas NÃO está "open" (conectada), ela ainda guarda as
+  // credenciais do número anterior — reconectar reusaria o número antigo sem
+  // gerar QR. Para permitir trocar de número, apagamos e recriamos do zero.
+  // Se estiver "open", é um reconnect idempotente (ex.: reload) — não mexer.
+  if (instanciaJaExistente) {
+    const estado = await getConnectionState(evoUrl, evoKey, instanceName);
+    if (estado !== "open") {
+      await logoutInstance(evoUrl, evoKey, instanceName);
+      await deleteInstance(evoUrl, evoKey, instanceName);
+      instanciaJaExistente = false;
+    }
+  }
 
   if (!instanciaJaExistente) {
     const createRes = await fetch(`${evoUrl}/instance/create`, {

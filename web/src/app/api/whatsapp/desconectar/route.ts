@@ -54,22 +54,36 @@ export async function POST(req: Request) {
 
   const instanceName = row?.instance_name?.trim();
   if (instanceName) {
+    // 1) logout: desemparelha o aparelho da sessão WhatsApp (best-effort).
     const logoutUrl = `${evo.config.url}/instance/logout/${encodeURIComponent(instanceName)}`;
-    const evoRes = await fetch(logoutUrl, {
+    const logoutRes = await fetch(logoutUrl, {
       method: "DELETE",
       headers: evoHeaders(evo.config.apiKey),
       cache: "no-store",
     });
-    if (!evoRes.ok && evoRes.status !== 404) {
-      const errBody = (await evoRes.json().catch(() => ({}))) as { message?: string };
+    if (!logoutRes.ok && logoutRes.status !== 404) {
+      const errBody = (await logoutRes.json().catch(() => ({}))) as { message?: string };
       return NextResponse.json(
         {
           error: "EVOLUTION_ERROR",
-          message: errBody.message ?? `Evolution não conseguiu desligar a instância (${evoRes.status}).`,
+          message: errBody.message ?? `Evolution não conseguiu desligar a instância (${logoutRes.status}).`,
         },
         { status: 502 }
       );
     }
+
+    // 2) delete: apaga a instância inteira (limpa credenciais em cache). Sem
+    // isto, o Evolution reconecta o número anterior no próximo connect e a
+    // clínica não consegue trocar de número. Best-effort — 404/erro não bloqueia
+    // a desativação (o connect recria a instância do zero de qualquer forma).
+    const deleteUrl = `${evo.config.url}/instance/delete/${encodeURIComponent(instanceName)}`;
+    await fetch(deleteUrl, {
+      method: "DELETE",
+      headers: evoHeaders(evo.config.apiKey),
+      cache: "no-store",
+    }).catch(() => {
+      /* ignora — a instância pode já não existir ou o delete pode falhar; connect recria */
+    });
   }
 
   await supabase
