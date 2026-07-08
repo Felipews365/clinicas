@@ -20,6 +20,7 @@ type HistRow = {
 };
 
 type ClientRow = {
+  id?: string;
   telefone: string;
   nome: string;
   bot_ativo: boolean;
@@ -31,6 +32,8 @@ type SessionInfo = {
   sessionId: string;
   phone: string;
   clientName: string | null;
+  /** id em cs_clientes — chave para atribuir tags à conversa */
+  clienteId: string | null;
   /** Estado de `cs_clientes.nome_confirmado`; null = sem nome no cadastro ou coluna omitida */
   nomeConfirmado: boolean | null;
   botAtivo: boolean;
@@ -38,6 +41,74 @@ type SessionInfo = {
   lastId: number;
   lastAt: string | null;
 };
+
+type TagRow = { id: string; label: string; color: string };
+
+/** Paleta de cores das tags (chave guardada em cs_tags.color). */
+const TAG_COLORS: Record<
+  string,
+  { pill: string; dot: string; name: string }
+> = {
+  red: { pill: "border-red-200 bg-red-100 text-red-800", dot: "bg-red-500", name: "Vermelho" },
+  amber: { pill: "border-amber-200 bg-amber-100 text-amber-900", dot: "bg-amber-500", name: "Âmbar" },
+  green: { pill: "border-emerald-200 bg-emerald-100 text-emerald-800", dot: "bg-emerald-500", name: "Verde" },
+  teal: { pill: "border-teal-200 bg-teal-100 text-teal-800", dot: "bg-teal-500", name: "Turquesa" },
+  blue: { pill: "border-blue-200 bg-blue-100 text-blue-800", dot: "bg-blue-500", name: "Azul" },
+  purple: { pill: "border-purple-200 bg-purple-100 text-purple-800", dot: "bg-purple-500", name: "Roxo" },
+  pink: { pill: "border-pink-200 bg-pink-100 text-pink-800", dot: "bg-pink-500", name: "Rosa" },
+  slate: { pill: "border-slate-200 bg-slate-100 text-slate-700", dot: "bg-slate-500", name: "Cinza" },
+};
+const TAG_COLOR_KEYS = Object.keys(TAG_COLORS);
+function tagColor(key: string) {
+  return TAG_COLORS[key] ?? TAG_COLORS.slate;
+}
+
+/** Tags sugeridas (pré-definidas) — criadas sob demanda quando a clínica clica. */
+const TAG_PRESETS: { label: string; color: string }[] = [
+  { label: "Urgente", color: "red" },
+  { label: "Cliente novo", color: "green" },
+  { label: "Retorno", color: "blue" },
+  { label: "Aguardando pagamento", color: "amber" },
+  { label: "Agendado", color: "teal" },
+  { label: "Sem resposta", color: "slate" },
+];
+
+/** Pílula visual de uma tag. */
+function TagPill({
+  tag,
+  onRemove,
+  size = "sm",
+}: {
+  tag: TagRow;
+  onRemove?: () => void;
+  size?: "xs" | "sm";
+}) {
+  const c = tagColor(tag.color);
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border font-medium leading-none ${c.pill} ${
+        size === "xs" ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-0.5 text-[11px]"
+      }`}
+    >
+      {tag.label}
+      {onRemove ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          className="-mr-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-current opacity-60 transition hover:bg-black/10 hover:opacity-100"
+          aria-label={`Remover tag ${tag.label}`}
+        >
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden>
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+      ) : null}
+    </span>
+  );
+}
 
 type Props = {
   supabase: SupabaseClient;
@@ -286,19 +357,44 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
   const headerMenuRef = useRef<HTMLDivElement>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [fullscreen, setFullscreen] = useState(false);
   const [isNarrow, setIsNarrow] = useState(false);
   const [mobilePane, setMobilePane] = useState<"list" | "chat">("list");
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
+  // ── tags ──────────────────────────────────────────────────────────────────
+  const [tags, setTags] = useState<TagRow[]>([]);
+  /** clienteId → tagId[] */
+  const [assignments, setAssignments] = useState<Record<string, string[]>>({});
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [tagMenuOpen, setTagMenuOpen] = useState(false);
+  const [newTagLabel, setNewTagLabel] = useState("");
+  const [newTagColor, setNewTagColor] = useState("blue");
+  const [savingTag, setSavingTag] = useState(false);
+  const tagMenuRef = useRef<HTMLDivElement>(null);
+
+  const tagsById = useMemo(
+    () => Object.fromEntries(tags.map((t) => [t.id, t])) as Record<string, TagRow>,
+    [tags]
+  );
+
   const filteredSessions = useMemo(() => {
+    let list = sessions;
+    if (tagFilter) {
+      list = list.filter(
+        (s) =>
+          s.clienteId != null &&
+          (assignments[s.clienteId] ?? []).includes(tagFilter)
+      );
+    }
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return sessions;
-    return sessions.filter((s) => {
+    if (!q) return list;
+    return list.filter((s) => {
       const blob = `${s.phone} ${s.clientName ?? ""} ${s.lastPreview}`.toLowerCase();
       return blob.includes(q);
     });
-  }, [sessions, searchQuery]);
+  }, [sessions, searchQuery, tagFilter, assignments]);
 
   const selectedSession = sessions.find((s) => s.sessionId === selectedId) ?? null;
 
@@ -319,6 +415,21 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
     const t = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(t);
   }, []);
+
+  // tela cheia: Esc fecha (menu do cabeçalho tem prioridade) e trava o scroll do body
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !headerMenuOpen) setFullscreen(false);
+    };
+    window.addEventListener("keydown", onEsc);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onEsc);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [fullscreen, headerMenuOpen]);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
@@ -355,6 +466,24 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
     return () => window.removeEventListener("keydown", esc);
   }, [headerMenuOpen]);
 
+  useEffect(() => {
+    if (!tagMenuOpen) return;
+    const down = (e: MouseEvent) => {
+      if (tagMenuRef.current && !tagMenuRef.current.contains(e.target as Node)) {
+        setTagMenuOpen(false);
+      }
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTagMenuOpen(false);
+    };
+    document.addEventListener("mousedown", down);
+    window.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", down);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [tagMenuOpen]);
+
   // ── carrega sessões ──────────────────────────────────────────────────────
   const loadSessions = useCallback(async () => {
     setLoadingSessions(true);
@@ -368,7 +497,7 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
         .limit(2000),
       supabase
         .from("cs_clientes")
-        .select("telefone, nome, bot_ativo, nome_confirmado")
+        .select("id, telefone, nome, bot_ativo, nome_confirmado")
         .eq("clinic_id", clinicId),
     ]);
 
@@ -391,6 +520,7 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
         sessionId: row.session_id,
         phone,
         clientName: nomeList,
+        clienteId: client?.id ?? null,
         nomeConfirmado:
           nomeList !== null ? (client?.nome_confirmado ?? null) : null,
         botAtivo: client?.bot_ativo ?? true,
@@ -404,6 +534,121 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
   }, [supabase, clinicId]);
 
   useEffect(() => { void loadSessions(); }, [loadSessions]);
+
+  // ── carrega catálogo de tags + atribuições ────────────────────────────────
+  const loadTags = useCallback(async () => {
+    const [{ data: tagRows }, { data: asgRows }] = await Promise.all([
+      supabase
+        .from("cs_tags")
+        .select("id, label, color")
+        .eq("clinic_id", clinicId)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("cs_cliente_tags")
+        .select("cs_cliente_id, tag_id")
+        .eq("clinic_id", clinicId),
+    ]);
+    setTags((tagRows ?? []) as TagRow[]);
+    const map: Record<string, string[]> = {};
+    for (const r of (asgRows ?? []) as {
+      cs_cliente_id: string;
+      tag_id: string;
+    }[]) {
+      (map[r.cs_cliente_id] ||= []).push(r.tag_id);
+    }
+    setAssignments(map);
+  }, [supabase, clinicId]);
+
+  useEffect(() => { void loadTags(); }, [loadTags]);
+
+  const createTag = useCallback(
+    async (label: string, color: string): Promise<TagRow | null> => {
+      const clean = label.trim();
+      if (!clean) return null;
+      const existing = tags.find(
+        (t) => t.label.trim().toLowerCase() === clean.toLowerCase()
+      );
+      if (existing) return existing;
+      const { data, error } = await supabase
+        .from("cs_tags")
+        .insert({ clinic_id: clinicId, label: clean, color })
+        .select("id, label, color")
+        .single();
+      if (error || !data) return null;
+      const row = data as TagRow;
+      setTags((prev) => [...prev, row]);
+      return row;
+    },
+    [supabase, clinicId, tags]
+  );
+
+  const deleteTag = useCallback(
+    async (tagId: string) => {
+      if (
+        !window.confirm(
+          "Apagar esta tag? Ela será removida de todas as conversas."
+        )
+      )
+        return;
+      const { error } = await supabase
+        .from("cs_tags")
+        .delete()
+        .eq("id", tagId)
+        .eq("clinic_id", clinicId);
+      if (error) return;
+      setTags((prev) => prev.filter((t) => t.id !== tagId));
+      setAssignments((prev) => {
+        const next: Record<string, string[]> = {};
+        for (const [cid, ids] of Object.entries(prev))
+          next[cid] = ids.filter((i) => i !== tagId);
+        return next;
+      });
+      setTagFilter((f) => (f === tagId ? null : f));
+    },
+    [supabase, clinicId]
+  );
+
+  const toggleAssignment = useCallback(
+    async (clienteId: string, tagId: string) => {
+      const current = assignments[clienteId] ?? [];
+      const has = current.includes(tagId);
+      // otimista
+      setAssignments((prev) => {
+        const arr = prev[clienteId] ?? [];
+        return {
+          ...prev,
+          [clienteId]: has ? arr.filter((i) => i !== tagId) : [...arr, tagId],
+        };
+      });
+      const { error } = has
+        ? await supabase
+            .from("cs_cliente_tags")
+            .delete()
+            .eq("clinic_id", clinicId)
+            .eq("cs_cliente_id", clienteId)
+            .eq("tag_id", tagId)
+        : await supabase
+            .from("cs_cliente_tags")
+            .insert({
+              clinic_id: clinicId,
+              cs_cliente_id: clienteId,
+              tag_id: tagId,
+            });
+      if (error) {
+        // reverte em caso de falha
+        setAssignments((prev) => {
+          const arr = prev[clienteId] ?? [];
+          return {
+            ...prev,
+            [clienteId]: has
+              ? [...arr, tagId]
+              : arr.filter((i) => i !== tagId),
+          };
+        });
+      }
+    },
+    [supabase, clinicId, assignments]
+  );
 
   // Auto-seleccionar conversa quando vem de "Assumir atendimento"
   useEffect(() => {
@@ -447,6 +692,7 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
                 sessionId: row.session_id,
                 phone,
                 clientName: nomeNovo,
+                clienteId: client?.id ?? null,
                 nomeConfirmado:
                   nomeNovo !== null ? (client?.nome_confirmado ?? null) : null,
                 botAtivo: client?.bot_ativo ?? true,
@@ -497,6 +743,7 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
                 ? {
                     ...s,
                     clientName: name,
+                    clienteId: row.id ?? s.clienteId,
                     nomeConfirmado:
                       name !== null ? (row.nome_confirmado ?? null) : null,
                     botAtivo: row.bot_ativo ?? s.botAtivo,
@@ -724,7 +971,11 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
 
   return (
     <div
-      className={`flex h-full min-h-0 w-full overflow-hidden rounded-2xl border ${wa.sidebar} shadow-[0_1px_1px_rgba(11,20,26,0.06)]`}
+      className={
+        fullscreen
+          ? `fixed inset-0 z-[200] flex min-h-0 w-full overflow-hidden border-0 ${wa.sidebar}`
+          : `flex h-full min-h-0 w-full overflow-hidden rounded-2xl border ${wa.sidebar} shadow-[0_1px_1px_rgba(11,20,26,0.06)]`
+      }
     >
       {/* Lista de chats — estilo WhatsApp Web */}
       <div
@@ -757,6 +1008,30 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
               className="w-full rounded-lg bg-transparent py-1.5 pl-10 pr-3 text-[14px] text-[#111b21] outline-none placeholder:text-[#889196]"
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setFullscreen((v) => !v)}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#54656f] transition-colors hover:bg-[#dfe5e9]"
+            aria-label={fullscreen ? "Sair da tela cheia" : "Abrir em tela cheia"}
+            aria-pressed={fullscreen}
+            title={fullscreen ? "Sair da tela cheia (Esc)" : "Ver em tela cheia"}
+          >
+            {fullscreen ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+                <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+                <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+                <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+                <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+                <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+              </svg>
+            )}
+          </button>
         </header>
 
         {agenteAtivo !== undefined && (
@@ -791,6 +1066,39 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
           </div>
         )}
 
+        {tags.length > 0 ? (
+          <div className="flex items-center gap-1.5 overflow-x-auto border-b border-[#e9edef] bg-white px-3 py-2">
+            <button
+              type="button"
+              onClick={() => setTagFilter(null)}
+              className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition ${
+                tagFilter === null
+                  ? "border-[#00A884] bg-[#00A884]/10 text-[#008069]"
+                  : "border-[#d1d7db] text-[#54656f] hover:bg-[#f5f6f6]"
+              }`}
+            >
+              Todas
+            </button>
+            {tags.map((t) => {
+              const c = tagColor(t.color);
+              const active = tagFilter === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setTagFilter((f) => (f === t.id ? null : t.id))}
+                  className={`flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition ${
+                    active ? c.pill : "border-[#d1d7db] text-[#54656f] hover:bg-[#f5f6f6]"
+                  }`}
+                >
+                  <span className={`h-2 w-2 rounded-full ${c.dot}`} />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+
         <div className="flex-1 overflow-y-auto">
           {loadingSessions ? (
             <p className={`px-4 py-10 text-center text-[13px] ${wa.meta}`}>
@@ -802,7 +1110,9 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
             </p>
           ) : filteredSessions.length === 0 ? (
             <p className={`px-4 py-10 text-center text-[13px] ${wa.meta}`}>
-              Nenhum resultado para «{searchQuery}»
+              {tagFilter
+                ? "Nenhuma conversa com esta etiqueta."
+                : `Nenhum resultado para «${searchQuery}»`}
             </p>
           ) : (
             filteredSessions.map((s) => {
@@ -870,6 +1180,16 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
                         {s.lastPreview || "\u00a0"}
                       </p>
                     </div>
+                    {s.clienteId && (assignments[s.clienteId]?.length ?? 0) > 0 ? (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {(assignments[s.clienteId] ?? [])
+                          .map((id) => tagsById[id])
+                          .filter(Boolean)
+                          .map((t) => (
+                            <TagPill key={t.id} tag={t} size="xs" />
+                          ))}
+                      </div>
+                    ) : null}
                   </div>
                 </button>
               );
@@ -928,6 +1248,201 @@ export function WhatsappInbox({ supabase, clinicId, initialPhone, onInitialPhone
                       {selectedSession.botAtivo ? "Bot ativo" : "Humano"}
                     </span>
                   </p>
+                  {selectedSession.clienteId &&
+                  (assignments[selectedSession.clienteId]?.length ?? 0) > 0 ? (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {(assignments[selectedSession.clienteId] ?? [])
+                        .map((id) => tagsById[id])
+                        .filter(Boolean)
+                        .map((t) => (
+                          <TagPill
+                            key={t.id}
+                            tag={t}
+                            size="xs"
+                            onRemove={() =>
+                              void toggleAssignment(
+                                selectedSession.clienteId as string,
+                                t.id
+                              )
+                            }
+                          />
+                        ))}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="relative shrink-0" ref={tagMenuRef}>
+                  <button
+                    type="button"
+                    aria-expanded={tagMenuOpen}
+                    aria-label="Etiquetas da conversa"
+                    title="Etiquetas da conversa"
+                    onClick={() => setTagMenuOpen((o) => !o)}
+                    className={`relative flex h-10 w-10 items-center justify-center rounded-full transition ${
+                      tagMenuOpen ? "bg-[#dfe5e9] text-[#008069]" : "text-[#54656f] hover:bg-[#dfe5e9]"
+                    }`}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                      <circle cx="7" cy="7" r="1.2" fill="currentColor" stroke="none" />
+                    </svg>
+                    {selectedSession.clienteId &&
+                    (assignments[selectedSession.clienteId]?.length ?? 0) > 0 ? (
+                      <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#00A884] px-1 text-[9px] font-bold text-white">
+                        {assignments[selectedSession.clienteId]?.length}
+                      </span>
+                    ) : null}
+                  </button>
+                  {tagMenuOpen ? (
+                    <div className="absolute right-0 top-full z-[150] mt-1 w-[min(calc(100vw-2rem),320px)] overflow-hidden rounded-xl border border-[#d1d7db] bg-white shadow-[0_6px_24px_rgba(11,20,26,0.18)]">
+                      <div className="border-b border-[#e9edef] px-3 py-2.5">
+                        <p className="text-[13px] font-semibold text-[#111b21]">
+                          Etiquetas da conversa
+                        </p>
+                        <p className="mt-0.5 text-[11px] leading-snug text-[#667781]">
+                          Só no painel — não aparecem no WhatsApp do celular.
+                        </p>
+                      </div>
+
+                      {!selectedSession.clienteId ? (
+                        <p className="px-3 py-4 text-[12px] leading-relaxed text-[#667781]">
+                          Esta conversa ainda não tem cadastro de cliente ligado.
+                          Assim que houver troca de mensagens, o cliente é criado e
+                          poderá receber etiquetas.
+                        </p>
+                      ) : (
+                        <>
+                          {tags.length > 0 ? (
+                            <div className="max-h-[220px] overflow-y-auto py-1">
+                              {tags.map((t) => {
+                                const c = tagColor(t.color);
+                                const cid = selectedSession.clienteId as string;
+                                const checked = (assignments[cid] ?? []).includes(t.id);
+                                return (
+                                  <div
+                                    key={t.id}
+                                    className="group flex items-center gap-2 px-3 py-1.5 hover:bg-[#f5f6f6]"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => void toggleAssignment(cid, t.id)}
+                                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                    >
+                                      <span
+                                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                                          checked
+                                            ? "border-[#00A884] bg-[#00A884] text-white"
+                                            : "border-[#c8c3bb] bg-white"
+                                        }`}
+                                      >
+                                        {checked ? (
+                                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                            <path d="M20 6 9 17l-5-5" />
+                                          </svg>
+                                        ) : null}
+                                      </span>
+                                      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${c.dot}`} />
+                                      <span className="min-w-0 truncate text-[13px] text-[#111b21]">
+                                        {t.label}
+                                      </span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void deleteTag(t.id)}
+                                      aria-label={`Apagar etiqueta ${t.label}`}
+                                      title="Apagar etiqueta"
+                                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[#b0b8bd] opacity-0 transition hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                        <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="px-3 py-2.5">
+                              <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[#8696a0]">
+                                Sugestões — clique para criar
+                              </p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {TAG_PRESETS.map((p) => {
+                                  const c = tagColor(p.color);
+                                  return (
+                                    <button
+                                      key={p.label}
+                                      type="button"
+                                      disabled={savingTag}
+                                      onClick={async () => {
+                                        setSavingTag(true);
+                                        const t = await createTag(p.label, p.color);
+                                        if (t && selectedSession.clienteId)
+                                          await toggleAssignment(selectedSession.clienteId, t.id);
+                                        setSavingTag(false);
+                                      }}
+                                      className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition hover:brightness-95 disabled:opacity-50 ${c.pill}`}
+                                    >
+                                      <span className={`h-2 w-2 rounded-full ${c.dot}`} />
+                                      {p.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* criar nova tag */}
+                          <div className="border-t border-[#e9edef] px-3 py-2.5">
+                            <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-[#8696a0]">
+                              Nova etiqueta
+                            </p>
+                            <input
+                              type="text"
+                              value={newTagLabel}
+                              onChange={(e) => setNewTagLabel(e.target.value)}
+                              placeholder="Nome da etiqueta"
+                              maxLength={30}
+                              className="w-full rounded-lg border border-[#d1d7db] bg-white px-2.5 py-1.5 text-[13px] text-[#111b21] outline-none focus:border-[#00A884] focus:ring-1 focus:ring-[#00A884]/30"
+                            />
+                            <div className="mt-2 flex items-center gap-1.5">
+                              {TAG_COLOR_KEYS.map((key) => {
+                                const c = tagColor(key);
+                                return (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => setNewTagColor(key)}
+                                    aria-label={`Cor ${c.name}`}
+                                    title={c.name}
+                                    className={`h-5 w-5 rounded-full ${c.dot} transition ${
+                                      newTagColor === key
+                                        ? "ring-2 ring-[#111b21] ring-offset-1"
+                                        : "opacity-80 hover:opacity-100"
+                                    }`}
+                                  />
+                                );
+                              })}
+                            </div>
+                            <button
+                              type="button"
+                              disabled={savingTag || !newTagLabel.trim()}
+                              onClick={async () => {
+                                setSavingTag(true);
+                                const t = await createTag(newTagLabel, newTagColor);
+                                if (t && selectedSession.clienteId)
+                                  await toggleAssignment(selectedSession.clienteId, t.id);
+                                setNewTagLabel("");
+                                setSavingTag(false);
+                              }}
+                              className="mt-2 w-full rounded-lg bg-[#00A884] py-1.5 text-[12px] font-semibold text-white transition hover:bg-[#008069] disabled:opacity-40"
+                            >
+                              {savingTag ? "A criar…" : "Criar e aplicar"}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="relative shrink-0" ref={headerMenuRef}>
                   <button

@@ -16,6 +16,8 @@ const TABS: { id: Tab; emoji: string; label: string }[] = [
   { id: "lembretes", emoji: "⏰", label: "Lembretes" },
 ];
 
+type GeoResult = { display_name: string; lat: string; lon: string };
+
 const LEMBRETE_MENSAGEM_PADRAO =
   "Olá, {{nome}}! Lembramos que você tem uma consulta agendada para *{{data}}* às *{{hora}}*. Não se atrase! 😊 Caso precise remarcar, é só nos avisar.";
 
@@ -41,6 +43,12 @@ export function ClinicProfilePanel({
   const [enderecoClinica, setEnderecoClinica] = useState("");
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
+  // busca de endereço → preenche endereço + coordenadas automaticamente
+  const [geoQuery, setGeoQuery] = useState("");
+  const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
+  const [geoOpen, setGeoOpen] = useState(false);
   const [aceitaConvenio, setAceitaConvenio] = useState<boolean | null>(null);
   const [antecedenciaMinutos, setAntecedenciaMinutos] = useState<number>(30);
   const [lembreteMinutos, setLembreteMinutos] = useState<number | null>(null);
@@ -213,6 +221,58 @@ export function ClinicProfilePanel({
 
   function mark() { setDirty(true); setSaved(false); }
 
+  // Autocomplete de endereço via OpenStreetMap/Nominatim (sem chave de API).
+  useEffect(() => {
+    const q = geoQuery.trim();
+    if (q.length < 4) {
+      setGeoResults([]);
+      setGeoError(null);
+      setGeoLoading(false);
+      return;
+    }
+    const ctrl = new AbortController();
+    const t = setTimeout(async () => {
+      setGeoLoading(true);
+      setGeoError(null);
+      try {
+        const url =
+          "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=br&accept-language=pt-BR&q=" +
+          encodeURIComponent(q);
+        const res = await fetch(url, {
+          signal: ctrl.signal,
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as GeoResult[];
+        setGeoResults(Array.isArray(data) ? data : []);
+        setGeoOpen(true);
+      } catch (e) {
+        if ((e as Error).name !== "AbortError") {
+          setGeoError("Não foi possível buscar agora. Tente novamente.");
+          setGeoResults([]);
+        }
+      } finally {
+        setGeoLoading(false);
+      }
+    }, 600);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [geoQuery]);
+
+  function selectGeoResult(r: GeoResult) {
+    setEnderecoClinica(r.display_name);
+    const lat = parseFloat(r.lat);
+    const lon = parseFloat(r.lon);
+    if (Number.isFinite(lat)) setLatitude(lat.toFixed(6));
+    if (Number.isFinite(lon)) setLongitude(lon.toFixed(6));
+    setGeoOpen(false);
+    setGeoQuery("");
+    setGeoResults([]);
+    mark();
+  }
+
   if (!open) return null;
   const isPanel = presentation === "panel";
 
@@ -343,6 +403,66 @@ export function ClinicProfilePanel({
             {/* Localização */}
             {activeTab === "localizacao" && (
               <div className="space-y-5">
+                <div className="relative">
+                  <label htmlFor="cp-geo" className="text-sm font-semibold text-[var(--text)]">
+                    🔎 Buscar endereço no mapa
+                  </label>
+                  <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                    Digite o endereço e escolha na lista — <strong>endereço, latitude e longitude são preenchidos automaticamente</strong>.
+                  </p>
+                  <div className="relative mt-1.5">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="m21 21-4.35-4.35" strokeLinecap="round" />
+                      </svg>
+                    </span>
+                    <input
+                      id="cp-geo"
+                      type="text"
+                      value={geoQuery}
+                      onChange={(e) => setGeoQuery(e.target.value)}
+                      onFocus={() => { if (geoResults.length > 0) setGeoOpen(true); }}
+                      onBlur={() => window.setTimeout(() => setGeoOpen(false), 150)}
+                      placeholder="Ex.: Av. Boa Viagem 1000, Recife"
+                      autoComplete="off"
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] py-2 pl-9 pr-9 text-sm text-[var(--text)] placeholder-[var(--text-muted)] outline-none ring-[var(--primary)] focus:ring-2"
+                    />
+                    {geoLoading && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="animate-spin" aria-hidden>
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity=".25" />
+                          <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                        </svg>
+                      </span>
+                    )}
+                    {geoOpen && geoResults.length > 0 && (
+                      <ul className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] py-1 shadow-lg">
+                        {geoResults.map((r, i) => (
+                          <li key={`${r.lat},${r.lon},${i}`}>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => { e.preventDefault(); selectGeoResult(r); }}
+                              className="flex w-full items-start gap-2 px-3 py-2 text-left text-xs text-[var(--text)] transition-colors hover:bg-[var(--surface-soft)]"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 shrink-0 text-[var(--primary)]" aria-hidden>
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                                <circle cx="12" cy="10" r="3" />
+                              </svg>
+                              <span className="min-w-0">{r.display_name}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  {geoError && (
+                    <p className="mt-1 text-xs text-red-600">{geoError}</p>
+                  )}
+                  <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+                    Confira sempre o ponto no mapa depois — a busca é aproximada. Se preferir, ajuste as coordenadas manualmente abaixo.
+                  </p>
+                </div>
                 <div>
                   <label htmlFor="cp-endereco" className="text-sm font-semibold text-[var(--text)]">
                     Endereço

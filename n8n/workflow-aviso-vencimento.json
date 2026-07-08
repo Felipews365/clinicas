@@ -1,0 +1,254 @@
+{
+  "name": "Aviso Vencimento Plano (3 dias antes)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * *"
+            }
+          ]
+        }
+      },
+      "id": "av-sched-trigger",
+      "name": "Diariamente 10h BRT",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        80,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/rpc/n8n_cs_clinics_avisar_vencimento",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_dias_antes: 3 }) }}",
+        "options": {}
+      },
+      "id": "av-rpc-pendentes",
+      "name": "RPC clinics avisar vencimento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        280,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Cada linha já vem com clinic_id, clinic_name, instance_name, data_expiracao,\n// dias_restantes, destino_whatsapp, owner_email.\n// Renderiza mensagem fixa para o dono da clínica.\nconst items = $input.all();\nconst out = [];\nfor (const it of items) {\n  const r = it.json;\n  if (!r || !r.destino_whatsapp) continue;\n  const [y, m, d] = String(r.data_expiracao).slice(0, 10).split('-');\n  const dataBr = `${d}/${m}/${y}`;\n  const dias = Number(r.dias_restantes) || 3;\n  const nome = r.clinic_name || 'sua clínica';\n  const mensagem =\n    `Olá! 👋 Este é um aviso da plataforma sobre o plano de *${nome}*.\\n\\n` +\n    `⏰ Faltam *${dias} dia${dias === 1 ? '' : 's'}* para o vencimento.\\n` +\n    `📅 Data limite: *${dataBr}*\\n\\n` +\n    `Para evitar interrupção do atendimento automático no WhatsApp, entre em contacto com o suporte para renovar.\\n\\n` +\n    `Caso já tenha regularizado, ignore esta mensagem.`;\n  out.push({\n    json: {\n      ...r,\n      mensagem,\n    },\n  });\n}\nreturn out;"
+      },
+      "id": "av-render-msg",
+      "name": "Renderiza mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "av-cond-destino",
+              "leftValue": "={{ $json.destino_whatsapp }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "av-cond-instance",
+              "leftValue": "={{ $json.instance_name }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "av-if-destino",
+      "name": "Tem destino + instancia?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://evolutionapi.vps7846.panel.icontainer.cloud/message/sendText/' + $json.instance_name }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "6PWyAsF3cip8QZ2JxNSRk4M5A5yEi4G8"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $json.destino_whatsapp, text: $json.mensagem, delay: 1500 }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1500
+            }
+          }
+        }
+      },
+      "id": "av-evolution-send",
+      "name": "Evolution sendText",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueErrorOutput",
+      "position": [
+        960,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://xkwdwioawosthwjqijfb.supabase.co/rest/v1/rpc/n8n_cs_clinics_avisar_vencimento_marcar",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhrd2R3aW9hd29zdGh3anFpamZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mjc1MzMsImV4cCI6MjA5MDEwMzUzM30.vJe7m1a51XIYBST5VkEtFe1ArGsKe4ASF0iIn5glGtQ"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Renderiza mensagem').item.json.clinic_id, p_data_expiracao: String($('Renderiza mensagem').item.json.data_expiracao).slice(0,10), p_dias_antes: Number($('Renderiza mensagem').item.json.dias_restantes) || 3, p_destino: $('Renderiza mensagem').item.json.destino_whatsapp }) }}",
+        "options": {}
+      },
+      "id": "av-mark-sent",
+      "name": "Marca enviado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Diariamente 10h BRT": {
+      "main": [
+        [
+          {
+            "node": "RPC clinics avisar vencimento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RPC clinics avisar vencimento": {
+      "main": [
+        [
+          {
+            "node": "Renderiza mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Renderiza mensagem": {
+      "main": [
+        [
+          {
+            "node": "Tem destino + instancia?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem destino + instancia?": {
+      "main": [
+        [
+          {
+            "node": "Evolution sendText",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Evolution sendText": {
+      "main": [
+        [
+          {
+            "node": "Marca enviado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null
+}

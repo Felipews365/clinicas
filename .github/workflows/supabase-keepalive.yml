@@ -1,0 +1,45 @@
+name: Supabase Keepalive
+
+# Mantém o projeto Supabase (plano gratuito) activo: o Supabase pausa
+# projectos sem actividade na base de dados durante ~7 dias. Este workflow
+# faz uma query leve à base a cada 2 dias para registar actividade.
+#
+# ⚠️ O GitHub desactiva workflows agendados se o repositório ficar 60 dias
+#    sem nenhum commit. Faça um commit qualquer de tempos a tempos, ou
+#    reactive o workflow em Actions → Supabase Keepalive → Enable workflow.
+
+on:
+  schedule:
+    # A cada 2 dias, às 06:00 UTC (03:00 BRT). Gap nunca passa de 2 dias.
+    - cron: "0 6 */2 * *"
+  workflow_dispatch: {} # permite disparar manualmente em Actions → Run workflow
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST (toca a base de dados)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Faltam os secrets SUPABASE_URL e/ou SUPABASE_ANON_KEY no repositório."
+            exit 1
+          fi
+
+          # Query mínima a uma tabela real → executa SQL no Postgres = actividade.
+          # HEAD com Prefer: count=exact não devolve linhas (RLS-safe) mas toca a base.
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X GET "$SUPABASE_URL/rest/v1/clinics?select=id&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+
+          echo "HTTP status: $status"
+
+          # 2xx (ok) ou 401/403 (RLS bloqueou linhas, mas a base foi tocada) contam como vivo.
+          case "$status" in
+            2*|401|403) echo "Supabase respondeu — projecto activo."; exit 0 ;;
+            000)        echo "::error::Sem resposta do Supabase (URL errado ou projecto já pausado)."; exit 1 ;;
+            *)          echo "::error::Resposta inesperada: $status"; exit 1 ;;
+          esac

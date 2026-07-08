@@ -12,6 +12,7 @@ type AssinaturaFields = {
   ativo: boolean;
   numero_clinica: string | null;
   crm_reengagement_message: string | null;
+  admin_whatsapp: string | null;
 };
 
 export async function GET(
@@ -34,7 +35,7 @@ export async function GET(
   const { data, error } = await supabase
     .from("clinics")
     .select(
-      "plan_id, plan_tem_crm, tipo_plano, data_expiracao, inadimplente, ativo, numero_clinica, crm_reengagement_message"
+      "plan_id, plan_tem_crm, tipo_plano, data_expiracao, inadimplente, ativo, numero_clinica, crm_reengagement_message, admin_whatsapp"
     )
     .eq("id", clinicId)
     .maybeSingle();
@@ -75,6 +76,10 @@ export async function GET(
       String(data.crm_reengagement_message).trim() === ""
         ? null
         : String(data.crm_reengagement_message).trim(),
+    admin_whatsapp:
+      data.admin_whatsapp == null || String(data.admin_whatsapp).trim() === ""
+        ? null
+        : String(data.admin_whatsapp).trim(),
   };
 
   return NextResponse.json({ fields, canEdit });
@@ -208,6 +213,18 @@ export async function PATCH(
     } else if (typeof v === "string") {
       const t = v.trim();
       patch.numero_clinica = t.length ? t : null;
+    } else {
+      return NextResponse.json({ error: "VALIDATION" }, { status: 400 });
+    }
+  }
+
+  if (body.admin_whatsapp !== undefined) {
+    const v = body.admin_whatsapp;
+    if (v === null || v === "") {
+      patch.admin_whatsapp = null;
+    } else if (typeof v === "string") {
+      const digits = v.replace(/\D+/g, "");
+      patch.admin_whatsapp = digits.length ? digits : null;
     } else {
       return NextResponse.json({ error: "VALIDATION" }, { status: 400 });
     }

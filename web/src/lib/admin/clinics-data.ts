@@ -13,7 +13,25 @@ export type AdminClinicRow = {
   created_at: string | null;
   plano_nome: string | null;
   plano_codigo: string | null;
+  cost_mes_atual_usd: number;
+  cost_mes_atual_brl: number;
+  cost_total_usd: number;
+  cost_total_brl: number;
+  tokens_mes_atual: number;
+  chamadas_mes_atual: number;
+  chamadas_total: number;
+  ultima_chamada_at: string | null;
+  usd_brl_rate: number;
 };
+
+const DEFAULT_USD_BRL_RATE = 5.5;
+
+export function getUsdBrlRate(): number {
+  const raw = process.env.USD_BRL_RATE;
+  if (!raw) return DEFAULT_USD_BRL_RATE;
+  const n = Number(raw.replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_USD_BRL_RATE;
+}
 
 export type AdminClinicsResult =
   | { ok: true; clinics: AdminClinicRow[] }
@@ -68,9 +86,36 @@ export async function getAdminClinicsList(): Promise<AdminClinicsResult> {
       }
     }
 
+    const usdBrl = getUsdBrlRate();
+    type UsageRow = {
+      clinic_id: string;
+      cost_mes_atual_usd: number | string | null;
+      cost_total_usd: number | string | null;
+      tokens_mes_atual: number | string | null;
+      chamadas_mes_atual: number | string | null;
+      chamadas_total: number | string | null;
+      ultima_chamada_at: string | null;
+    };
+    const usageByClinic = new Map<string, UsageRow>();
+    try {
+      const { data: usageRows, error: usageErr } = await admin.rpc(
+        "admin_ai_usage_per_clinic"
+      );
+      if (!usageErr && Array.isArray(usageRows)) {
+        for (const u of usageRows as UsageRow[]) {
+          if (u?.clinic_id) usageByClinic.set(String(u.clinic_id), u);
+        }
+      }
+    } catch {
+      // log silencioso; coluna mostra zero se a RPC falhar
+    }
+
     const clinics: AdminClinicRow[] = rows.map((raw) => {
       const pid = raw.plan_id != null ? String(raw.plan_id) : null;
       const plan = pid ? planoById.get(pid) : undefined;
+      const usage = usageByClinic.get(String(raw.id));
+      const mesUsd = Number(usage?.cost_mes_atual_usd ?? 0) || 0;
+      const totalUsd = Number(usage?.cost_total_usd ?? 0) || 0;
       return {
         id: String(raw.id),
         name: typeof raw.name === "string" ? raw.name : "—",
@@ -88,6 +133,15 @@ export async function getAdminClinicsList(): Promise<AdminClinicsResult> {
         created_at: raw.created_at != null ? String(raw.created_at) : null,
         plano_nome: plan?.nome ?? null,
         plano_codigo: plan?.codigo ?? null,
+        cost_mes_atual_usd: mesUsd,
+        cost_mes_atual_brl: mesUsd * usdBrl,
+        cost_total_usd: totalUsd,
+        cost_total_brl: totalUsd * usdBrl,
+        tokens_mes_atual: Number(usage?.tokens_mes_atual ?? 0) || 0,
+        chamadas_mes_atual: Number(usage?.chamadas_mes_atual ?? 0) || 0,
+        chamadas_total: Number(usage?.chamadas_total ?? 0) || 0,
+        ultima_chamada_at: usage?.ultima_chamada_at ?? null,
+        usd_brl_rate: usdBrl,
       };
     });
 

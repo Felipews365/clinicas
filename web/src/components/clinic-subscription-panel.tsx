@@ -20,6 +20,7 @@ type Fields = {
   ativo: boolean;
   numero_clinica: string | null;
   crm_reengagement_message?: string | null;
+  admin_whatsapp: string | null;
 };
 
 type Props = {
@@ -137,6 +138,9 @@ export function ClinicSubscriptionPanel({ clinicId }: Props) {
   const [fields, setFields] = useState<Fields | null>(null);
   const [planos, setPlanos] = useState<PlanoPublic[]>([]);
   const [numeroDraft, setNumeroDraft] = useState("");
+  const [adminWhatsappDraft, setAdminWhatsappDraft] = useState("");
+  const [savingWhatsapp, setSavingWhatsapp] = useState(false);
+  const [savedWhatsapp, setSavedWhatsapp] = useState(false);
 
   const loadPlans = useCallback(async () => {
     try {
@@ -182,6 +186,7 @@ export function ClinicSubscriptionPanel({ clinicId }: Props) {
       setFields(json.fields);
       setCanEdit(!!json.canEdit);
       setNumeroDraft(json.fields.numero_clinica ?? "");
+      setAdminWhatsappDraft(json.fields.admin_whatsapp ?? "");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao carregar.");
       setFields(null);
@@ -277,6 +282,35 @@ export function ClinicSubscriptionPanel({ clinicId }: Props) {
       featureList,
     };
   }, [fields, currentPlano]);
+
+  async function handleSaveAdminWhatsapp() {
+    if (!canEdit) return;
+    setSavingWhatsapp(true);
+    setError(null);
+    setSavedWhatsapp(false);
+    try {
+      const res = await fetch(`/api/clinica/${encodeURIComponent(clinicId)}/assinatura`, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          admin_whatsapp: adminWhatsappDraft.trim() || null,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+      if (!res.ok) {
+        setError(json.message ?? json.error ?? `Erro ${res.status}`);
+        return;
+      }
+      setSavedWhatsapp(true);
+      setTimeout(() => setSavedWhatsapp(false), 2500);
+      void load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao salvar.");
+    } finally {
+      setSavingWhatsapp(false);
+    }
+  }
 
   async function handleSaveNumero() {
     if (!canEdit) return;
@@ -486,6 +520,51 @@ export function ClinicSubscriptionPanel({ clinicId }: Props) {
               {savingNumero ? "A salvar…" : "Salvar número"}
             </button>
             {savedNumero ? (
+              <span className="text-sm font-medium text-[var(--success-text)]">Salvo.</span>
+            ) : null}
+          </div>
+        )}
+      </section>
+
+      <section className="agenda-animate-in rounded-2xl border border-[var(--border)] bg-[var(--color-surface)] px-6 py-6 shadow-sm sm:px-8 sm:py-7">
+        <div className="space-y-2">
+          <label
+            htmlFor="clinic-subscription-admin-whatsapp"
+            className="block text-sm font-medium text-[var(--text)]"
+          >
+            WhatsApp administrativo{" "}
+            <span className="font-normal text-[var(--text-muted)]">(opcional)</span>
+          </label>
+          <input
+            id="clinic-subscription-admin-whatsapp"
+            type="tel"
+            disabled={!canEdit}
+            placeholder="Ex.: 5511999990000"
+            value={adminWhatsappDraft}
+            onChange={(e) => setAdminWhatsappDraft(e.target.value)}
+            className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 text-sm text-[var(--text)] shadow-sm placeholder:text-[var(--text-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] disabled:opacity-50"
+          />
+          <p className="max-w-xl text-xs leading-relaxed text-[var(--text-muted)]">
+            Número (só dígitos, com país e DDD) que recebe avisos administrativos por WhatsApp —
+            como o aviso 3 dias antes do plano vencer. Se vazio, usamos o número público da clínica.
+          </p>
+        </div>
+
+        {!canEdit ? (
+          <p className="mt-4 text-sm text-[var(--text-muted)]">
+            Apenas dono ou administrador pode alterar este campo.
+          </p>
+        ) : (
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void handleSaveAdminWhatsapp()}
+              disabled={savingWhatsapp}
+              className="rounded-xl bg-[var(--primary)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[var(--primary-strong)] disabled:opacity-40"
+            >
+              {savingWhatsapp ? "A salvar…" : "Salvar WhatsApp"}
+            </button>
+            {savedWhatsapp ? (
               <span className="text-sm font-medium text-[var(--success-text)]">Salvo.</span>
             ) : null}
           </div>

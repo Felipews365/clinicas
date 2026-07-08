@@ -15,6 +15,7 @@ import { ReportModal } from "@/components/report-modal";
 import { AgentConfigModal } from "@/components/agent-config-modal";
 import { ClinicProfilePanel } from "@/components/clinic-profile-panel";
 import { ClinicSubscriptionPanel } from "@/components/clinic-subscription-panel";
+import { ExpiryWarningModal } from "@/components/expiry-warning-modal";
 import { ConectarWhatsapp } from "@/components/conectar-whatsapp";
 import { WhatsappInbox } from "@/components/whatsapp-inbox";
 import { PainelClientesCs } from "@/components/painel-clientes-cs";
@@ -302,6 +303,13 @@ export function AgendaPortal() {
     | "alerts"
     | "crm";
   const [sidebarPage, setSidebarPage] = useState<SidebarPage>("dashboard");
+  /** Grupo «Atendimento» na sidebar (Inbox WhatsApp, Clientes, Agente IA) */
+  const [waGroupOpen, setWaGroupOpen] = useState(false);
+  const waGroupActive =
+    sidebarPage === "whatsapp-human" ||
+    sidebarPage === "whatsapp-inbox" ||
+    sidebarPage === "cs-clientes";
+  const waGroupExpanded = waGroupOpen || waGroupActive;
   /** Vindo da grelha de horários: abrir Profissionais já em edição deste nome. */
   const [professionalsOpenIntent, setProfessionalsOpenIntent] = useState<{
     focusName: string;
@@ -1516,32 +1524,48 @@ export function AgendaPortal() {
               Agendamentos
             </span>
           </button>
+          {/* Grupo Atendimento — WhatsApp humano, Inbox WhatsApp, Clientes, Agente IA */}
           <button
             type="button"
-            onClick={() => setSidebarPage("whatsapp-human")}
-            className={`relative ${sidebarNavClass("whatsapp-human")}`}
+            onClick={() => setWaGroupOpen((o) => !o)}
+            aria-expanded={waGroupExpanded}
+            className={`relative ${waGroupActive && !waGroupExpanded ? sidebarNavActive : sidebarNavIdle}`}
           >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            WhatsApp humano
-            {humanQueueCount > 0 && (
-              <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c2410c] px-1 text-[10px] font-bold text-white">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8M8 14h5"/></svg>
+            <span className="min-w-0 flex-1 text-left">Atendimento</span>
+            {!waGroupExpanded && humanQueueCount > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c2410c] px-1 text-[10px] font-bold text-white">
                 {humanQueueCount > 99 ? "99+" : humanQueueCount}
               </span>
             )}
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className={`shrink-0 transition-transform duration-200 ${waGroupExpanded ? "rotate-180" : ""}`} aria-hidden><path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
-          <button type="button" onClick={() => setSidebarPage("whatsapp-inbox")} className={sidebarNavClass("whatsapp-inbox")}>
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8M8 14h5"/></svg>
-            Inbox WhatsApp
-          </button>
-          <button type="button" onClick={() => setSidebarPage("cs-clientes")} className={sidebarNavClass("cs-clientes")}>
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
-            Clientes
-          </button>
+          {waGroupExpanded ? (
+            <div className="ml-3 space-y-0.5 border-l border-[var(--border)] pl-2">
+              <button type="button" onClick={() => setSidebarPage("whatsapp-inbox")} className={sidebarNavClass("whatsapp-inbox")}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8M8 14h5"/></svg>
+                Inbox WhatsApp
+              </button>
+              <button type="button" onClick={() => setSidebarPage("cs-clientes")} className={sidebarNavClass("cs-clientes")}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+                Clientes
+              </button>
+              <button type="button" onClick={() => setSidebarPage("whatsapp-human")} className={`relative ${sidebarNavClass("whatsapp-human")}`}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                WhatsApp humano
+                {humanQueueCount > 0 && (
+                  <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c2410c] px-1 text-[10px] font-bold text-white">
+                    {humanQueueCount > 99 ? "99+" : humanQueueCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          ) : null}
           <button type="button" onClick={() => setSidebarPage("agent")} className={sidebarNavClass("agent")}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 15h.01M12 15h.01M16 15h.01"/></svg>
             Agente IA
@@ -1627,6 +1651,9 @@ export function AgendaPortal() {
         toasts={agendaNotif.toasts}
         dismissToast={agendaNotif.dismissToast}
       />
+      {access?.kind === "clinic" ? (
+        <ExpiryWarningModal clinicId={access.clinicId} />
+      ) : null}
       {/* Status bar desktop — fora do scroll, sempre fixo no topo */}
       <div className="hidden sm:flex shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--bg)]/95 px-7 py-2 backdrop-blur-sm text-xs text-[var(--text-muted)]">
         <div className="flex items-center gap-3">
@@ -1802,38 +1829,58 @@ export function AgendaPortal() {
                     Agendamentos
                   </span>
                 </button>
+                {/* Grupo Atendimento — WhatsApp humano, Inbox WhatsApp, Clientes, Agente IA */}
                 <button
                   type="button"
-                  className={`relative ${mobileNavRowClass("whatsapp-human")}`}
-                  onClick={() => goToSidebarPageAfterMobileMenuClose("whatsapp-human")}
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
-                  <span className="flex-1 text-left">WhatsApp humano</span>
-                  {humanQueueCount > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c2410c] px-1 text-[10px] font-bold text-white">{humanQueueCount > 99 ? "99+" : humanQueueCount}</span>}
-                </button>
-                <button
-                  type="button"
-                  className={mobileNavRowClass("whatsapp-inbox")}
-                  onClick={() => goToSidebarPageAfterMobileMenuClose("whatsapp-inbox")}
+                  className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm transition-colors ${
+                    waGroupActive && !waGroupExpanded
+                      ? "bg-[var(--sidebar-active)] font-semibold text-[var(--primary)]"
+                      : "font-medium text-[var(--text-muted)] hover:bg-[var(--surface-soft)]"
+                  }`}
+                  aria-expanded={waGroupExpanded}
+                  onClick={() => setWaGroupOpen((o) => !o)}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8M8 14h5"/></svg></span>
-                  Inbox WhatsApp
+                  <span className="min-w-0 flex-1 text-left">Atendimento</span>
+                  {!waGroupExpanded && humanQueueCount > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c2410c] px-1 text-[10px] font-bold text-white">{humanQueueCount > 99 ? "99+" : humanQueueCount}</span>}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className={`shrink-0 transition-transform duration-200 ${waGroupExpanded ? "rotate-180" : ""}`} aria-hidden><path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </button>
-                <button
-                  type="button"
-                  className={mobileNavRowClass("cs-clientes")}
-                  onClick={() => goToSidebarPageAfterMobileMenuClose("cs-clientes")}
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                      <circle cx="9" cy="7" r="4" />
-                      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                    </svg>
-                  </span>
-                  Clientes
-                </button>
+                {waGroupExpanded ? (
+                  <div className="ml-4 space-y-0.5 border-l border-[var(--border)] pl-2">
+                    <button
+                      type="button"
+                      className={mobileNavRowClass("whatsapp-inbox")}
+                      onClick={() => goToSidebarPageAfterMobileMenuClose("whatsapp-inbox")}
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8M8 14h5"/></svg></span>
+                      Inbox WhatsApp
+                    </button>
+                    <button
+                      type="button"
+                      className={mobileNavRowClass("cs-clientes")}
+                      onClick={() => goToSidebarPageAfterMobileMenuClose("cs-clientes")}
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                          <circle cx="9" cy="7" r="4" />
+                          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                        </svg>
+                      </span>
+                      Clientes
+                    </button>
+                    <button
+                      type="button"
+                      className={`relative ${mobileNavRowClass("whatsapp-human")}`}
+                      onClick={() => goToSidebarPageAfterMobileMenuClose("whatsapp-human")}
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sidebar-active)] text-[var(--primary)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+                      <span className="flex-1 text-left">WhatsApp humano</span>
+                      {humanQueueCount > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c2410c] px-1 text-[10px] font-bold text-white">{humanQueueCount > 99 ? "99+" : humanQueueCount}</span>}
+                    </button>
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   className={mobileNavRowClass("agent")}

@@ -1573,119 +1573,6 @@
     },
     {
       "parameters": {
-        "rules": {
-          "values": [
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 1
-                },
-                "conditions": [
-                  {
-                    "id": "sw-1",
-                    "leftValue": "={{ $json.cenario }}",
-                    "rightValue": "clinica_nao_encontrada",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "clinica_nao_encontrada"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 1
-                },
-                "conditions": [
-                  {
-                    "id": "sw-2",
-                    "leftValue": "={{ $json.cenario }}",
-                    "rightValue": "teste_expirado",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "teste_expirado"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 1
-                },
-                "conditions": [
-                  {
-                    "id": "sw-3",
-                    "leftValue": "={{ $json.cenario }}",
-                    "rightValue": "mensal_expirado",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "plano_expirado_ou_inadimplente"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 1
-                },
-                "conditions": [
-                  {
-                    "id": "sw-4",
-                    "leftValue": "={{ $json.cenario }}",
-                    "rightValue": "ativo",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "ativo"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3,
-      "position": [
-        -1376,
-        -1904
-      ],
-      "id": "6121ead0-30ee-4de0-a7a0-6b0c9e6eb024",
-      "name": "Switch assinatura e acesso"
-    },
-    {
-      "parameters": {
         "method": "POST",
         "url": "={{ 'https://evolutionapi.vps7846.panel.icontainer.cloud/message/sendText/' + ($json._tenant.instance_name || $env.EVOLUTION_INSTANCE || '') }}",
         "authentication": "predefinedCredentialType",
@@ -2626,7 +2513,7 @@
           "parameters": [
             {
               "name": "select",
-              "value": "id,name,phone,timezone,agent_instructions,agenda_visible_hours,sabado_aberto,sabado_agenda_hours,agente_ativo"
+              "value": "id,name,phone,timezone,agent_instructions,agenda_visible_hours,sabado_aberto,sabado_agenda_hours,agente_ativo,tipo_plano,data_expiracao,ativo,inadimplente"
             },
             {
               "name": "id",
@@ -4422,8 +4309,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -2568,
-        -336
+        -2360,
+        -120
       ],
       "parameters": {
         "conditions": {
@@ -4612,6 +4499,600 @@
         -748
       ],
       "onError": "continueErrorOutput"
+    },
+    {
+      "id": "switch-assinatura-acesso-v1",
+      "name": "Switch assinatura e acesso",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -2528,
+        -336
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "clinica_nao_encontrada",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-cnf",
+                    "leftValue": "={{ $json.id ?? '' }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "empty",
+                      "singleValue": true
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true
+            },
+            {
+              "outputKey": "teste_expirado",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-te-plano",
+                    "leftValue": "={{ String($json.tipo_plano ?? '').toLowerCase() }}",
+                    "rightValue": "teste",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "id": "cond-te-data",
+                    "leftValue": "={{ String($json.data_expiracao ?? '').slice(0,10) }}",
+                    "rightValue": "={{ $now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd') }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    }
+                  },
+                  {
+                    "id": "cond-te-vencida",
+                    "leftValue": "={{ String($json.data_expiracao ?? '').slice(0,10) < $now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd') }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true
+            },
+            {
+              "outputKey": "plano_expirado",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "combinator": "or",
+                "conditions": [
+                  {
+                    "id": "cond-pe-vencido",
+                    "leftValue": "={{ String($json.data_expiracao ?? '').length === 10 && String($json.data_expiracao).slice(0,10) < $now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd') }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  },
+                  {
+                    "id": "cond-pe-ativo-false",
+                    "leftValue": "={{ $json.ativo }}",
+                    "rightValue": false,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "id": "cond-pe-inad",
+                    "leftValue": "={{ $json.inadimplente }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true
+            }
+          ]
+        },
+        "fallbackOutput": "extra",
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "ativo"
+        }
+      }
+    },
+    {
+      "id": "noop-clinica-nao-encontrada-v1",
+      "name": "NoOp clinica nao encontrada",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -2360,
+        -560
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "http-marca-aviso-teste-v1",
+      "name": "HTTP marca aviso teste",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2360,
+        -400
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }} + '/rest/v1/rpc/n8n_cs_bloqueio_aviso_marcar'",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Buscar Config Cl?nica').first().json.id, p_phone: $('Edit Fields1').first().json.numCliente }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "SmHWpBnyL1cYuhlm",
+          "name": "Supabase clinicas"
+        }
+      }
+    },
+    {
+      "id": "if-deve-avisar-teste-v1",
+      "name": "IF deve avisar teste",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2200,
+        -400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-avisar-te",
+              "leftValue": "={{ $json === true || $json[0] === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "evolution-aviso-teste-v1",
+      "name": "Evolution aviso teste",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2040,
+        -440
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://evolutionapi.vps7846.panel.icontainer.cloud/message/sendText/' + ($('Edit Fields1').first().json.instanceName || '') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "6PWyAsF3cip8QZ2JxNSRk4M5A5yEi4G8"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $('Edit Fields1').first().json.numCliente, text: \"Olá! 👋 O período de teste do atendimento automático da {clinic_name} terminou. Para agendar, tirar dúvidas ou reactivar o atendimento, por favor entre em contacto directamente com a clínica. Obrigado!\".replace('{clinic_name}', $('Buscar Config Cl?nica').first().json.name || 'a clínica'), delay: 1500 }) }}",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "noop-fim-teste-v1",
+      "name": "NoOp fim teste expirado",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -2040,
+        -340
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "http-marca-aviso-mensal-v1",
+      "name": "HTTP marca aviso mensal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2360,
+        -240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }} + '/rest/v1/rpc/n8n_cs_bloqueio_aviso_marcar'",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Buscar Config Cl?nica').first().json.id, p_phone: $('Edit Fields1').first().json.numCliente }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "SmHWpBnyL1cYuhlm",
+          "name": "Supabase clinicas"
+        }
+      }
+    },
+    {
+      "id": "if-deve-avisar-mensal-v1",
+      "name": "IF deve avisar mensal",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2200,
+        -240
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-avisar-me",
+              "leftValue": "={{ $json === true || $json[0] === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "evolution-aviso-mensal-v1",
+      "name": "Evolution aviso mensal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2040,
+        -280
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://evolutionapi.vps7846.panel.icontainer.cloud/message/sendText/' + ($('Edit Fields1').first().json.instanceName || '') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "6PWyAsF3cip8QZ2JxNSRk4M5A5yEi4G8"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $('Edit Fields1').first().json.numCliente, text: \"Olá! 👋 No momento o atendimento automático da {clinic_name} está indisponível. Para agendar ou tirar dúvidas, por favor entre em contacto directamente com a clínica. Obrigado!\".replace('{clinic_name}', $('Buscar Config Cl?nica').first().json.name || 'a clínica'), delay: 1500 }) }}",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "noop-fim-mensal-v1",
+      "name": "NoOp fim mensal bloqueado",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -2040,
+        -180
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "log-ai-usage-qualificador",
+      "name": "Log AI Usage qualificador",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -664,
+        56
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Log AI Usage — extrai tokenUsage do LLM upstream e calcula custo USD.\n// Falha em logar nunca pode derrubar a resposta — try/catch tudo.\nconst PRICE_PER_M_IN  = 0.150;\nconst PRICE_PER_M_OUT = 0.600;\n\nfunction pickTokens(srcAll) {\n  for (const it of srcAll) {\n    const j = it.json || {};\n    // n8n langchain shapes seen across versions:\n    const candidates = [\n      j.tokenUsage,\n      j.usage,\n      j.response && j.response.llmOutput && j.response.llmOutput.tokenUsage,\n      j.response && j.response.usage,\n      j.response && j.response.generations && j.response.generations[0]\n        && j.response.generations[0][0] && j.response.generations[0][0].generationInfo\n        && j.response.generations[0][0].generationInfo.tokenUsage,\n    ];\n    for (const c of candidates) {\n      if (!c) continue;\n      const p = Number(c.promptTokens ?? c.prompt_tokens ?? c.input_tokens ?? 0) || 0;\n      const o = Number(c.completionTokens ?? c.completion_tokens ?? c.output_tokens ?? 0) || 0;\n      if (p + o > 0) return { p, o };\n    }\n  }\n  return null;\n}\n\nlet clinic_id = null;\nlet p = 0, o = 0, source = 'unknown';\ntry {\n  clinic_id = $('Monta Contexto').first().json.clinic_id || null;\n} catch (_) {}\n\ntry {\n  const llmAll = $('Chat Model qualifica').all();\n  const picked = pickTokens(llmAll);\n  if (picked) { p = picked.p; o = picked.o; source = 'llm_usage'; }\n} catch (_) {}\n\nif (p + o === 0) {\n  // Fallback heuristic: ~4 chars/token. Não é exato, mas dá ordem de grandeza.\n  try {\n    const ctx = ($('Monta Contexto').first().json || {});\n    const inputChars = String(ctx.mensagem || '').length + String(ctx.agent_instructions || '').length;\n    const out = String($json.output || $json.text || '');\n    p = Math.ceil(inputChars / 4);\n    o = Math.ceil(out.length / 4);\n    source = 'char_estimate';\n  } catch (_) {}\n}\n\nconst cost_usd = (p / 1e6) * PRICE_PER_M_IN + (o / 1e6) * PRICE_PER_M_OUT;\n\nreturn [{ json: {\n  ...$json,\n  _ai_usage: {\n    clinic_id,\n    agent: 'qualificador',\n    model: 'gpt-4o-mini',\n    prompt_tokens: p,\n    completion_tokens: o,\n    cost_usd,\n    source,\n  }\n} }];"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "http-log-ai-usage-qualificador",
+      "name": "HTTP Log AI Usage qualificador",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -444,
+        56
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_ai_usage_log' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  p_clinic_id: $json._ai_usage.clinic_id,\n  p_agent: $json._ai_usage.agent,\n  p_model: $json._ai_usage.model,\n  p_prompt_tokens: $json._ai_usage.prompt_tokens,\n  p_completion_tokens: $json._ai_usage.completion_tokens,\n  p_cost_usd: $json._ai_usage.cost_usd,\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "SmHWpBnyL1cYuhlm",
+          "name": "Supabase clinicas"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "log-ai-usage-agendador",
+      "name": "Log AI Usage agendador",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3592,
+        152
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Log AI Usage — extrai tokenUsage do LLM upstream e calcula custo USD.\n// Falha em logar nunca pode derrubar a resposta — try/catch tudo.\nconst PRICE_PER_M_IN  = 0.150;\nconst PRICE_PER_M_OUT = 0.600;\n\nfunction pickTokens(srcAll) {\n  for (const it of srcAll) {\n    const j = it.json || {};\n    // n8n langchain shapes seen across versions:\n    const candidates = [\n      j.tokenUsage,\n      j.usage,\n      j.response && j.response.llmOutput && j.response.llmOutput.tokenUsage,\n      j.response && j.response.usage,\n      j.response && j.response.generations && j.response.generations[0]\n        && j.response.generations[0][0] && j.response.generations[0][0].generationInfo\n        && j.response.generations[0][0].generationInfo.tokenUsage,\n    ];\n    for (const c of candidates) {\n      if (!c) continue;\n      const p = Number(c.promptTokens ?? c.prompt_tokens ?? c.input_tokens ?? 0) || 0;\n      const o = Number(c.completionTokens ?? c.completion_tokens ?? c.output_tokens ?? 0) || 0;\n      if (p + o > 0) return { p, o };\n    }\n  }\n  return null;\n}\n\nlet clinic_id = null;\nlet p = 0, o = 0, source = 'unknown';\ntry {\n  clinic_id = $('Monta Contexto').first().json.clinic_id || null;\n} catch (_) {}\n\ntry {\n  const llmAll = $('Chat Model agendador').all();\n  const picked = pickTokens(llmAll);\n  if (picked) { p = picked.p; o = picked.o; source = 'llm_usage'; }\n} catch (_) {}\n\nif (p + o === 0) {\n  // Fallback heuristic: ~4 chars/token. Não é exato, mas dá ordem de grandeza.\n  try {\n    const ctx = ($('Monta Contexto').first().json || {});\n    const inputChars = String(ctx.mensagem || '').length + String(ctx.agent_instructions || '').length;\n    const out = String($json.output || $json.text || '');\n    p = Math.ceil(inputChars / 4);\n    o = Math.ceil(out.length / 4);\n    source = 'char_estimate';\n  } catch (_) {}\n}\n\nconst cost_usd = (p / 1e6) * PRICE_PER_M_IN + (o / 1e6) * PRICE_PER_M_OUT;\n\nreturn [{ json: {\n  ...$json,\n  _ai_usage: {\n    clinic_id,\n    agent: 'agendador',\n    model: 'gpt-4o-mini',\n    prompt_tokens: p,\n    completion_tokens: o,\n    cost_usd,\n    source,\n  }\n} }];"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "http-log-ai-usage-agendador",
+      "name": "HTTP Log AI Usage agendador",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3812,
+        152
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_ai_usage_log' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  p_clinic_id: $json._ai_usage.clinic_id,\n  p_agent: $json._ai_usage.agent,\n  p_model: $json._ai_usage.model,\n  p_prompt_tokens: $json._ai_usage.prompt_tokens,\n  p_completion_tokens: $json._ai_usage.completion_tokens,\n  p_cost_usd: $json._ai_usage.cost_usd,\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "SmHWpBnyL1cYuhlm",
+          "name": "Supabase clinicas"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "log-ai-usage-faq",
+      "name": "Log AI Usage faq",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2056,
+        536
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Log AI Usage — extrai tokenUsage do LLM upstream e calcula custo USD.\n// Falha em logar nunca pode derrubar a resposta — try/catch tudo.\nconst PRICE_PER_M_IN  = 0.150;\nconst PRICE_PER_M_OUT = 0.600;\n\nfunction pickTokens(srcAll) {\n  for (const it of srcAll) {\n    const j = it.json || {};\n    // n8n langchain shapes seen across versions:\n    const candidates = [\n      j.tokenUsage,\n      j.usage,\n      j.response && j.response.llmOutput && j.response.llmOutput.tokenUsage,\n      j.response && j.response.usage,\n      j.response && j.response.generations && j.response.generations[0]\n        && j.response.generations[0][0] && j.response.generations[0][0].generationInfo\n        && j.response.generations[0][0].generationInfo.tokenUsage,\n    ];\n    for (const c of candidates) {\n      if (!c) continue;\n      const p = Number(c.promptTokens ?? c.prompt_tokens ?? c.input_tokens ?? 0) || 0;\n      const o = Number(c.completionTokens ?? c.completion_tokens ?? c.output_tokens ?? 0) || 0;\n      if (p + o > 0) return { p, o };\n    }\n  }\n  return null;\n}\n\nlet clinic_id = null;\nlet p = 0, o = 0, source = 'unknown';\ntry {\n  clinic_id = $('Monta Contexto').first().json.clinic_id || null;\n} catch (_) {}\n\ntry {\n  const llmAll = $('Chat Model faq').all();\n  const picked = pickTokens(llmAll);\n  if (picked) { p = picked.p; o = picked.o; source = 'llm_usage'; }\n} catch (_) {}\n\nif (p + o === 0) {\n  // Fallback heuristic: ~4 chars/token. Não é exato, mas dá ordem de grandeza.\n  try {\n    const ctx = ($('Monta Contexto').first().json || {});\n    const inputChars = String(ctx.mensagem || '').length + String(ctx.agent_instructions || '').length;\n    const out = String($json.output || $json.text || '');\n    p = Math.ceil(inputChars / 4);\n    o = Math.ceil(out.length / 4);\n    source = 'char_estimate';\n  } catch (_) {}\n}\n\nconst cost_usd = (p / 1e6) * PRICE_PER_M_IN + (o / 1e6) * PRICE_PER_M_OUT;\n\nreturn [{ json: {\n  ...$json,\n  _ai_usage: {\n    clinic_id,\n    agent: 'faq',\n    model: 'gpt-4o-mini',\n    prompt_tokens: p,\n    completion_tokens: o,\n    cost_usd,\n    source,\n  }\n} }];"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "http-log-ai-usage-faq",
+      "name": "HTTP Log AI Usage faq",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2276,
+        536
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_ai_usage_log' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  p_clinic_id: $json._ai_usage.clinic_id,\n  p_agent: $json._ai_usage.agent,\n  p_model: $json._ai_usage.model,\n  p_prompt_tokens: $json._ai_usage.prompt_tokens,\n  p_completion_tokens: $json._ai_usage.completion_tokens,\n  p_cost_usd: $json._ai_usage.cost_usd,\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "SmHWpBnyL1cYuhlm",
+          "name": "Supabase clinicas"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "log-ai-usage-especialista",
+      "name": "Log AI Usage especialista",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2040,
+        1144
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Log AI Usage — extrai tokenUsage do LLM upstream e calcula custo USD.\n// Falha em logar nunca pode derrubar a resposta — try/catch tudo.\nconst PRICE_PER_M_IN  = 0.150;\nconst PRICE_PER_M_OUT = 0.600;\n\nfunction pickTokens(srcAll) {\n  for (const it of srcAll) {\n    const j = it.json || {};\n    // n8n langchain shapes seen across versions:\n    const candidates = [\n      j.tokenUsage,\n      j.usage,\n      j.response && j.response.llmOutput && j.response.llmOutput.tokenUsage,\n      j.response && j.response.usage,\n      j.response && j.response.generations && j.response.generations[0]\n        && j.response.generations[0][0] && j.response.generations[0][0].generationInfo\n        && j.response.generations[0][0].generationInfo.tokenUsage,\n    ];\n    for (const c of candidates) {\n      if (!c) continue;\n      const p = Number(c.promptTokens ?? c.prompt_tokens ?? c.input_tokens ?? 0) || 0;\n      const o = Number(c.completionTokens ?? c.completion_tokens ?? c.output_tokens ?? 0) || 0;\n      if (p + o > 0) return { p, o };\n    }\n  }\n  return null;\n}\n\nlet clinic_id = null;\nlet p = 0, o = 0, source = 'unknown';\ntry {\n  clinic_id = $('Monta Contexto').first().json.clinic_id || null;\n} catch (_) {}\n\ntry {\n  const llmAll = $('Chat Model especialista').all();\n  const picked = pickTokens(llmAll);\n  if (picked) { p = picked.p; o = picked.o; source = 'llm_usage'; }\n} catch (_) {}\n\nif (p + o === 0) {\n  // Fallback heuristic: ~4 chars/token. Não é exato, mas dá ordem de grandeza.\n  try {\n    const ctx = ($('Monta Contexto').first().json || {});\n    const inputChars = String(ctx.mensagem || '').length + String(ctx.agent_instructions || '').length;\n    const out = String($json.output || $json.text || '');\n    p = Math.ceil(inputChars / 4);\n    o = Math.ceil(out.length / 4);\n    source = 'char_estimate';\n  } catch (_) {}\n}\n\nconst cost_usd = (p / 1e6) * PRICE_PER_M_IN + (o / 1e6) * PRICE_PER_M_OUT;\n\nreturn [{ json: {\n  ...$json,\n  _ai_usage: {\n    clinic_id,\n    agent: 'especialista',\n    model: 'gpt-4o-mini',\n    prompt_tokens: p,\n    completion_tokens: o,\n    cost_usd,\n    source,\n  }\n} }];"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "http-log-ai-usage-especialista",
+      "name": "HTTP Log AI Usage especialista",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2260,
+        1144
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_ai_usage_log' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  p_clinic_id: $json._ai_usage.clinic_id,\n  p_agent: $json._ai_usage.agent,\n  p_model: $json._ai_usage.model,\n  p_prompt_tokens: $json._ai_usage.prompt_tokens,\n  p_completion_tokens: $json._ai_usage.completion_tokens,\n  p_cost_usd: $json._ai_usage.cost_usd,\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "SmHWpBnyL1cYuhlm",
+          "name": "Supabase clinicas"
+        }
+      },
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -5177,7 +5658,7 @@
       "main": [
         [
           {
-            "node": "IF Agente Ativo",
+            "node": "Switch assinatura e acesso",
             "type": "main",
             "index": 0
           }
@@ -5250,28 +5731,28 @@
       "main": [
         [
           {
-            "node": "IF webhook de teste bloqueio",
+            "node": "NoOp clinica nao encontrada",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "HTTP aviso teste expirado",
+            "node": "HTTP marca aviso teste",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "HTTP aviso mensal bloqueado",
+            "node": "HTTP marca aviso mensal",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "IF webhook de teste ativo",
+            "node": "IF Agente Ativo",
             "type": "main",
             "index": 0
           }
@@ -5496,6 +5977,11 @@
             "node": "Code Extrair Rota",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Log AI Usage qualificador",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -5564,6 +6050,11 @@
             "node": "Code auto-notify profissional",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Log AI Usage agendador",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -5575,6 +6066,11 @@
             "node": "Edit Fields",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Log AI Usage faq",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -5584,6 +6080,11 @@
         [
           {
             "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log AI Usage especialista",
             "type": "main",
             "index": 0
           }
@@ -6049,6 +6550,130 @@
           }
         ],
         []
+      ]
+    },
+    "HTTP marca aviso teste": {
+      "main": [
+        [
+          {
+            "node": "IF deve avisar teste",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF deve avisar teste": {
+      "main": [
+        [
+          {
+            "node": "Evolution aviso teste",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "NoOp fim teste expirado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evolution aviso teste": {
+      "main": [
+        [
+          {
+            "node": "NoOp fim teste expirado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP marca aviso mensal": {
+      "main": [
+        [
+          {
+            "node": "IF deve avisar mensal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF deve avisar mensal": {
+      "main": [
+        [
+          {
+            "node": "Evolution aviso mensal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "NoOp fim mensal bloqueado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evolution aviso mensal": {
+      "main": [
+        [
+          {
+            "node": "NoOp fim mensal bloqueado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log AI Usage qualificador": {
+      "main": [
+        [
+          {
+            "node": "HTTP Log AI Usage qualificador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log AI Usage agendador": {
+      "main": [
+        [
+          {
+            "node": "HTTP Log AI Usage agendador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log AI Usage faq": {
+      "main": [
+        [
+          {
+            "node": "HTTP Log AI Usage faq",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log AI Usage especialista": {
+      "main": [
+        [
+          {
+            "node": "HTTP Log AI Usage especialista",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
@@ -7841,119 +8466,6 @@
       },
       {
         "parameters": {
-          "rules": {
-            "values": [
-              {
-                "conditions": {
-                  "options": {
-                    "caseSensitive": true,
-                    "leftValue": "",
-                    "typeValidation": "strict",
-                    "version": 1
-                  },
-                  "conditions": [
-                    {
-                      "id": "sw-1",
-                      "leftValue": "={{ $json.cenario }}",
-                      "rightValue": "clinica_nao_encontrada",
-                      "operator": {
-                        "type": "string",
-                        "operation": "equals"
-                      }
-                    }
-                  ],
-                  "combinator": "and"
-                },
-                "renameOutput": true,
-                "outputKey": "clinica_nao_encontrada"
-              },
-              {
-                "conditions": {
-                  "options": {
-                    "caseSensitive": true,
-                    "leftValue": "",
-                    "typeValidation": "strict",
-                    "version": 1
-                  },
-                  "conditions": [
-                    {
-                      "id": "sw-2",
-                      "leftValue": "={{ $json.cenario }}",
-                      "rightValue": "teste_expirado",
-                      "operator": {
-                        "type": "string",
-                        "operation": "equals"
-                      }
-                    }
-                  ],
-                  "combinator": "and"
-                },
-                "renameOutput": true,
-                "outputKey": "teste_expirado"
-              },
-              {
-                "conditions": {
-                  "options": {
-                    "caseSensitive": true,
-                    "leftValue": "",
-                    "typeValidation": "strict",
-                    "version": 1
-                  },
-                  "conditions": [
-                    {
-                      "id": "sw-3",
-                      "leftValue": "={{ $json.cenario }}",
-                      "rightValue": "mensal_expirado",
-                      "operator": {
-                        "type": "string",
-                        "operation": "equals"
-                      }
-                    }
-                  ],
-                  "combinator": "and"
-                },
-                "renameOutput": true,
-                "outputKey": "plano_expirado_ou_inadimplente"
-              },
-              {
-                "conditions": {
-                  "options": {
-                    "caseSensitive": true,
-                    "leftValue": "",
-                    "typeValidation": "strict",
-                    "version": 1
-                  },
-                  "conditions": [
-                    {
-                      "id": "sw-4",
-                      "leftValue": "={{ $json.cenario }}",
-                      "rightValue": "ativo",
-                      "operator": {
-                        "type": "string",
-                        "operation": "equals"
-                      }
-                    }
-                  ],
-                  "combinator": "and"
-                },
-                "renameOutput": true,
-                "outputKey": "ativo"
-              }
-            ]
-          },
-          "options": {}
-        },
-        "type": "n8n-nodes-base.switch",
-        "typeVersion": 3,
-        "position": [
-          -1376,
-          -1904
-        ],
-        "id": "6121ead0-30ee-4de0-a7a0-6b0c9e6eb024",
-        "name": "Switch assinatura e acesso"
-      },
-      {
-        "parameters": {
           "method": "POST",
           "url": "={{ 'https://evolutionapi.vps7846.panel.icontainer.cloud/message/sendText/' + ($json._tenant.instance_name || $env.EVOLUTION_INSTANCE || '') }}",
           "authentication": "predefinedCredentialType",
@@ -8894,7 +9406,7 @@
             "parameters": [
               {
                 "name": "select",
-                "value": "id,name,phone,timezone,agent_instructions,agenda_visible_hours,sabado_aberto,sabado_agenda_hours,agente_ativo"
+                "value": "id,name,phone,timezone,agent_instructions,agenda_visible_hours,sabado_aberto,sabado_agenda_hours,agente_ativo,tipo_plano,data_expiracao,ativo,inadimplente"
               },
               {
                 "name": "id",
@@ -10680,8 +11192,8 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
         "position": [
-          -2568,
-          -336
+          -2360,
+          -120
         ],
         "parameters": {
           "conditions": {
@@ -10835,6 +11347,600 @@
           -748
         ],
         "onError": "continueErrorOutput"
+      },
+      {
+        "id": "switch-assinatura-acesso-v1",
+        "name": "Switch assinatura e acesso",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.2,
+        "position": [
+          -2528,
+          -336
+        ],
+        "parameters": {
+          "rules": {
+            "values": [
+              {
+                "outputKey": "clinica_nao_encontrada",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "loose",
+                    "version": 3
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "cond-cnf",
+                      "leftValue": "={{ $json.id ?? '' }}",
+                      "rightValue": "",
+                      "operator": {
+                        "type": "string",
+                        "operation": "empty",
+                        "singleValue": true
+                      }
+                    }
+                  ]
+                },
+                "renameOutput": true
+              },
+              {
+                "outputKey": "teste_expirado",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": false,
+                    "leftValue": "",
+                    "typeValidation": "loose",
+                    "version": 3
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "cond-te-plano",
+                      "leftValue": "={{ String($json.tipo_plano ?? '').toLowerCase() }}",
+                      "rightValue": "teste",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    },
+                    {
+                      "id": "cond-te-data",
+                      "leftValue": "={{ String($json.data_expiracao ?? '').slice(0,10) }}",
+                      "rightValue": "={{ $now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd') }}",
+                      "operator": {
+                        "type": "string",
+                        "operation": "notEmpty",
+                        "singleValue": true
+                      }
+                    },
+                    {
+                      "id": "cond-te-vencida",
+                      "leftValue": "={{ String($json.data_expiracao ?? '').slice(0,10) < $now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd') }}",
+                      "rightValue": true,
+                      "operator": {
+                        "type": "boolean",
+                        "operation": "true",
+                        "singleValue": true
+                      }
+                    }
+                  ]
+                },
+                "renameOutput": true
+              },
+              {
+                "outputKey": "plano_expirado",
+                "conditions": {
+                  "options": {
+                    "caseSensitive": false,
+                    "leftValue": "",
+                    "typeValidation": "loose",
+                    "version": 3
+                  },
+                  "combinator": "or",
+                  "conditions": [
+                    {
+                      "id": "cond-pe-vencido",
+                      "leftValue": "={{ String($json.data_expiracao ?? '').length === 10 && String($json.data_expiracao).slice(0,10) < $now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd') }}",
+                      "rightValue": true,
+                      "operator": {
+                        "type": "boolean",
+                        "operation": "true",
+                        "singleValue": true
+                      }
+                    },
+                    {
+                      "id": "cond-pe-ativo-false",
+                      "leftValue": "={{ $json.ativo }}",
+                      "rightValue": false,
+                      "operator": {
+                        "type": "boolean",
+                        "operation": "equals"
+                      }
+                    },
+                    {
+                      "id": "cond-pe-inad",
+                      "leftValue": "={{ $json.inadimplente }}",
+                      "rightValue": true,
+                      "operator": {
+                        "type": "boolean",
+                        "operation": "equals"
+                      }
+                    }
+                  ]
+                },
+                "renameOutput": true
+              }
+            ]
+          },
+          "fallbackOutput": "extra",
+          "options": {
+            "fallbackOutput": "extra",
+            "renameFallbackOutput": "ativo"
+          }
+        }
+      },
+      {
+        "id": "noop-clinica-nao-encontrada-v1",
+        "name": "NoOp clinica nao encontrada",
+        "type": "n8n-nodes-base.noOp",
+        "typeVersion": 1,
+        "position": [
+          -2360,
+          -560
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "http-marca-aviso-teste-v1",
+        "name": "HTTP marca aviso teste",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -2360,
+          -400
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }} + '/rest/v1/rpc/n8n_cs_bloqueio_aviso_marcar'",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "supabaseApi",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Prefer",
+                "value": "return=representation"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Buscar Config Cl?nica').first().json.id, p_phone: $('Edit Fields1').first().json.numCliente }) }}",
+          "options": {}
+        },
+        "credentials": {
+          "supabaseApi": {
+            "id": "SmHWpBnyL1cYuhlm",
+            "name": "Supabase clinicas"
+          }
+        }
+      },
+      {
+        "id": "if-deve-avisar-teste-v1",
+        "name": "IF deve avisar teste",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          -2200,
+          -400
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 3
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "cond-avisar-te",
+                "leftValue": "={{ $json === true || $json[0] === true }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ]
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "evolution-aviso-teste-v1",
+        "name": "Evolution aviso teste",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -2040,
+          -440
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "={{ 'https://evolutionapi.vps7846.panel.icontainer.cloud/message/sendText/' + ($('Edit Fields1').first().json.instanceName || '') }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "apikey",
+                "value": "6PWyAsF3cip8QZ2JxNSRk4M5A5yEi4G8"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ number: $('Edit Fields1').first().json.numCliente, text: \"Olá! 👋 O período de teste do atendimento automático da {clinic_name} terminou. Para agendar, tirar dúvidas ou reactivar o atendimento, por favor entre em contacto directamente com a clínica. Obrigado!\".replace('{clinic_name}', $('Buscar Config Cl?nica').first().json.name || 'a clínica'), delay: 1500 }) }}",
+          "options": {}
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "noop-fim-teste-v1",
+        "name": "NoOp fim teste expirado",
+        "type": "n8n-nodes-base.noOp",
+        "typeVersion": 1,
+        "position": [
+          -2040,
+          -340
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "http-marca-aviso-mensal-v1",
+        "name": "HTTP marca aviso mensal",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -2360,
+          -240
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') }} + '/rest/v1/rpc/n8n_cs_bloqueio_aviso_marcar'",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "supabaseApi",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Prefer",
+                "value": "return=representation"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ p_clinic_id: $('Buscar Config Cl?nica').first().json.id, p_phone: $('Edit Fields1').first().json.numCliente }) }}",
+          "options": {}
+        },
+        "credentials": {
+          "supabaseApi": {
+            "id": "SmHWpBnyL1cYuhlm",
+            "name": "Supabase clinicas"
+          }
+        }
+      },
+      {
+        "id": "if-deve-avisar-mensal-v1",
+        "name": "IF deve avisar mensal",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          -2200,
+          -240
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 3
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "cond-avisar-me",
+                "leftValue": "={{ $json === true || $json[0] === true }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ]
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "evolution-aviso-mensal-v1",
+        "name": "Evolution aviso mensal",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -2040,
+          -280
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "={{ 'https://evolutionapi.vps7846.panel.icontainer.cloud/message/sendText/' + ($('Edit Fields1').first().json.instanceName || '') }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "apikey",
+                "value": "6PWyAsF3cip8QZ2JxNSRk4M5A5yEi4G8"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ number: $('Edit Fields1').first().json.numCliente, text: \"Olá! 👋 No momento o atendimento automático da {clinic_name} está indisponível. Para agendar ou tirar dúvidas, por favor entre em contacto directamente com a clínica. Obrigado!\".replace('{clinic_name}', $('Buscar Config Cl?nica').first().json.name || 'a clínica'), delay: 1500 }) }}",
+          "options": {}
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "noop-fim-mensal-v1",
+        "name": "NoOp fim mensal bloqueado",
+        "type": "n8n-nodes-base.noOp",
+        "typeVersion": 1,
+        "position": [
+          -2040,
+          -180
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "log-ai-usage-qualificador",
+        "name": "Log AI Usage qualificador",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -664,
+          56
+        ],
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "// Log AI Usage — extrai tokenUsage do LLM upstream e calcula custo USD.\n// Falha em logar nunca pode derrubar a resposta — try/catch tudo.\nconst PRICE_PER_M_IN  = 0.150;\nconst PRICE_PER_M_OUT = 0.600;\n\nfunction pickTokens(srcAll) {\n  for (const it of srcAll) {\n    const j = it.json || {};\n    // n8n langchain shapes seen across versions:\n    const candidates = [\n      j.tokenUsage,\n      j.usage,\n      j.response && j.response.llmOutput && j.response.llmOutput.tokenUsage,\n      j.response && j.response.usage,\n      j.response && j.response.generations && j.response.generations[0]\n        && j.response.generations[0][0] && j.response.generations[0][0].generationInfo\n        && j.response.generations[0][0].generationInfo.tokenUsage,\n    ];\n    for (const c of candidates) {\n      if (!c) continue;\n      const p = Number(c.promptTokens ?? c.prompt_tokens ?? c.input_tokens ?? 0) || 0;\n      const o = Number(c.completionTokens ?? c.completion_tokens ?? c.output_tokens ?? 0) || 0;\n      if (p + o > 0) return { p, o };\n    }\n  }\n  return null;\n}\n\nlet clinic_id = null;\nlet p = 0, o = 0, source = 'unknown';\ntry {\n  clinic_id = $('Monta Contexto').first().json.clinic_id || null;\n} catch (_) {}\n\ntry {\n  const llmAll = $('Chat Model qualifica').all();\n  const picked = pickTokens(llmAll);\n  if (picked) { p = picked.p; o = picked.o; source = 'llm_usage'; }\n} catch (_) {}\n\nif (p + o === 0) {\n  // Fallback heuristic: ~4 chars/token. Não é exato, mas dá ordem de grandeza.\n  try {\n    const ctx = ($('Monta Contexto').first().json || {});\n    const inputChars = String(ctx.mensagem || '').length + String(ctx.agent_instructions || '').length;\n    const out = String($json.output || $json.text || '');\n    p = Math.ceil(inputChars / 4);\n    o = Math.ceil(out.length / 4);\n    source = 'char_estimate';\n  } catch (_) {}\n}\n\nconst cost_usd = (p / 1e6) * PRICE_PER_M_IN + (o / 1e6) * PRICE_PER_M_OUT;\n\nreturn [{ json: {\n  ...$json,\n  _ai_usage: {\n    clinic_id,\n    agent: 'qualificador',\n    model: 'gpt-4o-mini',\n    prompt_tokens: p,\n    completion_tokens: o,\n    cost_usd,\n    source,\n  }\n} }];"
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "http-log-ai-usage-qualificador",
+        "name": "HTTP Log AI Usage qualificador",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -444,
+          56
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_ai_usage_log' }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "supabaseApi",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Prefer",
+                "value": "return=minimal"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({\n  p_clinic_id: $json._ai_usage.clinic_id,\n  p_agent: $json._ai_usage.agent,\n  p_model: $json._ai_usage.model,\n  p_prompt_tokens: $json._ai_usage.prompt_tokens,\n  p_completion_tokens: $json._ai_usage.completion_tokens,\n  p_cost_usd: $json._ai_usage.cost_usd,\n}) }}",
+          "options": {}
+        },
+        "credentials": {
+          "supabaseApi": {
+            "id": "SmHWpBnyL1cYuhlm",
+            "name": "Supabase clinicas"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "log-ai-usage-agendador",
+        "name": "Log AI Usage agendador",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3592,
+          152
+        ],
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "// Log AI Usage — extrai tokenUsage do LLM upstream e calcula custo USD.\n// Falha em logar nunca pode derrubar a resposta — try/catch tudo.\nconst PRICE_PER_M_IN  = 0.150;\nconst PRICE_PER_M_OUT = 0.600;\n\nfunction pickTokens(srcAll) {\n  for (const it of srcAll) {\n    const j = it.json || {};\n    // n8n langchain shapes seen across versions:\n    const candidates = [\n      j.tokenUsage,\n      j.usage,\n      j.response && j.response.llmOutput && j.response.llmOutput.tokenUsage,\n      j.response && j.response.usage,\n      j.response && j.response.generations && j.response.generations[0]\n        && j.response.generations[0][0] && j.response.generations[0][0].generationInfo\n        && j.response.generations[0][0].generationInfo.tokenUsage,\n    ];\n    for (const c of candidates) {\n      if (!c) continue;\n      const p = Number(c.promptTokens ?? c.prompt_tokens ?? c.input_tokens ?? 0) || 0;\n      const o = Number(c.completionTokens ?? c.completion_tokens ?? c.output_tokens ?? 0) || 0;\n      if (p + o > 0) return { p, o };\n    }\n  }\n  return null;\n}\n\nlet clinic_id = null;\nlet p = 0, o = 0, source = 'unknown';\ntry {\n  clinic_id = $('Monta Contexto').first().json.clinic_id || null;\n} catch (_) {}\n\ntry {\n  const llmAll = $('Chat Model agendador').all();\n  const picked = pickTokens(llmAll);\n  if (picked) { p = picked.p; o = picked.o; source = 'llm_usage'; }\n} catch (_) {}\n\nif (p + o === 0) {\n  // Fallback heuristic: ~4 chars/token. Não é exato, mas dá ordem de grandeza.\n  try {\n    const ctx = ($('Monta Contexto').first().json || {});\n    const inputChars = String(ctx.mensagem || '').length + String(ctx.agent_instructions || '').length;\n    const out = String($json.output || $json.text || '');\n    p = Math.ceil(inputChars / 4);\n    o = Math.ceil(out.length / 4);\n    source = 'char_estimate';\n  } catch (_) {}\n}\n\nconst cost_usd = (p / 1e6) * PRICE_PER_M_IN + (o / 1e6) * PRICE_PER_M_OUT;\n\nreturn [{ json: {\n  ...$json,\n  _ai_usage: {\n    clinic_id,\n    agent: 'agendador',\n    model: 'gpt-4o-mini',\n    prompt_tokens: p,\n    completion_tokens: o,\n    cost_usd,\n    source,\n  }\n} }];"
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "http-log-ai-usage-agendador",
+        "name": "HTTP Log AI Usage agendador",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          3812,
+          152
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_ai_usage_log' }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "supabaseApi",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Prefer",
+                "value": "return=minimal"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({\n  p_clinic_id: $json._ai_usage.clinic_id,\n  p_agent: $json._ai_usage.agent,\n  p_model: $json._ai_usage.model,\n  p_prompt_tokens: $json._ai_usage.prompt_tokens,\n  p_completion_tokens: $json._ai_usage.completion_tokens,\n  p_cost_usd: $json._ai_usage.cost_usd,\n}) }}",
+          "options": {}
+        },
+        "credentials": {
+          "supabaseApi": {
+            "id": "SmHWpBnyL1cYuhlm",
+            "name": "Supabase clinicas"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "log-ai-usage-faq",
+        "name": "Log AI Usage faq",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2056,
+          536
+        ],
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "// Log AI Usage — extrai tokenUsage do LLM upstream e calcula custo USD.\n// Falha em logar nunca pode derrubar a resposta — try/catch tudo.\nconst PRICE_PER_M_IN  = 0.150;\nconst PRICE_PER_M_OUT = 0.600;\n\nfunction pickTokens(srcAll) {\n  for (const it of srcAll) {\n    const j = it.json || {};\n    // n8n langchain shapes seen across versions:\n    const candidates = [\n      j.tokenUsage,\n      j.usage,\n      j.response && j.response.llmOutput && j.response.llmOutput.tokenUsage,\n      j.response && j.response.usage,\n      j.response && j.response.generations && j.response.generations[0]\n        && j.response.generations[0][0] && j.response.generations[0][0].generationInfo\n        && j.response.generations[0][0].generationInfo.tokenUsage,\n    ];\n    for (const c of candidates) {\n      if (!c) continue;\n      const p = Number(c.promptTokens ?? c.prompt_tokens ?? c.input_tokens ?? 0) || 0;\n      const o = Number(c.completionTokens ?? c.completion_tokens ?? c.output_tokens ?? 0) || 0;\n      if (p + o > 0) return { p, o };\n    }\n  }\n  return null;\n}\n\nlet clinic_id = null;\nlet p = 0, o = 0, source = 'unknown';\ntry {\n  clinic_id = $('Monta Contexto').first().json.clinic_id || null;\n} catch (_) {}\n\ntry {\n  const llmAll = $('Chat Model faq').all();\n  const picked = pickTokens(llmAll);\n  if (picked) { p = picked.p; o = picked.o; source = 'llm_usage'; }\n} catch (_) {}\n\nif (p + o === 0) {\n  // Fallback heuristic: ~4 chars/token. Não é exato, mas dá ordem de grandeza.\n  try {\n    const ctx = ($('Monta Contexto').first().json || {});\n    const inputChars = String(ctx.mensagem || '').length + String(ctx.agent_instructions || '').length;\n    const out = String($json.output || $json.text || '');\n    p = Math.ceil(inputChars / 4);\n    o = Math.ceil(out.length / 4);\n    source = 'char_estimate';\n  } catch (_) {}\n}\n\nconst cost_usd = (p / 1e6) * PRICE_PER_M_IN + (o / 1e6) * PRICE_PER_M_OUT;\n\nreturn [{ json: {\n  ...$json,\n  _ai_usage: {\n    clinic_id,\n    agent: 'faq',\n    model: 'gpt-4o-mini',\n    prompt_tokens: p,\n    completion_tokens: o,\n    cost_usd,\n    source,\n  }\n} }];"
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "http-log-ai-usage-faq",
+        "name": "HTTP Log AI Usage faq",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2276,
+          536
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_ai_usage_log' }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "supabaseApi",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Prefer",
+                "value": "return=minimal"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({\n  p_clinic_id: $json._ai_usage.clinic_id,\n  p_agent: $json._ai_usage.agent,\n  p_model: $json._ai_usage.model,\n  p_prompt_tokens: $json._ai_usage.prompt_tokens,\n  p_completion_tokens: $json._ai_usage.completion_tokens,\n  p_cost_usd: $json._ai_usage.cost_usd,\n}) }}",
+          "options": {}
+        },
+        "credentials": {
+          "supabaseApi": {
+            "id": "SmHWpBnyL1cYuhlm",
+            "name": "Supabase clinicas"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "log-ai-usage-especialista",
+        "name": "Log AI Usage especialista",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2040,
+          1144
+        ],
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "// Log AI Usage — extrai tokenUsage do LLM upstream e calcula custo USD.\n// Falha em logar nunca pode derrubar a resposta — try/catch tudo.\nconst PRICE_PER_M_IN  = 0.150;\nconst PRICE_PER_M_OUT = 0.600;\n\nfunction pickTokens(srcAll) {\n  for (const it of srcAll) {\n    const j = it.json || {};\n    // n8n langchain shapes seen across versions:\n    const candidates = [\n      j.tokenUsage,\n      j.usage,\n      j.response && j.response.llmOutput && j.response.llmOutput.tokenUsage,\n      j.response && j.response.usage,\n      j.response && j.response.generations && j.response.generations[0]\n        && j.response.generations[0][0] && j.response.generations[0][0].generationInfo\n        && j.response.generations[0][0].generationInfo.tokenUsage,\n    ];\n    for (const c of candidates) {\n      if (!c) continue;\n      const p = Number(c.promptTokens ?? c.prompt_tokens ?? c.input_tokens ?? 0) || 0;\n      const o = Number(c.completionTokens ?? c.completion_tokens ?? c.output_tokens ?? 0) || 0;\n      if (p + o > 0) return { p, o };\n    }\n  }\n  return null;\n}\n\nlet clinic_id = null;\nlet p = 0, o = 0, source = 'unknown';\ntry {\n  clinic_id = $('Monta Contexto').first().json.clinic_id || null;\n} catch (_) {}\n\ntry {\n  const llmAll = $('Chat Model especialista').all();\n  const picked = pickTokens(llmAll);\n  if (picked) { p = picked.p; o = picked.o; source = 'llm_usage'; }\n} catch (_) {}\n\nif (p + o === 0) {\n  // Fallback heuristic: ~4 chars/token. Não é exato, mas dá ordem de grandeza.\n  try {\n    const ctx = ($('Monta Contexto').first().json || {});\n    const inputChars = String(ctx.mensagem || '').length + String(ctx.agent_instructions || '').length;\n    const out = String($json.output || $json.text || '');\n    p = Math.ceil(inputChars / 4);\n    o = Math.ceil(out.length / 4);\n    source = 'char_estimate';\n  } catch (_) {}\n}\n\nconst cost_usd = (p / 1e6) * PRICE_PER_M_IN + (o / 1e6) * PRICE_PER_M_OUT;\n\nreturn [{ json: {\n  ...$json,\n  _ai_usage: {\n    clinic_id,\n    agent: 'especialista',\n    model: 'gpt-4o-mini',\n    prompt_tokens: p,\n    completion_tokens: o,\n    cost_usd,\n    source,\n  }\n} }];"
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "http-log-ai-usage-especialista",
+        "name": "HTTP Log AI Usage especialista",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2260,
+          1144
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "={{ 'https://xkwdwioawosthwjqijfb.supabase.co'.replace(/\\/+$/, '') + '/rest/v1/rpc/n8n_ai_usage_log' }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "supabaseApi",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Prefer",
+                "value": "return=minimal"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({\n  p_clinic_id: $json._ai_usage.clinic_id,\n  p_agent: $json._ai_usage.agent,\n  p_model: $json._ai_usage.model,\n  p_prompt_tokens: $json._ai_usage.prompt_tokens,\n  p_completion_tokens: $json._ai_usage.completion_tokens,\n  p_cost_usd: $json._ai_usage.cost_usd,\n}) }}",
+          "options": {}
+        },
+        "credentials": {
+          "supabaseApi": {
+            "id": "SmHWpBnyL1cYuhlm",
+            "name": "Supabase clinicas"
+          }
+        },
+        "onError": "continueRegularOutput"
       }
     ],
     "connections": {
@@ -11400,7 +12506,7 @@
         "main": [
           [
             {
-              "node": "IF Agente Ativo",
+              "node": "Switch assinatura e acesso",
               "type": "main",
               "index": 0
             }
@@ -11473,28 +12579,28 @@
         "main": [
           [
             {
-              "node": "IF webhook de teste bloqueio",
+              "node": "NoOp clinica nao encontrada",
               "type": "main",
               "index": 0
             }
           ],
           [
             {
-              "node": "HTTP aviso teste expirado",
+              "node": "HTTP marca aviso teste",
               "type": "main",
               "index": 0
             }
           ],
           [
             {
-              "node": "HTTP aviso mensal bloqueado",
+              "node": "HTTP marca aviso mensal",
               "type": "main",
               "index": 0
             }
           ],
           [
             {
-              "node": "IF webhook de teste ativo",
+              "node": "IF Agente Ativo",
               "type": "main",
               "index": 0
             }
@@ -11719,6 +12825,11 @@
               "node": "Code Extrair Rota",
               "type": "main",
               "index": 0
+            },
+            {
+              "node": "Log AI Usage qualificador",
+              "type": "main",
+              "index": 0
             }
           ]
         ]
@@ -11787,6 +12898,11 @@
               "node": "Code auto-notify profissional",
               "type": "main",
               "index": 0
+            },
+            {
+              "node": "Log AI Usage agendador",
+              "type": "main",
+              "index": 0
             }
           ]
         ]
@@ -11798,6 +12914,11 @@
               "node": "Edit Fields",
               "type": "main",
               "index": 0
+            },
+            {
+              "node": "Log AI Usage faq",
+              "type": "main",
+              "index": 0
             }
           ]
         ]
@@ -11807,6 +12928,11 @@
           [
             {
               "node": "Edit Fields",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Log AI Usage especialista",
               "type": "main",
               "index": 0
             }
@@ -12261,6 +13387,130 @@
             }
           ],
           []
+        ]
+      },
+      "HTTP marca aviso teste": {
+        "main": [
+          [
+            {
+              "node": "IF deve avisar teste",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF deve avisar teste": {
+        "main": [
+          [
+            {
+              "node": "Evolution aviso teste",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "NoOp fim teste expirado",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Evolution aviso teste": {
+        "main": [
+          [
+            {
+              "node": "NoOp fim teste expirado",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP marca aviso mensal": {
+        "main": [
+          [
+            {
+              "node": "IF deve avisar mensal",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF deve avisar mensal": {
+        "main": [
+          [
+            {
+              "node": "Evolution aviso mensal",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "NoOp fim mensal bloqueado",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Evolution aviso mensal": {
+        "main": [
+          [
+            {
+              "node": "NoOp fim mensal bloqueado",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log AI Usage qualificador": {
+        "main": [
+          [
+            {
+              "node": "HTTP Log AI Usage qualificador",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log AI Usage agendador": {
+        "main": [
+          [
+            {
+              "node": "HTTP Log AI Usage agendador",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log AI Usage faq": {
+        "main": [
+          [
+            {
+              "node": "HTTP Log AI Usage faq",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log AI Usage especialista": {
+        "main": [
+          [
+            {
+              "node": "HTTP Log AI Usage especialista",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       }
     },

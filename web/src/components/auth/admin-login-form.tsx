@@ -7,7 +7,7 @@ import { friendlyAuthError } from "@/lib/auth-errors";
 import { safeAdminPostLoginNext } from "@/lib/auth-redirect";
 import { createClient } from "@/lib/supabase/client";
 import { AdminAuthVisualShell } from "./admin-auth-visual-shell";
-import { IconGoogle, IconLock, IconMail } from "./auth-icons";
+import { IconEye, IconEyeOff, IconGoogle, IconLock, IconMail } from "./auth-icons";
 
 const pillWrap =
   "relative flex items-center rounded-full border border-neutral-600 bg-neutral-950/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)] transition focus-within:border-amber-500/50 focus-within:ring-2 focus-within:ring-amber-500/25";
@@ -32,6 +32,7 @@ export function AdminLoginForm() {
   const [view, setView] = useState<"login" | "forgot">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -274,15 +275,29 @@ export function AdminLoginForm() {
                 </span>
                 <input
                   id="admin-login-password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="w-full rounded-full bg-transparent py-3.5 pl-12 pr-5 text-sm text-neutral-100 outline-none placeholder:text-neutral-500"
+                  className="w-full rounded-full bg-transparent py-3.5 pl-12 pr-12 text-sm text-neutral-100 outline-none placeholder:text-neutral-500"
                   placeholder="••••••••"
                   aria-invalid={!!error}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 flex h-8 w-8 items-center justify-center rounded-full text-neutral-500 transition hover:text-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500"
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  aria-pressed={showPassword}
+                  tabIndex={-1}
+                >
+                  {showPassword ? (
+                    <IconEyeOff className="h-5 w-5" />
+                  ) : (
+                    <IconEye className="h-5 w-5" />
+                  )}
+                </button>
               </div>
             </div>
 
